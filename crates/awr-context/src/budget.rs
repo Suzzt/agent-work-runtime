@@ -17,6 +17,26 @@ pub fn token_count(text: &str) -> usize {
         .len()
 }
 
+/// Start building the o200k vocabulary on a helper thread so that work overlaps the source
+/// refresh and store reads that precede the first count in this process.
+///
+/// Decoding the embedded vocabulary is a fixed per-process cost of the same order as a whole
+/// context compilation, and the CLI is one process per command. Counting still goes through
+/// the same singleton: a count that arrives before the helper finishes waits for it, and a
+/// process that never counts simply exits. Idempotent; a failed spawn falls back to lazy init.
+pub fn warm_tokenizer() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static STARTED: AtomicBool = AtomicBool::new(false);
+    if STARTED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    let _ = std::thread::Builder::new()
+        .name("awr-tokenizer".into())
+        .spawn(|| {
+            tiktoken_rs::o200k_base_singleton();
+        });
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContextSection {

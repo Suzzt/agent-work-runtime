@@ -363,6 +363,7 @@ fn compile_context_selected(
             "context needs nonblank request fields and a 1..100000 token budget".into(),
         ));
     }
+    crate::warm_tokenizer();
     let root = root.canonicalize()?;
     let snapshot = awr_source::refresh_snapshot(store, &root)?;
     let refresh = snapshot.refresh;

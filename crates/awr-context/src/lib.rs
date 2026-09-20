@@ -13,6 +13,7 @@ pub use branch::BranchContextBinding;
 pub use budget::{
     BUDGET_POLICY, BudgetedContext, ContextChunk, ContextIdentity, ContextSection, RankedChunk,
     SelectedEntity, TOKEN_COUNT_SCOPE, TOKENIZER, budget_context, hard_chunks, token_count,
+    warm_tokenizer,
 };
 pub use compile::{
     ContextOmission, ContextRequest, WorkContextReport, compile_branch_context, compile_context,

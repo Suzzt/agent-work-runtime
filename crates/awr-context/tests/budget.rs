@@ -223,3 +223,16 @@ fn conflicting_snapshots_and_ambiguous_chunk_keys_are_rejected() {
             .len()
     );
 }
+
+#[test]
+fn warming_the_tokenizer_is_idempotent_and_counts_unchanged() {
+    warm_tokenizer();
+    warm_tokenizer();
+    let text = "Intent: ship the intake form\n## Rules\n[R-1]\nNo secrets in sources.\n";
+    assert_eq!(
+        token_count(text),
+        tiktoken_rs::o200k_base_singleton()
+            .encode_ordinary(text)
+            .len()
+    );
+}

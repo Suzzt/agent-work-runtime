@@ -218,6 +218,7 @@ fn bootstrap_selected(
             "bootstrap budget must be 1..100000 tokens".into(),
         ));
     }
+    crate::warm_tokenizer();
     let root = root.canonicalize()?;
     let snapshot = awr_source::refresh_snapshot(store, &root)?;
     let refresh = snapshot.refresh;
