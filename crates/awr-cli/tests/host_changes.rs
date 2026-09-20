@@ -288,7 +288,7 @@ fn unreadable_file_is_a_failure_not_a_retirement() {
     let path = p.0.join("decisions/D1.md");
     let permissions = fs::metadata(&path).unwrap().permissions();
     let baseline = p.revision();
-    fs::set_permissions(&path, fs::Permissions::from_mode(0)).unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
     // Privileged runners can still read chmod(0); only assert actual access denial where enforced.
     if fs::read(&path).is_ok() {
         fs::set_permissions(&path, permissions).unwrap();

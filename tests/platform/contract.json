@@ -1,6 +1,6 @@
 {
   "contract_id": "awr-native-platforms",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "work_item": "AWR-QA-004",
   "rust_version": "1.93.1",
   "platforms": [
@@ -23,7 +23,7 @@
     "awr-team-pg",
     "awr-workspace"
   ],
-  "required_gates": ["environment", "build", "ignored_inventory", "workspace", "doctests", "crash_recovery", "cli_mcp_parity", "cli_lifecycle", "native_cli", "workflow_oracle", "workflow_scenarios", "format", "source_unchanged"],
+  "required_gates": ["environment", "build", "lint", "ignored_inventory", "workspace", "doctests", "crash_recovery", "cli_mcp_parity", "cli_lifecycle", "native_cli", "workflow_oracle", "workflow_scenarios", "format", "source_unchanged"],
   "ignored_tests": [
     "fixture_contender",
     "fixture_wal_writer",

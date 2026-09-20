@@ -1,5 +1,5 @@
 use crate::error::{PgError, PgResult};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 /// i64 values that travel as decimal strings at response/receipt boundaries

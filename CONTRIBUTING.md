@@ -6,6 +6,7 @@ Build with the Rust toolchain pinned in `rust-toolchain.toml`:
 cargo build --workspace --all-targets --locked
 cargo test --workspace --all-targets --locked
 cargo test --workspace --doc --locked
+cargo clippy --workspace --all-targets --locked
 cargo fmt --all --check
 python3 scripts/check_public_tree.py
 ```

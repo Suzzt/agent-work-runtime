@@ -532,9 +532,9 @@ pub fn inspect_organization(
         }
         if work.status == WorkStatus::Completed {
             result.source_completed += 1;
-            if work.ordinary_completion.is_some() {
+            if let Some(ordinary) = &work.ordinary_completion {
                 match crate::assess_ordinary_completion(store, project.id, projected) {
-                    Ok(()) if structured => match work.ordinary_completion.as_ref().unwrap().kind {
+                    Ok(()) if structured => match ordinary.kind {
                         OrdinaryCompletionKind::UserConfirmation => {
                             result.user_confirmed_completed += 1
                         }
@@ -560,33 +560,37 @@ pub fn inspect_organization(
                 result.historical_gap_total += result.gap_total - previous_gaps;
                 continue;
             }
-            if structured && source_sha.is_some() {
-                match verify_completed(
-                    store,
-                    project.id,
-                    work,
-                    branch,
-                    source_sha.unwrap(),
-                    &mut verification_budget,
-                ) {
-                    Ok(()) => result.verified_completed += 1,
-                    Err(error) => {
-                        result.completion_verification_failed += 1;
-                        result.gap(
-                            "completion_verification_failed",
-                            key,
-                            &error.report().message,
-                            vec![work.meta.source_ref.clone()],
-                            "evidence",
-                        );
+            match source_sha {
+                Some(sha) if structured => {
+                    match verify_completed(
+                        store,
+                        project.id,
+                        work,
+                        branch,
+                        sha,
+                        &mut verification_budget,
+                    ) {
+                        Ok(()) => result.verified_completed += 1,
+                        Err(error) => {
+                            result.completion_verification_failed += 1;
+                            result.gap(
+                                "completion_verification_failed",
+                                key,
+                                &error.report().message,
+                                vec![work.meta.source_ref.clone()],
+                                "evidence",
+                            );
+                        }
                     }
                 }
-            } else if source_sha.is_none() {
-                result.completion_not_checked += 1;
-                result.gap("completion_not_checked", key, "Not checked in this query: no explicit source SHA was supplied. This is neither a verification failure nor proof of completion. Inspect the original report and its recorded source version; never fill historical evidence with current HEAD.", vec![work.meta.source_ref.clone()], "evidence");
-            } else {
-                result.completion_check_blocked += 1;
-                result.gap("completion_check_blocked", key, "Verification was requested but structural gaps prevent checking this completion. Resolve the cited gaps and recheck the explicit source version.", vec![work.meta.source_ref.clone()], "evidence");
+                None => {
+                    result.completion_not_checked += 1;
+                    result.gap("completion_not_checked", key, "Not checked in this query: no explicit source SHA was supplied. This is neither a verification failure nor proof of completion. Inspect the original report and its recorded source version; never fill historical evidence with current HEAD.", vec![work.meta.source_ref.clone()], "evidence");
+                }
+                Some(_) => {
+                    result.completion_check_blocked += 1;
+                    result.gap("completion_check_blocked", key, "Verification was requested but structural gaps prevent checking this completion. Resolve the cited gaps and recheck the explicit source version.", vec![work.meta.source_ref.clone()], "evidence");
+                }
             }
             result.historical_gap_total += result.gap_total - previous_gaps;
             continue;

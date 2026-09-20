@@ -126,6 +126,9 @@ def main():
     gate('build', ['cargo', 'build', '--workspace', '--all-targets', '--locked'])
     if all(path.is_file() for path in [awr, mcp]):
         report['binary_sha256'] = {'awr': digest(awr), 'awr-mcp': digest(mcp)}
+    # Deny-level clippy lints (non-octal unix permissions, misuse of core APIs) fail this gate;
+    # warn-level lints stay advisory in the log until the workspace is warning-free.
+    gate('lint', ['cargo', 'clippy', '--workspace', '--all-targets', '--locked'], requires=('build',))
 
     def inventory(text):
         names = re.findall(r'^(.+): test$', text, re.M)
