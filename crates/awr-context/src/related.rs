@@ -110,6 +110,18 @@ impl RelatedSelection {
         let project = store.project(project)?;
         crate::branch::branch_binding(store, &project, branch)?;
         let work = store.work_item(project.id, work_key)?;
+        Self::dependencies_of(store, &project, &work, branch)
+    }
+
+    /// Start from a project, work item and branch the caller has already read and validated
+    /// at this revision, so L1 compilation does not repeat those reads per phase.
+    pub(crate) fn dependencies_of(
+        store: &Store,
+        project: &Project,
+        work: &Projected<WorkItem>,
+        branch: Option<Id>,
+    ) -> Result<Self> {
+        let work_key = work.item.meta.external_key.as_str();
         let graph = store.dependency_closure(project.id, work_key, true)?;
         let mut ids = BTreeSet::from([work.source.id]);
         let mut unresolved_dependencies = Vec::new();

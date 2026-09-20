@@ -208,6 +208,30 @@ fn hard_context_selected(
     crate::branch::branch_binding(store, &project, branch)?;
     let work = store.work_item(project.id, work_key)?;
     let selection = select_rules(store, &project, Some(&work), input)?;
+    let sources = store.sources(project.id)?;
+    let result = hard_context_from(&project, &work, branch, &selection, &sources);
+    let actual = store.project(project.id)?.project_revision;
+    if actual != project.project_revision {
+        return Err(Error::RevisionConflict {
+            expected: project.project_revision,
+            actual,
+        });
+    }
+    Ok(result)
+}
+
+/// Assemble the hard-fact subset from facts the caller already read at one project revision.
+///
+/// L1 compilation reads the project, the work item, the rule selection and the source list
+/// once and shares them between this, dependencies and delta; the public `hard_context`
+/// reads them itself and revalidates the revision afterwards.
+pub(crate) fn hard_context_from(
+    project: &Project,
+    work: &Projected<WorkItem>,
+    branch: Option<Id>,
+    selection: &RuleSelection,
+    sources: &[Source],
+) -> HardContext {
     let mut issues = Vec::new();
     if work.source.freshness != Freshness::Fresh {
         issues.push("work source is not fresh".into());
@@ -232,8 +256,9 @@ fn hard_context_selected(
     }
     let unresolved = selection
         .unknown
-        .into_iter()
+        .iter()
         .filter(|r| r.rule.item.severity == Some(Severity::Hard) || r.rule.item.severity.is_none())
+        .cloned()
         .collect::<Vec<_>>();
     let mut ids = BTreeSet::from([work.source.id]);
     for rule in &selection.hard {
@@ -242,7 +267,6 @@ fn hard_context_selected(
     for rule in &unresolved {
         ids.insert(rule.rule.source.id);
     }
-    let sources = store.sources(project.id)?;
     if !sources.iter().any(|s| s.domain == "rules") {
         issues.push("rules source is missing".into());
     }
@@ -253,36 +277,29 @@ fn hard_context_selected(
         }
     }
     let source_revisions = sources
-        .into_iter()
+        .iter()
         .filter(|s| ids.contains(&s.id))
+        .cloned()
         .map(SourceVersion::from)
         .collect();
-    let result = HardContext {
+    HardContext {
         project_id: project.id,
         project_revision: project.project_revision,
         branch_id: branch,
         work: HardWork {
-            meta: work.item.meta,
+            meta: work.item.meta.clone(),
             status: work.item.status,
-            raw_status: work.item.raw_status,
-            acceptance: work.item.acceptance,
-            blocker: work.item.blocker,
-            next_action: work.item.next_action,
+            raw_status: work.item.raw_status.clone(),
+            acceptance: work.item.acceptance.clone(),
+            blocker: work.item.blocker.clone(),
+            next_action: work.item.next_action.clone(),
         },
-        rules: selection.hard.into_iter().map(|r| r.item).collect(),
-        scope: selection.context,
+        rules: selection.hard.iter().map(|r| r.item.clone()).collect(),
+        scope: selection.context.clone(),
         paths_origin: selection.paths_origin,
         source_revisions,
         complete: issues.is_empty() && unresolved.is_empty(),
         unresolved,
         issues,
-    };
-    let actual = store.project(project.id)?.project_revision;
-    if actual != project.project_revision {
-        return Err(Error::RevisionConflict {
-            expected: project.project_revision,
-            actual,
-        });
     }
-    Ok(result)
 }

@@ -1,4 +1,6 @@
-use awr_core::{Checkpoint, Error, Freshness, Id, Result, Revision, Session};
+use awr_core::{
+    Checkpoint, Error, Freshness, Id, Project, Projected, Result, Revision, Session, WorkItem,
+};
 use awr_store::{DeltaEvents, Store};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -214,8 +216,29 @@ fn recent_delta_selected(
 ) -> Result<RecentDelta> {
     let project = store.project(project_id)?;
     let binding = crate::branch::branch_binding(store, &project, branch)?;
-    let fork = binding.fork_project_revision;
     let work = store.work_item(project_id, work_key)?;
+    recent_delta_of(
+        store,
+        &project,
+        &work,
+        binding.fork_project_revision,
+        branch,
+        request,
+    )
+}
+
+/// Resolve the delta for a project, work item and branch binding the caller already read
+/// and validated at this revision; L1 compilation shares them instead of re-reading.
+pub(crate) fn recent_delta_of(
+    store: &Store,
+    project: &Project,
+    work: &Projected<WorkItem>,
+    fork: Revision,
+    branch: Option<Id>,
+    request: &DeltaRequest,
+) -> Result<RecentDelta> {
+    let project_id = project.id;
+    let work_key = work.item.meta.external_key.as_str();
     let session = request
         .session_id
         .map(|id| store.session(project_id, id))

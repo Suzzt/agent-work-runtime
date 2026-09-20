@@ -431,15 +431,19 @@ fn compile_context_selected(
         });
     };
     let scope = scope(request, selection.session.as_ref());
+    // The store is one immutable snapshot at `project.project_revision`, so the project, work
+    // item, branch binding and rule evaluation above are read once and shared by every phase;
+    // the public per-phase entry points still read and revalidate on their own.
     let mut related =
-        crate::related::RelatedSelection::dependencies(store, project.id, key, branch)?;
-    let hard = hard_context(store, project.id, key, branch, &scope)?;
+        crate::related::RelatedSelection::dependencies_of(store, &project, work, branch)?;
     let rules = select_rules(store, &project, Some(work), &scope)?;
+    let hard = crate::hard::hard_context_from(&project, work, branch, &rules, &sources);
     related.decisions(store, scope.paths.as_deref())?;
-    let delta = recent_delta(
+    let delta = crate::delta::recent_delta_of(
         store,
-        project.id,
-        key,
+        &project,
+        work,
+        branch_context.fork_project_revision,
         branch,
         &DeltaRequest {
             baseline: request.delta_baseline.clone(),
