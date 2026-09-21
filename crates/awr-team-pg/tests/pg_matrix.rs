@@ -12,6 +12,157 @@ fn matrix() -> Value {
     .unwrap()
 }
 
+fn normalized_string<'a>(value: &'a Value, field: &str) -> Result<&'a str, String> {
+    let value = value.as_str().ok_or_else(|| format!("{field} string"))?;
+    if value.is_empty() || value.trim() != value || value.chars().any(char::is_control) {
+        return Err(format!("{field} normalized non-empty string"));
+    }
+    Ok(value)
+}
+
+fn hex_string(value: &Value, length: usize, field: &str) -> Result<(), String> {
+    let value = normalized_string(value, field)?;
+    if value.len() != length || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(format!("{field} hex length {length}"));
+    }
+    Ok(())
+}
+
+fn validate_live_agent_run(value: &Value) -> Result<(), String> {
+    let require = |ok: bool, message: &str| if ok { Ok(()) } else { Err(message.to_string()) };
+    let run = value.as_object().ok_or("live_agent_run object")?;
+    require(
+        run.get("schema_version") == Some(&json!(1)),
+        "live schema version",
+    )?;
+    require(
+        run.get("status") == Some(&json!("locally_verified")),
+        "live verified status",
+    )?;
+    hex_string(
+        run.get("git_head").ok_or("live git head missing")?,
+        40,
+        "live git head",
+    )?;
+
+    let clients = run
+        .get("clients")
+        .and_then(Value::as_array)
+        .ok_or("live clients array")?;
+    require(clients.len() == 2, "exactly two live clients")?;
+    require(
+        clients[0]["product"] == "Kimi Code CLI" && clients[1]["product"] == "ZCode CLI",
+        "live client order",
+    )?;
+    normalized_string(&clients[0]["version"], "first client version")?;
+    normalized_string(&clients[1]["version"], "second client version")?;
+    let first_actor = normalized_string(&clients[0]["actor_id"], "first actor")?;
+    let second_actor = normalized_string(&clients[1]["actor_id"], "second actor")?;
+    require(first_actor != second_actor, "live actors must be distinct")?;
+
+    normalized_string(
+        run.get("project_key").ok_or("live project missing")?,
+        "live project",
+    )?;
+    normalized_string(run.get("work_id").ok_or("live work missing")?, "live work")?;
+    normalized_string(
+        run.get("receipt_id").ok_or("live receipt missing")?,
+        "live receipt",
+    )?;
+    normalized_string(
+        run.get("execution_id").ok_or("live execution missing")?,
+        "live execution",
+    )?;
+    normalized_string(run.get("flow").ok_or("live flow missing")?, "live flow")?;
+    let evidence_path = normalized_string(
+        run.get("evidence_path")
+            .ok_or("live evidence locator missing")?,
+        "live evidence locator",
+    )?;
+    require(
+        Path::new(evidence_path)
+            .components()
+            .all(|part| matches!(part, Component::Normal(_))),
+        "unsafe live evidence locator",
+    )?;
+
+    let oracle = run
+        .get("oracle")
+        .and_then(Value::as_object)
+        .ok_or("live oracle object")?;
+    require(
+        oracle.get("receipts").and_then(Value::as_u64) == Some(1),
+        "live receipt count",
+    )?;
+    require(
+        oracle.get("executions").and_then(Value::as_u64) == Some(1),
+        "live execution count",
+    )?;
+    require(
+        oracle.get("active_holder").and_then(Value::as_str) == Some(second_actor),
+        "live successor holder",
+    )?;
+    require(
+        oracle.get("pass").and_then(Value::as_bool) == Some(true),
+        "live oracle pass",
+    )?;
+    require(
+        run.get("not_a_release_tag").and_then(Value::as_bool) == Some(true),
+        "live release limitation",
+    )?;
+
+    let review = run
+        .get("historical_evidence_review")
+        .and_then(Value::as_object)
+        .ok_or("historical evidence review object")?;
+    require(
+        review.get("schema_version") == Some(&json!(1)),
+        "historical evidence review schema version",
+    )?;
+    normalized_string(
+        review
+            .get("observed_at")
+            .ok_or("historical evidence observation missing")?,
+        "historical evidence observed_at",
+    )?;
+    hex_string(
+        review
+            .get("evidence_bundle_sha256")
+            .ok_or("historical evidence bundle hash missing")?,
+        64,
+        "historical evidence bundle hash",
+    )?;
+    hex_string(
+        review
+            .get("retained_driver_sha256")
+            .ok_or("retained driver hash missing")?,
+        64,
+        "retained driver hash",
+    )?;
+    require(
+        review.get("retained_driver_binding") == Some(&json!("unbound")),
+        "retained driver binding",
+    )?;
+    require(
+        review.get("run_time") == Some(&Value::Null),
+        "historical run time must remain unknown",
+    )?;
+    require(
+        review.get("full_chain_reverified").and_then(Value::as_bool) == Some(false),
+        "historical full chain was not reverified",
+    )?;
+
+    let current = run
+        .get("current_verification")
+        .and_then(Value::as_object)
+        .ok_or("current verification object")?;
+    require(
+        current.get("live_rerun").and_then(Value::as_bool) == Some(false),
+        "current live run was not rerun",
+    )?;
+    Ok(())
+}
+
 // This guard checks inventory, reference resolution and accounting. It never
 // turns source inspection into an executed test or re-accepts historical runs.
 fn validate(value: &Value) -> Result<(), String> {
@@ -180,6 +331,7 @@ fn validate(value: &Value) -> Result<(), String> {
             }),
         "derived counts mismatch",
     )?;
+    validate_live_agent_run(&value["live_agent_run"])?;
     Ok(())
 }
 
@@ -253,4 +405,127 @@ fn legitimate_acceptance_and_implementation_changes_use_derived_counts() {
     value["counts"]["automated_evidence_pending"] = json!(28);
     value["counts"]["protocol_implemented"] = json!(66);
     validate(&value).unwrap();
+}
+
+#[test]
+fn live_agent_run_accepts_new_well_formed_observation_identifiers() {
+    let mut value = matrix();
+    let run = &mut value["live_agent_run"];
+    run["git_head"] = json!("0123456789abcdef0123456789abcdef01234567");
+    run["clients"][0]["version"] = json!("2.1.0");
+    run["clients"][0]["actor_id"] = json!("kimi-successor-flow-a");
+    run["clients"][1]["version"] = json!("0.17.0");
+    run["clients"][1]["actor_id"] = json!("zcode-successor-flow-b");
+    run["project_key"] = json!("p11-live-next");
+    run["work_id"] = json!("work-p11-next");
+    run["receipt_id"] = json!("receipt-next");
+    run["execution_id"] = json!("execution-next");
+    run["evidence_path"] = json!("ledger/evidence/TEAM-P11/live-dual-cli-next.json");
+    run["oracle"]["active_holder"] = json!("zcode-successor-flow-b");
+    run["historical_evidence_review"]["evidence_bundle_sha256"] = json!("a".repeat(64));
+    run["historical_evidence_review"]["retained_driver_sha256"] = json!("b".repeat(64));
+    validate(&value).unwrap();
+}
+
+#[test]
+fn live_agent_run_mutations_cannot_fabricate_a_successful_handoff() {
+    let original = matrix();
+    for name in [
+        "receipts zero",
+        "receipts two",
+        "executions zero",
+        "executions two",
+        "holder reverted to first actor",
+        "actors equal",
+        "actor whitespace pseudo difference",
+        "actor control character",
+        "receipt empty",
+        "execution empty",
+        "evidence empty",
+        "evidence traversal",
+        "oracle failed",
+        "wrong product",
+        "release limitation missing",
+        "run structure type",
+        "clients structure type",
+        "oracle structure type",
+        "required field missing",
+        "receipt count structure type",
+        "git head malformed",
+        "provenance missing",
+        "provenance hash malformed",
+        "retained driver falsely bound",
+        "historical run time fabricated",
+        "historical chain falsely reverified",
+        "current run falsely claimed",
+    ] {
+        let mut bad = original.clone();
+        match name {
+            "receipts zero" => bad["live_agent_run"]["oracle"]["receipts"] = json!(0),
+            "receipts two" => bad["live_agent_run"]["oracle"]["receipts"] = json!(2),
+            "executions zero" => bad["live_agent_run"]["oracle"]["executions"] = json!(0),
+            "executions two" => bad["live_agent_run"]["oracle"]["executions"] = json!(2),
+            "holder reverted to first actor" => {
+                bad["live_agent_run"]["oracle"]["active_holder"] = json!("kimi-cli")
+            }
+            "actors equal" => bad["live_agent_run"]["clients"][1]["actor_id"] = json!("kimi-cli"),
+            "actor whitespace pseudo difference" => {
+                bad["live_agent_run"]["clients"][1]["actor_id"] = json!("kimi-cli ")
+            }
+            "actor control character" => {
+                bad["live_agent_run"]["clients"][1]["actor_id"] = json!("zcode\ncli")
+            }
+            "receipt empty" => bad["live_agent_run"]["receipt_id"] = json!(""),
+            "execution empty" => bad["live_agent_run"]["execution_id"] = json!(""),
+            "evidence empty" => bad["live_agent_run"]["evidence_path"] = json!(""),
+            "evidence traversal" => {
+                bad["live_agent_run"]["evidence_path"] = json!("../private/live.json")
+            }
+            "oracle failed" => bad["live_agent_run"]["oracle"]["pass"] = json!(false),
+            "wrong product" => bad["live_agent_run"]["clients"][0]["product"] = json!("Other CLI"),
+            "release limitation missing" => {
+                bad["live_agent_run"]["not_a_release_tag"] = json!(false)
+            }
+            "run structure type" => bad["live_agent_run"] = json!([]),
+            "clients structure type" => bad["live_agent_run"]["clients"] = json!({}),
+            "oracle structure type" => bad["live_agent_run"]["oracle"] = json!([]),
+            "required field missing" => {
+                bad["live_agent_run"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("work_id");
+            }
+            "receipt count structure type" => {
+                bad["live_agent_run"]["oracle"]["receipts"] = json!("1")
+            }
+            "git head malformed" => bad["live_agent_run"]["git_head"] = json!("main"),
+            "provenance missing" => {
+                bad["live_agent_run"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("historical_evidence_review");
+            }
+            "provenance hash malformed" => {
+                bad["live_agent_run"]["historical_evidence_review"]["evidence_bundle_sha256"] =
+                    json!("unknown")
+            }
+            "retained driver falsely bound" => {
+                bad["live_agent_run"]["historical_evidence_review"]["retained_driver_binding"] =
+                    json!("bound")
+            }
+            "historical run time fabricated" => {
+                bad["live_agent_run"]["historical_evidence_review"]["run_time"] =
+                    json!("2026-09-17T00:00:00Z")
+            }
+            "historical chain falsely reverified" => {
+                bad["live_agent_run"]["historical_evidence_review"]["full_chain_reverified"] =
+                    json!(true)
+            }
+            "current run falsely claimed" => {
+                bad["live_agent_run"]["current_verification"]["live_rerun"] = json!(true)
+            }
+            _ => unreachable!(),
+        }
+        assert!(validate(&bad).is_err(), "mutation passed: {name}");
+    }
 }
