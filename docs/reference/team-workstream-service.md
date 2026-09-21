@@ -381,11 +381,13 @@ epoch binding still apply. Reports may be recorded while the workstream is pause
 These are **caller assertions**, not trusted result or stop confirmations. Each
 report is kept verbatim in an attributed execution receipt, including observations
 outside the declared scope and conflicting later reports. The execution becomes
-`unknown`, recovery remains blocked and its work's reserved resources become
-`unknown`; work is not completed and resources are not released. An already
-terminal attempt cannot be rewritten by this operation. Unknown fields such as
-`receipt_kind: "trusted_executor"` are rejected. A newer current contract does
-not erase observations against the original execution contract.
+`unknown`, recovery remains blocked and the exact reservations recorded by its
+committed admission receipt become `unknown`; legacy or unrelated reservations
+on the same work are preserved. Work is not completed and resources are not
+released. An already terminal attempt cannot be rewritten by this operation.
+Unknown fields such as `receipt_kind: "trusted_executor"` are rejected. A newer
+current contract does not erase observations against the original execution
+contract.
 
 This increment deliberately does not provide the trusted recovery path needed to
 settle these reports. It is not yet a complete recurring execution loop. The next
