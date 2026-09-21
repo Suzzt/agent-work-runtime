@@ -330,6 +330,30 @@ async fn explicit_activation_installs_complete_dag_without_redefining_main_or_v1
         ),
         (3, 3, 2, 1, 0)
     );
+    let edges = admin
+        .query(
+            "SELECT from_work_id, to_work_id, relation
+             FROM awr_team.dependency_edges ORDER BY from_work_id, to_work_id",
+            &[],
+        )
+        .await
+        .unwrap()
+        .iter()
+        .map(|row| {
+            (
+                row.get::<_, String>(0),
+                row.get::<_, String>(1),
+                row.get::<_, String>(2),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        edges,
+        vec![
+            ("integration".into(), "sdk".into(), "requires".into()),
+            ("sdk".into(), "interface".into(), "requires".into()),
+        ]
+    );
     assert!(matches!(
         ReadStore::from_config(with_app_role(&test_config(), &db))
             .graph(TENANT, PROJECT)
