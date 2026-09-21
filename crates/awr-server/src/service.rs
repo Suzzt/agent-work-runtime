@@ -328,19 +328,20 @@ pub async fn serve(path: &FilePath) -> Result<(), String> {
     let config = ServiceConfig::read(path)?;
     let url = std::env::var("AWR_TEAM_DATABASE_URL")
         .map_err(|_| "AWR_TEAM_DATABASE_URL is required".to_string())?;
-    let client = awr_team_pg::connect(&url)
-        .await
-        .map_err(|_| "could not connect to Team database".to_string())?;
-    awr_team_pg::check_schema(&client)
-        .await
-        .map_err(|_| "Team schema is incompatible; migrate explicitly as owner".to_string())?;
+    let store = WorkstreamReadStore::new(url);
+    store.check_schema().await.map_err(|error| match error {
+        PgError::SchemaIncompatible(_) => {
+            "Team schema is incompatible; migrate explicitly as owner".to_string()
+        }
+        _ => "could not connect to Team database".to_string(),
+    })?;
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
         .map_err(|_| "could not bind Team listener".to_string())?;
     let actual = listener
         .local_addr()
         .map_err(|_| "could not inspect listener".to_string())?;
-    let router = router(config, actual, WorkstreamReadStore::new(url))?;
+    let router = router(config, actual, store)?;
     println!(
         "{}",
         json!({"service":"awr-team-workstream","listen":actual.to_string(),"protocol_version":1})
