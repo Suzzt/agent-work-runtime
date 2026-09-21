@@ -19,6 +19,7 @@ impl Drop for Server {
 }
 
 async fn start(store: WorkstreamReadStore) -> Server {
+    store.check_schema().await.unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let config = ServiceConfig {
@@ -122,6 +123,19 @@ async fn http_requires_live_auth_and_never_accepts_grants_or_identity_from_a_bod
         403
     );
     assert_eq!(post(&server, "one", NONE, body.clone()).await.status(), 403);
+    for token in ["garbage", NONE] {
+        assert_eq!(
+            post(
+                &server,
+                "one",
+                token,
+                json!({"protocol_version":1,"op":"claim.acquire"}),
+            )
+            .await
+            .status(),
+            403
+        );
+    }
     let cap: Value = post(&server, "one", A, body.clone())
         .await
         .json()
