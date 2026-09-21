@@ -37,6 +37,8 @@ pub enum AccessCommand {
         request_id: String,
         #[arg(long)]
         expected_state: String,
+        #[arg(long)]
+        expected_plan: String,
     },
     /// Inspect an original request after a timeout before retrying it exactly.
     Outcome {
@@ -160,7 +162,17 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
             input,
             request_id,
             expected_state,
-        } => OperatorAccess::apply(&mut client, &plan(&input)?, &request_id, &expected_state).await,
+            expected_plan,
+        } => {
+            OperatorAccess::apply(
+                &mut client,
+                &plan(&input)?,
+                &request_id,
+                &expected_state,
+                &expected_plan,
+            )
+            .await
+        }
         AccessCommand::Outcome {
             tenant_id,
             project_id,
