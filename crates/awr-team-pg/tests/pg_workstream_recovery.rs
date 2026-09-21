@@ -369,20 +369,18 @@ async fn reconciliation_keeps_other_execution_and_legacy_resource_barriers() {
         VALUES('reader-tenant','reader-project','other-resource','a','prefix','other','unknown','other-unknown'),
         ('reader-tenant','reader-project','legacy-resource','a','named','legacy','unknown',NULL);
         UPDATE awr_team.work_runtime SET recovery_blocked=false WHERE work_id='a'").await.unwrap();
+    let mut command = reconcile(&store, &os, &e, "settle", "succeeded").await;
+    command.args["clear_recovery_block"] = json!(false);
     let result = store
         .commands()
-        .execute(
-            TENANT,
-            PROJECT,
-            OP,
-            reconcile(&store, &os, &e, "settle", "succeeded").await,
-        )
+        .execute(TENANT, PROJECT, OP, command)
         .await
         .unwrap();
     let d = &result["receipt"]["data"];
     assert_eq!(d["state"], "succeeded");
     assert_eq!(d["resources_released"], 1);
     assert_eq!(d["recovery_blocked"], true);
+    assert_eq!(d["recovery_clear_requested"], false);
     assert_eq!(d["unresolved_work_effects"], true);
     let r = admin
         .query_one(
@@ -394,6 +392,33 @@ async fn reconciliation_keeps_other_execution_and_legacy_resource_barriers() {
         .unwrap();
     assert_eq!(r.get::<_, String>(0), "unknown");
     assert_eq!(r.get::<_, i64>(1), 2);
+}
+
+#[tokio::test]
+async fn caller_report_marks_only_its_execution_resources_unknown() {
+    let (_g, admin, _, store) = setup().await;
+    enable_writes(&admin).await;
+    let c = take(&store).await;
+    let e = start(&store, &c, "one").await;
+    admin.batch_execute("INSERT INTO awr_team.executions(tenant_id,project_id,id,work_id,fence,contract_hash,executor_actor_id,state)
+        VALUES('reader-tenant','reader-project','other-execution','a',0,'old','old-runner','unknown');
+        INSERT INTO awr_team.resource_reservations(tenant_id,project_id,id,work_id,resource_kind,canonical_key,state,execution_id)
+        VALUES('reader-tenant','reader-project','other-resource','a','named','other','reserved','other-execution'),
+        ('reader-tenant','reader-project','legacy-resource','a','named','legacy','reserved',NULL)").await.unwrap();
+    report(&store, &e, "observe").await;
+    let states = admin
+        .query_one(
+            "SELECT
+        (SELECT state FROM awr_team.resource_reservations WHERE execution_id=$1),
+        (SELECT state FROM awr_team.resource_reservations WHERE id='other-resource'),
+        (SELECT state FROM awr_team.resource_reservations WHERE id='legacy-resource')",
+            &[&e["execution_id"].as_str().unwrap()],
+        )
+        .await
+        .unwrap();
+    assert_eq!(states.get::<_, String>(0), "unknown");
+    assert_eq!(states.get::<_, String>(1), "reserved");
+    assert_eq!(states.get::<_, String>(2), "reserved");
 }
 
 #[tokio::test]

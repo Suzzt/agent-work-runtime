@@ -134,6 +134,11 @@ impl WorkstreamReadStore {
         crate::WorkstreamCommandStore::from_pool(self.pool.clone())
     }
 
+    pub async fn check_schema(&self) -> PgResult<()> {
+        let client = self.pool.get().await?;
+        crate::check_schema(&client).await
+    }
+
     pub async fn query(
         &self,
         tenant: &str,
@@ -141,7 +146,6 @@ impl WorkstreamReadStore {
         bearer: &str,
         request: WorkstreamQuery,
     ) -> PgResult<Value> {
-        request.validate()?;
         let mut client = self.pool.get().await?;
         crate::check_schema(&client).await?;
         let tx = client
@@ -257,6 +261,7 @@ pub(crate) async fn read(
     if visible.is_empty() {
         return Err(PgError::Forbidden);
     }
+    q.validate()?;
     if q.op == "capabilities" {
         return Ok(
             json!({"protocol":"awr-team-workstream","protocol_version":1,"queries":QUERIES,
