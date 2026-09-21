@@ -186,7 +186,7 @@ async fn event_pages_include_event_index_and_survive_reconnect() {
 }
 
 // CR #38 P2-3: event revisions are decimal strings at the response
-// boundary, even past the JavaScript safe-integer range; cursor续读不受影响。
+// boundary, even past the JavaScript safe-integer range; cursor pagination remains exact.
 #[tokio::test]
 async fn event_revision_is_decimal_string_beyond_js_safe_integer() {
     let (_lock, admin, db) = setup().await;
