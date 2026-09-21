@@ -112,6 +112,8 @@ async fn native_operator_cli_provisions_and_revokes_a_client_using_the_native_se
         "register-native",
         "--expected-state",
         preview["state_digest"].as_str().unwrap(),
+        "--expected-plan",
+        preview["plan_digest"].as_str().unwrap(),
     ];
     let registered = cli(&owner, &apply_args);
     let replay = cli(&owner, &apply_args);
@@ -206,6 +208,8 @@ async fn native_operator_cli_provisions_and_revokes_a_client_using_the_native_se
             "revoke-native",
             "--expected-state",
             preview["state_digest"].as_str().unwrap(),
+            "--expected-plan",
+            preview["plan_digest"].as_str().unwrap(),
         ],
     );
     assert_eq!(

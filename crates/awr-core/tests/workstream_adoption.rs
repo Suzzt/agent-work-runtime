@@ -277,7 +277,7 @@ fn missing_unknown_unavailable_and_denied_are_distinct() {
 }
 
 #[test]
-fn rejects_cross_project_or_forged_ownership_and_self_dependency() {
+fn rejects_cross_project_or_forged_ownership_and_same_scope_dependency() {
     let (required, facts) = fixture();
     let mut other = facts.clone();
     other.provider.workstream_id = Id::from(9);
@@ -293,6 +293,14 @@ fn rejects_cross_project_or_forged_ownership_and_self_dependency() {
     );
     let mut request = required.clone();
     request.consumer.project_id = "other".into();
+    let mut other = facts.clone();
+    other.consumer = request.consumer.clone();
+    assert_eq!(
+        assess_delivery(&request, &other),
+        Err(DeliveryError::BindingMismatch)
+    );
+    let mut request = required.clone();
+    request.consumer.workstream_id = request.provider.workstream_id;
     let mut other = facts.clone();
     other.consumer = request.consumer.clone();
     assert_eq!(

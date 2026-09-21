@@ -18,11 +18,16 @@ fn plan() -> AccessPlan {
         "credential":{"id":"provisioned","secret_hash":workstream_credential_hash(TOKEN).unwrap(),"expires_at_unix_ms":null},
         "revoke_credentials":[]})).unwrap()
 }
-async fn digest(admin: &mut Client, p: &AccessPlan) -> String {
-    OperatorAccess::preview(admin, p).await.unwrap()["state_digest"]
-        .as_str()
-        .unwrap()
-        .into()
+struct Digests {
+    state: String,
+    plan: String,
+}
+async fn digests(admin: &mut Client, p: &AccessPlan) -> Digests {
+    let preview = OperatorAccess::preview(admin, p).await.unwrap();
+    Digests {
+        state: preview["state_digest"].as_str().unwrap().into(),
+        plan: preview["plan_digest"].as_str().unwrap().into(),
+    }
 }
 async fn state(admin: &Client) -> Value {
     admin.query_one("SELECT jsonb_build_object(
@@ -48,14 +53,30 @@ async fn preview_is_read_only_and_provisioned_client_can_only_use_its_granted_wo
             .contains(&p.credential.as_ref().unwrap().secret_hash)
     );
     assert!(!preview.to_string().contains(TOKEN));
+    let mut edited = p.clone();
+    edited.role = "admin".into();
+    assert!(matches!(
+        OperatorAccess::apply(
+            &mut admin,
+            &edited,
+            "edited-after-preview",
+            preview["state_digest"].as_str().unwrap(),
+            preview["plan_digest"].as_str().unwrap(),
+        )
+        .await,
+        Err(PgError::PreconditionsChanged)
+    ));
+    assert_eq!(state(&admin).await, before);
     let applied = OperatorAccess::apply(
         &mut admin,
         &p,
         "register",
         preview["state_digest"].as_str().unwrap(),
+        preview["plan_digest"].as_str().unwrap(),
     )
     .await
     .unwrap();
+    assert_eq!(applied["receipt"]["plan_digest"], preview["plan_digest"]);
     assert_eq!(applied["receipt"]["execution_authorized"], false);
     assert!(applied["receipt"]["previous_policy"]["actor"].is_null());
     assert_eq!(
@@ -95,13 +116,13 @@ async fn preview_is_read_only_and_provisioned_client_can_only_use_its_granted_wo
 async fn exact_replay_is_historical_and_cannot_restore_later_revoked_access() {
     let (_g, mut admin, _, store) = setup().await;
     let p = plan();
-    let d = digest(&mut admin, &p).await;
-    let original = OperatorAccess::apply(&mut admin, &p, "register", &d)
+    let d = digests(&mut admin, &p).await;
+    let original = OperatorAccess::apply(&mut admin, &p, "register", &d.state, &d.plan)
         .await
         .unwrap();
     let before = state(&admin).await;
     assert_eq!(
-        OperatorAccess::apply(&mut admin, &p, "register", &d)
+        OperatorAccess::apply(&mut admin, &p, "register", &d.state, &d.plan)
             .await
             .unwrap()["receipt"],
         original["receipt"]
@@ -112,13 +133,13 @@ async fn exact_replay_is_historical_and_cannot_restore_later_revoked_access() {
     changed.grants.clear();
     changed.credential = None;
     changed.revoke_credentials = vec!["provisioned".into()];
-    let d2 = digest(&mut admin, &changed).await;
-    OperatorAccess::apply(&mut admin, &changed, "revoke", &d2)
+    let d2 = digests(&mut admin, &changed).await;
+    OperatorAccess::apply(&mut admin, &changed, "revoke", &d2.state, &d2.plan)
         .await
         .unwrap();
     let before = state(&admin).await;
     assert_eq!(
-        OperatorAccess::apply(&mut admin, &p, "register", &d)
+        OperatorAccess::apply(&mut admin, &p, "register", &d.state, &d.plan)
             .await
             .unwrap()["receipt"],
         original["receipt"]
@@ -150,7 +171,7 @@ async fn exact_replay_is_historical_and_cannot_restore_later_revoked_access() {
         "unknown"
     );
     assert!(matches!(
-        OperatorAccess::apply(&mut admin, &changed, "register", &d).await,
+        OperatorAccess::apply(&mut admin, &changed, "register", &d.state, &d.plan).await,
         Err(PgError::IdempotencyConflict)
     ));
     assert!(matches!(
@@ -163,8 +184,8 @@ async fn exact_replay_is_historical_and_cannot_restore_later_revoked_access() {
 async fn service_database_role_is_not_an_operator_and_cannot_read_or_forge_operator_receipts() {
     let (_g, mut admin, db, _) = setup().await;
     let p = plan();
-    let d = digest(&mut admin, &p).await;
-    OperatorAccess::apply(&mut admin, &p, "register", &d)
+    let d = digests(&mut admin, &p).await;
+    OperatorAccess::apply(&mut admin, &p, "register", &d.state, &d.plan)
         .await
         .unwrap();
     let mut app = common::app_client(&db).await;
@@ -177,7 +198,7 @@ async fn service_database_role_is_not_an_operator_and_cannot_read_or_forge_opera
         Err(PgError::Forbidden)
     ));
     assert!(matches!(
-        OperatorAccess::apply(&mut app, &p, "register", &d).await,
+        OperatorAccess::apply(&mut app, &p, "register", &d.state, &d.plan).await,
         Err(PgError::Forbidden)
     ));
     assert!(matches!(
@@ -200,11 +221,11 @@ async fn service_database_role_is_not_an_operator_and_cannot_read_or_forge_opera
 async fn stale_preview_and_concurrent_replacements_do_not_lose_policy_changes() {
     let (_g, mut admin, db, _) = setup().await;
     let p = plan();
-    let d = digest(&mut admin, &p).await;
+    let d = digests(&mut admin, &p).await;
     let mut second = common::connect_config(&common::with_db(&common::test_config(), &db)).await;
     let (a, b) = tokio::join!(
-        OperatorAccess::apply(&mut admin, &p, "one", &d),
-        OperatorAccess::apply(&mut second, &p, "two", &d)
+        OperatorAccess::apply(&mut admin, &p, "one", &d.state, &d.plan),
+        OperatorAccess::apply(&mut second, &p, "two", &d.state, &d.plan)
     );
     assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
     assert!(matches!(
@@ -213,14 +234,14 @@ async fn stale_preview_and_concurrent_replacements_do_not_lose_policy_changes() 
     ));
     let before = state(&admin).await;
     assert!(matches!(
-        OperatorAccess::apply(&mut admin, &p, "stale", &d).await,
+        OperatorAccess::apply(&mut admin, &p, "stale", &d.state, &d.plan).await,
         Err(PgError::PreconditionsChanged)
     ));
     assert_eq!(state(&admin).await, before);
-    let fresh = digest(&mut admin, &p).await;
+    let fresh = digests(&mut admin, &p).await;
     let (a, b) = tokio::join!(
-        OperatorAccess::apply(&mut admin, &p, "same", &fresh),
-        OperatorAccess::apply(&mut second, &p, "same", &fresh)
+        OperatorAccess::apply(&mut admin, &p, "same", &fresh.state, &fresh.plan),
+        OperatorAccess::apply(&mut second, &p, "same", &fresh.state, &fresh.plan)
     );
     let (a, b) = (a.unwrap(), b.unwrap());
     assert_ne!(a["replayed"], b["replayed"]);
@@ -240,8 +261,8 @@ async fn grant_replacement_preserves_other_clients_and_reactivation_increments_v
     p.role = "admin".into();
     p.credential = None;
     p.grants.clear();
-    let d = digest(&mut admin, &p).await;
-    OperatorAccess::apply(&mut admin, &p, "remove-alpha", &d)
+    let d = digests(&mut admin, &p).await;
+    OperatorAccess::apply(&mut admin, &p, "remove-alpha", &d.state, &d.plan)
         .await
         .unwrap();
     assert!(matches!(
@@ -254,8 +275,8 @@ async fn grant_replacement_preserves_other_clients_and_reactivation_increments_v
     );
     p.grants = plan().grants;
     p.grants[0].attest_execution = false;
-    let d = digest(&mut admin, &p).await;
-    OperatorAccess::apply(&mut admin, &p, "restore-alpha", &d)
+    let d = digests(&mut admin, &p).await;
+    OperatorAccess::apply(&mut admin, &p, "restore-alpha", &d.state, &d.plan)
         .await
         .unwrap();
     assert_eq!(prepare(&store, A, "a").await["data"]["work_id"], "a");
@@ -308,8 +329,8 @@ async fn invalid_trust_or_identity_or_credential_changes_are_rejected_without_mu
     }
     assert_eq!(state(&admin).await, before);
     let p = plan();
-    let d = digest(&mut admin, &p).await;
-    OperatorAccess::apply(&mut admin, &p, "first", &d)
+    let d = digests(&mut admin, &p).await;
+    OperatorAccess::apply(&mut admin, &p, "first", &d.state, &d.plan)
         .await
         .unwrap();
     let before = state(&admin).await;
@@ -336,10 +357,10 @@ async fn failed_audit_rolls_back_actor_membership_credentials_grants_and_receipt
         IF NEW.event_type='access.changed' THEN RAISE EXCEPTION 'synthetic failure'; END IF; RETURN NEW; END $$;
         CREATE TRIGGER reject_access BEFORE INSERT ON awr_team.events FOR EACH ROW EXECUTE FUNCTION awr_team.reject_access()").await.unwrap();
     let p = plan();
-    let d = digest(&mut admin, &p).await;
+    let d = digests(&mut admin, &p).await;
     let before = state(&admin).await;
     assert!(matches!(
-        OperatorAccess::apply(&mut admin, &p, "rollback", &d).await,
+        OperatorAccess::apply(&mut admin, &p, "rollback", &d.state, &d.plan).await,
         Err(PgError::Db(_))
     ));
     assert_eq!(state(&admin).await, before);
