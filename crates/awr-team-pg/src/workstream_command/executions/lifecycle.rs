@@ -1,6 +1,7 @@
 //! Caller-managed execution: a transactional admission decision, not a remote
 //! process supervisor. Unverified observations cannot settle external effects.
 use super::*;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -280,6 +281,10 @@ pub(super) async fn report(
     }
     let paths: Vec<String> = serde_json::from_value(r.get("declared_scope_json"))
         .map_err(|_| PgError::SourceDivergence)?;
+    let resources = admitted_resources(
+        tx, tenant, project, auth, command, ownership, &r, &a, &paths,
+    )
+    .await?;
     let exceeded = a.observed_paths.iter().any(|p| {
         !paths
             .iter()
@@ -310,12 +315,15 @@ pub(super) async fn report(
         &[&tenant, &project, &command.work_id],
     )
     .await?;
-    tx.execute(
-        "UPDATE awr_team.resource_reservations SET state='unknown'
-        WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3 AND state='reserved'",
-        &[&tenant, &project, &command.work_id],
-    )
-    .await?;
+    if !resources.is_empty() {
+        tx.execute(
+            "UPDATE awr_team.resource_reservations SET state='unknown'
+            WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3
+              AND id=ANY($4::text[]) AND state='reserved'",
+            &[&tenant, &project, &command.work_id, &resources],
+        )
+        .await?;
+    }
     let work_version = advance_work(tx, tenant, project, &command.work_id).await?;
     Ok(
         json!({"execution_id":a.execution_id,"execution_version":(r.get::<_,i64>("execution_version")+1).to_string(),
@@ -325,4 +333,120 @@ pub(super) async fn report(
         "reconciliation_supported":false,
         "next_action":"Preserve effects and request operator recovery; this endpoint cannot yet reconcile. Do not retry or complete while recovery is blocked."}),
     )
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn admitted_resources(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    auth: &ReaderAuthority,
+    command: &WorkstreamCommand,
+    ownership: i64,
+    execution: &Row,
+    report: &Report,
+    paths: &[String],
+) -> PgResult<Vec<String>> {
+    // The committed start receipt is the schema-12 reservation binding. It is
+    // written atomically with the reservations and running transition. Never
+    // infer ownership from today's work id or broaden recovery to legacy rows.
+    let rows = tx
+        .query(
+            "SELECT result_json FROM awr_team.operations
+            WHERE tenant_id=$1 AND project_id=$2 AND actor_id=$3 AND client_id=$4
+              AND op='execution.start' AND state='committed'
+              AND result_json->'data'->>'execution_id'=$5",
+            &[
+                &tenant,
+                &project,
+                &auth.actor_id,
+                &auth.client_id,
+                &report.execution_id,
+            ],
+        )
+        .await?;
+    if rows.len() != 1 {
+        return Err(PgError::SourceDivergence);
+    }
+    let receipt: Value = rows[0].get(0);
+    let data = receipt
+        .get("data")
+        .and_then(Value::as_object)
+        .ok_or(PgError::SourceDivergence)?;
+    if receipt["protocol"] != crate::workstream_command::RECEIPT_PROTOCOL
+        || receipt["op"] != "execution.start"
+        || receipt["work_id"] != command.work_id
+        || receipt["workstream_id"] != command.workstream_id.to_string()
+        || receipt["scope_id"] != "main"
+        || receipt["ownership_version"] != ownership.to_string()
+        || receipt["coordinator_epoch"] != auth.epoch
+        || receipt["contract_hash"] != execution.get::<_, String>("contract_hash")
+        || receipt["execution_authorized"] != false
+        || data.get("execution_id") != Some(&Value::String(report.execution_id.clone()))
+        || data.get("session_id") != Some(&Value::String(report.session_id.clone()))
+        || data.get("claim_id")
+            != execution
+                .get::<_, Option<String>>("claim_id")
+                .map(Value::String)
+                .as_ref()
+        || data.get("fence") != Some(&Value::String(execution.get::<_, i64>("fence").to_string()))
+        || data.get("effect_key")
+            != execution
+                .get::<_, Option<String>>("effect_key")
+                .map(Value::String)
+                .as_ref()
+        || data.get("state") != Some(&Value::String("running".into()))
+        || data.get("admission") != Some(&Value::String("granted_at_commit".into()))
+    {
+        return Err(PgError::SourceDivergence);
+    }
+    let admitted = data
+        .get("resources")
+        .and_then(Value::as_array)
+        .ok_or(PgError::SourceDivergence)?;
+    if admitted.len() != paths.len() {
+        return Err(PgError::SourceDivergence);
+    }
+    let mut expected = BTreeMap::new();
+    for (resource, path) in admitted.iter().zip(paths) {
+        let id = resource
+            .get("reservation_id")
+            .and_then(Value::as_str)
+            .filter(|id| identity(id))
+            .ok_or(PgError::SourceDivergence)?;
+        if resource.get("kind") != Some(&Value::String("prefix".into()))
+            || resource.get("key") != Some(&Value::String(path.clone()))
+            || expected.insert(id.to_string(), path.clone()).is_some()
+        {
+            return Err(PgError::SourceDivergence);
+        }
+    }
+    if expected.is_empty() {
+        return Ok(vec![]);
+    }
+    let ids = expected.keys().cloned().collect::<Vec<_>>();
+    let reservations = tx
+        .query(
+            "SELECT id,resource_kind,canonical_key,state
+            FROM awr_team.resource_reservations
+            WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3 AND id=ANY($4::text[])",
+            &[&tenant, &project, &command.work_id, &ids],
+        )
+        .await?;
+    if reservations.len() != ids.len() {
+        return Err(PgError::SourceDivergence);
+    }
+    let mut found = BTreeSet::new();
+    for row in reservations {
+        let id: String = row.get(0);
+        let path = expected.get(&id).ok_or(PgError::SourceDivergence)?;
+        if !found.insert(id)
+            || row.get::<_, String>(1) != "prefix"
+            || row.get::<_, String>(2) != *path
+            || !matches!(row.get::<_, String>(3).as_str(), "reserved" | "unknown")
+        {
+            return Err(PgError::SourceDivergence);
+        }
+    }
+    Ok(ids)
 }

@@ -3,7 +3,7 @@ use crate::common;
 use awr_core::{Id, Workstream, WorkstreamCatalog, WorkstreamState};
 use awr_team::{SourceActivationPlan, WorkContract, WorkId, WorkstreamBundle, WorkstreamContract};
 use awr_team_pg::{
-    IngestRequest, SourceFile, SourceStore, WorkstreamQuery, WorkstreamReadStore,
+    GraphStore, IngestRequest, SourceFile, SourceStore, WorkstreamQuery, WorkstreamReadStore,
     workstream_credential_hash,
 };
 use std::sync::MutexGuard;
@@ -46,6 +46,30 @@ pub async fn enable_writes(admin: &Client) {
 }
 
 pub async fn setup() -> (MutexGuard<'static, ()>, Client, String, WorkstreamReadStore) {
+    let (guard, admin, db, store, _) = setup_inner(false).await;
+    (guard, admin, db, store)
+}
+
+pub async fn setup_with_legacy_resource() -> (
+    MutexGuard<'static, ()>,
+    Client,
+    String,
+    WorkstreamReadStore,
+    String,
+) {
+    let (guard, admin, db, store, legacy) = setup_inner(true).await;
+    (guard, admin, db, store, legacy.expect("legacy resource"))
+}
+
+async fn setup_inner(
+    legacy_resource: bool,
+) -> (
+    MutexGuard<'static, ()>,
+    Client,
+    String,
+    WorkstreamReadStore,
+    Option<String>,
+) {
     let (guard, admin, db) = common::fresh_team_schema().await;
     admin.batch_execute("INSERT INTO awr_team.tenants(id,name,status) VALUES('reader-tenant','Readers','active'),('other-tenant','Other','active');
         INSERT INTO awr_team.actors(tenant_id,id,kind,display_name,status) VALUES
@@ -71,6 +95,23 @@ pub async fn setup() -> (MutexGuard<'static, ()>, Client, String, WorkstreamRead
             .await
             .unwrap();
     }
+    let legacy = if legacy_resource {
+        admin
+            .batch_execute(
+                "INSERT INTO awr_team.work_items(tenant_id,project_id,id,external_key)
+                 VALUES('reader-tenant','reader-project','a','a')",
+            )
+            .await
+            .unwrap();
+        Some(
+            GraphStore::from_config(common::with_db(&common::test_config(), &db))
+                .reserve(TENANT, PROJECT, "a", "named", "legacy-resource")
+                .await
+                .unwrap(),
+        )
+    } else {
+        None
+    };
     let definitions = vec![(1, "alpha"), (2, "private-beta")]
         .into_iter()
         .map(|(i, key)| Workstream {
@@ -195,5 +236,5 @@ pub async fn setup() -> (MutexGuard<'static, ()>, Client, String, WorkstreamRead
         .unwrap();
     let store =
         WorkstreamReadStore::from_config(common::with_app_role(&common::test_config(), &db));
-    (guard, admin, db, store)
+    (guard, admin, db, store, legacy)
 }
