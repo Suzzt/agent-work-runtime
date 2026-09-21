@@ -72,7 +72,7 @@ impl SourceProjection {
                     edges.push(DependencyEdge {
                         from: c.work_id.as_str().into(),
                         to: dependency.clone(),
-                        relation: "depends_on".into(),
+                        relation: "requires".into(),
                         required: true,
                     });
                 }
