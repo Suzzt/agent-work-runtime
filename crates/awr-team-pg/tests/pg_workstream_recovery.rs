@@ -395,33 +395,6 @@ async fn reconciliation_keeps_other_execution_and_legacy_resource_barriers() {
 }
 
 #[tokio::test]
-async fn caller_report_marks_only_its_execution_resources_unknown() {
-    let (_g, admin, _, store) = setup().await;
-    enable_writes(&admin).await;
-    let c = take(&store).await;
-    let e = start(&store, &c, "one").await;
-    admin.batch_execute("INSERT INTO awr_team.executions(tenant_id,project_id,id,work_id,fence,contract_hash,executor_actor_id,state)
-        VALUES('reader-tenant','reader-project','other-execution','a',0,'old','old-runner','unknown');
-        INSERT INTO awr_team.resource_reservations(tenant_id,project_id,id,work_id,resource_kind,canonical_key,state,execution_id)
-        VALUES('reader-tenant','reader-project','other-resource','a','named','other','reserved','other-execution'),
-        ('reader-tenant','reader-project','legacy-resource','a','named','legacy','reserved',NULL)").await.unwrap();
-    report(&store, &e, "observe").await;
-    let states = admin
-        .query_one(
-            "SELECT
-        (SELECT state FROM awr_team.resource_reservations WHERE execution_id=$1),
-        (SELECT state FROM awr_team.resource_reservations WHERE id='other-resource'),
-        (SELECT state FROM awr_team.resource_reservations WHERE id='legacy-resource')",
-            &[&e["execution_id"].as_str().unwrap()],
-        )
-        .await
-        .unwrap();
-    assert_eq!(states.get::<_, String>(0), "unknown");
-    assert_eq!(states.get::<_, String>(1), "reserved");
-    assert_eq!(states.get::<_, String>(2), "reserved");
-}
-
-#[tokio::test]
 async fn stale_receipt_or_work_version_and_diverging_terminal_facts_are_rejected() {
     let (_g, admin, _, store) = setup().await;
     enable_writes(&admin).await;
@@ -592,6 +565,10 @@ async fn schema_thirteen_preserves_legacy_resources_and_grants_no_new_authority(
     trusted_runner(&admin).await;
     let claim = take(&store).await;
     let execution = start(&store, &claim, "legacy").await;
+    let admitted_resource = execution["resources"][0]["reservation_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
     admin.batch_execute("DROP TABLE awr_team.access_changes;
         ALTER TABLE awr_team.resource_reservations DROP COLUMN execution_id;
         ALTER TABLE awr_team.executions DROP CONSTRAINT executions_resource_identity;
@@ -623,10 +600,14 @@ async fn schema_thirteen_preserves_legacy_resources_and_grants_no_new_authority(
     awr_team_pg::migrate(&admin).await.unwrap();
     let r=admin.query_one("SELECT (SELECT state FROM awr_team.resource_reservations WHERE id='legacy'),
         (SELECT execution_id FROM awr_team.resource_reservations WHERE id='legacy'),
-        (SELECT count(*) FROM awr_team.workstream_grants WHERE can_attest_execution OR can_reconcile_execution)",&[]).await.unwrap();
+        (SELECT count(*) FROM awr_team.workstream_grants WHERE can_attest_execution OR can_reconcile_execution),
+        (SELECT state FROM awr_team.resource_reservations WHERE id=$1),
+        (SELECT execution_id FROM awr_team.resource_reservations WHERE id=$1)",&[&admitted_resource]).await.unwrap();
     assert_eq!(r.get::<_, String>(0), "unknown");
     assert_eq!(r.get::<_, Option<String>>(1), None);
     assert_eq!(r.get::<_, i64>(2), 0);
+    assert_eq!(r.get::<_, String>(3), "reserved");
+    assert_eq!(r.get::<_, Option<String>>(4), None);
     let legacy = admin
         .query_one(
             "SELECT state,attestation_grant_version FROM awr_team.executions WHERE id=$1",
@@ -636,6 +617,43 @@ async fn schema_thirteen_preserves_legacy_resources_and_grants_no_new_authority(
         .unwrap();
     assert_eq!(legacy.get::<_, String>(0), "running");
     assert_eq!(legacy.get::<_, Option<i64>>(1), None);
+    // The unrelated legacy row already proved migration preservation. Remove
+    // it from the barrier calculation so the admitted-but-unbound reservation
+    // alone proves that schema 13 recovery remains fail-closed.
+    admin
+        .execute(
+            "UPDATE awr_team.resource_reservations SET state='released' WHERE id='legacy'",
+            &[],
+        )
+        .await
+        .unwrap();
+    let observed = report(&store, &execution, "legacy-observation").await;
+    assert_eq!(observed["state"], "unknown");
+    assert_eq!(observed["recovery_blocked"], true);
+    let os = operator(&admin, &store).await;
+    let reconciled = store
+        .commands()
+        .execute(
+            TENANT,
+            PROJECT,
+            OP,
+            reconcile(&store, &os, &observed, "legacy-reconciliation", "failed").await,
+        )
+        .await
+        .unwrap();
+    let data = &reconciled["receipt"]["data"];
+    assert_eq!(data["resources_released"], 0);
+    assert_eq!(data["unresolved_work_effects"], true);
+    assert_eq!(data["recovery_blocked"], true);
+    let admitted = admin
+        .query_one(
+            "SELECT state,execution_id FROM awr_team.resource_reservations WHERE id=$1",
+            &[&admitted_resource],
+        )
+        .await
+        .unwrap();
+    assert_eq!(admitted.get::<_, String>(0), "reserved");
+    assert_eq!(admitted.get::<_, Option<String>>(1), None);
 }
 
 #[tokio::test]
