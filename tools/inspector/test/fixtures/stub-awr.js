@@ -68,34 +68,27 @@ if (mode === 'hugewrite') {
   return;
 }
 
-if (mode === 'incomplete') {
-  // 复现 `context compile` 的真实行为：上下文不完整时退出 1，
-  // 但 stdout 上照样给出完整报告。
-  process.stdout.write(
-    JSON.stringify({
-      ok: false,
-      project_revision: 9,
-      error: { code: 'ContextIncomplete', message: 'context incomplete: L1 has required gaps' },
-      completeness: {
-        complete: false,
-        status: 'CONTEXT INCOMPLETE',
-        project_revision: 9,
-        rules_complete: false,
-        acceptance_complete: true,
-        issues: [{ code: 'hard_rule_unresolved', field: 'rules_complete' }],
-        evidence_gaps: [],
-        unresolved_required_dependencies: [],
-      },
-      work_context: {
-        rendered_context: '# 不完整但仍然有内容',
-        token_estimate: 120,
-        required_tokens: 100,
-        token_budget: 8000,
-        selected_chunks: [{ key: 'rules/a', section: 'rules', required: true }],
-        omitted_chunks: [],
-      },
-    })
-  );
+if (mode === 'incomplete' && joined.includes('context compile')) {
+  // Preserve a complete diagnostic payload even when compilation exits unsuccessfully.
+  fs.writeSync(1, JSON.stringify({
+    ok: false,
+    code: 'ContextIncomplete',
+    message: 'Required context is incomplete',
+    project_revision: 7,
+    completeness: {
+      complete: false,
+      status: 'CONTEXT INCOMPLETE',
+      rules_complete: false,
+    },
+    work_context: {
+      rendered_context: 'Missing required rules',
+      token_estimate: 10,
+      token_budget: 8000,
+      required_tokens: 10,
+      selected_chunks: [],
+      omitted_chunks: [],
+    },
+  }));
   process.exit(1);
 }
 
