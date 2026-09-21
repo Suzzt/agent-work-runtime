@@ -25,8 +25,29 @@ A live dual-client run used **Kimi Code CLI 2.0.0** and **ZCode CLI 0.16.5**
 on one dedicated Team project (`p11-live` / `work-p11`): claim, implementation,
 handoff, verification, human review, completion. An independent oracle checked
 one receipt, the successor holder, and a single execution. That run is recorded
-as `live_agent_run`, separately from the later per-case records. Neither the
-matrix nor its structural guard authorizes a release tag.
+as `live_agent_run`, separately from the later per-case records. The versioned
+matrix guard checks this summary independently: it requires the Kimi-to-ZCode
+client order, two distinct non-empty actors, the successor as active holder,
+exactly one receipt and one execution, a successful oracle, complete locators,
+and explicit release limits. It accepts new well-formed identifiers, client
+versions and Git SHAs; it does not treat the historical literal values as the
+only valid run.
+
+A later read-only inspection observed the retained evidence bundle at
+`2026-09-21T14:33:31.256628+00:00`. Its SHA-256 was
+`5257cc18c8e0ff13ed683abe569cefb65318c7361e728c8a1252c9beab4a17ec`;
+the currently retained driver had SHA-256
+`81fa132d0d5ae61fcaaaed39a8f4021649d0b9702c83adc870dd7c7b3c0025d0`.
+The bundle's oracle, receipt, execution and Git-head metadata agreed with the
+public summary, and its three embedded artifact byte hashes matched. The
+retained driver is not immutably bound to the historical execution, no explicit
+run timestamp is available, and the full historical chain was not reverified.
+
+This correction did not rerun either live client or query author-private logs.
+Summary consistency is computed by the Rust `pg_matrix` guard;
+`current_verification.live_rerun` only records that no live rerun occurred in
+this correction. Neither the matrix nor its structural guard authorizes a
+release tag.
 
 ## Capacity and reconnect probes
 

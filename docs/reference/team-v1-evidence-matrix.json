@@ -2250,6 +2250,7 @@
     }
   ],
   "live_agent_run": {
+    "schema_version": 1,
     "status": "locally_verified",
     "git_head": "313f501b1a36086dff68d081b03f18acd6acf18e",
     "clients": [
@@ -2276,6 +2277,18 @@
     },
     "flow": "kimi claimed and fixed add(); handoff; zcode verified and extended tests; human reviewer approved; complete",
     "evidence_path": "ledger/evidence/TEAM-P11/live-dual-cli.json",
-    "not_a_release_tag": true
+    "not_a_release_tag": true,
+    "historical_evidence_review": {
+      "schema_version": 1,
+      "observed_at": "2026-09-21T14:33:31.256628+00:00",
+      "evidence_bundle_sha256": "5257cc18c8e0ff13ed683abe569cefb65318c7361e728c8a1252c9beab4a17ec",
+      "retained_driver_sha256": "81fa132d0d5ae61fcaaaed39a8f4021649d0b9702c83adc870dd7c7b3c0025d0",
+      "retained_driver_binding": "unbound",
+      "run_time": null,
+      "full_chain_reverified": false
+    },
+    "current_verification": {
+      "live_rerun": false
+    }
   }
 }
