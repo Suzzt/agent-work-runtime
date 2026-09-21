@@ -38,6 +38,25 @@ async fn credentials_and_project_membership_do_not_grant_other_clients_scopes() 
 }
 
 #[tokio::test]
+async fn protocol_discovery_requires_authentication_and_a_readable_scope() {
+    let (_guard, _, _, store) = setup().await;
+    for token in ["garbage", NONE] {
+        assert!(matches!(
+            store
+                .query(TENANT, PROJECT, token, query("claim.acquire"))
+                .await,
+            Err(PgError::Forbidden)
+        ));
+    }
+    assert!(matches!(
+        store
+            .query(TENANT, PROJECT, A, query("claim.acquire"))
+            .await,
+        Err(PgError::Unsupported(_))
+    ));
+}
+
+#[tokio::test]
 async fn hidden_and_missing_work_or_session_have_the_same_denial() {
     let (_guard, _, _, store) = setup().await;
     for work in ["b-private", "missing"] {

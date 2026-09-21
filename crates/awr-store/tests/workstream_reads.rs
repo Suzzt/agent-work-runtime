@@ -40,6 +40,15 @@ fn selectors_never_grant_access_or_guess_between_multiple_scopes() {
         },
         SNAPSHOT,
     ));
+    denied(f.store.read_workstream(
+        f.project,
+        &f.access(&[0]),
+        &WorkstreamReadSelection {
+            session_id: Some(Id::new()),
+            ..Default::default()
+        },
+        SNAPSHOT,
+    ));
     assert!(matches!(
         f.store.read_workstream(
             f.project,
