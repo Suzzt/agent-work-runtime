@@ -169,6 +169,7 @@ fn prepare_uses_the_scoped_context_branch_for_readiness_and_management() {
         Some(branch.id)
     );
 
+    drop(store);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -243,5 +244,6 @@ fn resume_preflight_uses_the_source_sessions_scoped_branch() {
         Some(branch.id)
     );
 
+    drop(store);
     fs::remove_dir_all(root).unwrap();
 }
