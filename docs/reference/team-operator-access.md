@@ -76,20 +76,23 @@ Reconciliation requires human/system, admin and write/manage. These are explicit
 trust delegations: ordinary coding agents should not receive executor/operator
 identities. The service also checks authority at actual command execution.
 
-Preview, review the exact scope, then apply using the returned `state_digest`:
+Preview, review the exact scope, then apply using the returned `state_digest` and
+`plan_digest`:
 
 ```sh
 awr-server access preview --input /secure/worker-access.json
 awr-server access apply --input /secure/worker-access.json \
-  --request-id register-worker-one --expected-state <state_digest>
+  --request-id register-worker-one --expected-state <state_digest> \
+  --expected-plan <plan_digest>
 ```
 
-Preview performs no policy mutation. Apply requires the reviewed state to remain
-current and commits policy, versions, audit event and an immutable receipt together.
-A stale preview is rejected. The plan is bounded to 64 KiB and 256 grants/revocations;
-unknown fields are rejected. Share the bearer with the intended client through its
-supported secret configuration; send it as the service's Authorization bearer.
-The database stores its hash, never the raw bearer.
+Preview performs no policy mutation. Apply requires both the reviewed state and
+the exact reviewed plan to remain unchanged, and commits policy, versions, audit
+event and an immutable receipt together. A stale or edited preview is rejected.
+The plan is bounded to 64 KiB and 256 grants/revocations; unknown fields are
+rejected. Share the bearer with the intended client through its supported secret
+configuration; send it as the service's Authorization bearer. The database stores
+its hash, never the raw bearer.
 
 ## Change, rotate or revoke access
 
@@ -122,10 +125,11 @@ awr-server access outcome --tenant-id tenant-a --project-id project-a \
 ```
 
 A committed result returns the original receipt. An unknown result is not proof
-that an in-flight request failed. Retry only the identical plan, request ID and
-expected-state digest. Exact retry returns the historical receipt without changing
-policy; it cannot restore privileges that were later revoked. Reusing a request ID
-with changed parameters fails. Use a fresh preview and request ID for a new intent.
+that an in-flight request failed. Retry only the identical plan, request ID,
+expected-state digest and expected-plan digest. Exact retry returns the historical
+receipt without changing policy; it cannot restore privileges that were later
+revoked. Reusing a request ID with changed parameters fails. Use a fresh preview
+and request ID for a new intent.
 Receipts retain previous/current policy and omit credential hashes and bearer strings. Their `state_basis: at_commit`
 is historical; use `access inspect` for current policy.
 

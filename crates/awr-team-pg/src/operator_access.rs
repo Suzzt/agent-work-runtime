@@ -179,7 +179,8 @@ impl OperatorAccess {
         )
         .await?;
         validate_current(&tx, plan, &state).await?;
-        let result = json!({"applied":false,"state_digest":hash(&state)?,"current":state,
+        let plan_digest = hash(&serde_json::to_value(plan).map_err(|_| invalid())?)?;
+        let result = json!({"applied":false,"state_digest":hash(&state)?,"plan_digest":plan_digest,"current":state,
             "desired":public_plan(plan),"grant_semantics":"replace_selected_actor_client_project_grants",
             "membership_scope":"all_clients_of_actor_in_project","credential_revocation_scope":"all_projects_in_tenant_using_this_credential"});
         tx.commit().await?;
@@ -217,13 +218,15 @@ impl OperatorAccess {
         plan: &AccessPlan,
         request: &str,
         expected_state: &str,
+        expected_plan: &str,
     ) -> PgResult<Value> {
         plan.validate()?;
-        if !identity(request) || !hex(expected_state) {
+        if !identity(request) || !hex(expected_state) || !hex(expected_plan) {
             return Err(invalid());
         }
+        let plan_digest = hash(&serde_json::to_value(plan).map_err(|_| invalid())?)?;
         let intent_hash = hash(
-            &json!({"protocol":"awr-operator-access-v1","plan":plan,"expected_state":expected_state}),
+            &json!({"protocol":"awr-operator-access-v1","plan":plan,"expected_state":expected_state,"expected_plan":expected_plan}),
         )?;
         crate::check_schema(client).await?;
         let tx = client.transaction().await?;
@@ -234,6 +237,9 @@ impl OperatorAccess {
             let receipt: Value = r.get(1);
             tx.commit().await?;
             return Ok(json!({"replayed":true,"receipt":receipt}));
+        }
+        if plan_digest != expected_plan {
+            return Err(PgError::PreconditionsChanged);
         }
         // One actor's credentials and membership can be shared by projects.
         // Serialize its operator changes before acquiring any shared row locks.
@@ -269,7 +275,7 @@ impl OperatorAccess {
         let receipt = json!({"protocol":"awr-operator-access-v1","request_id":request,"request_hash":intent_hash,
             "operator_role":operator,"tenant_id":plan.tenant_id,"project_id":plan.project_id,
             "actor_id":plan.actor.id,"client_id":plan.client_id,"before_digest":expected_state,"after_digest":hash(&after)?,
-            "project_revision":revision.to_string(),"desired":public_plan(plan),
+            "plan_digest":plan_digest,"project_revision":revision.to_string(),"desired":public_plan(plan),
             "previous_policy":policy(&before),"current_policy":policy(&after),
             "state_basis":"at_commit","execution_authorized":false});
         tx.execute("INSERT INTO awr_team.access_changes(tenant_id,project_id,request_id,request_hash,operator_role,result_json)
