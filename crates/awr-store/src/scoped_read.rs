@@ -73,6 +73,7 @@ impl Store {
         let session = selection
             .session_id
             .map(|id| {
+                store.session(project, id).map_err(private_lookup)?;
                 store
                     .session_workstream(project, id)
                     .map_err(private_lookup)

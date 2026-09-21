@@ -288,7 +288,7 @@ pub(super) async fn apply(
             AND id<>$4 AND state NOT IN ('succeeded','failed','cancelled')) OR
         EXISTS(SELECT 1 FROM awr_team.resource_reservations WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3
             AND state IN ('reserved','unknown'))", &[&tenant,&project,&command.work_id,&id]).await?.get(0);
-    if !settled || (clear && remaining) {
+    if !settled || remaining {
         tx.execute(
             "UPDATE awr_team.work_runtime SET recovery_blocked=true
             WHERE tenant_id=$1 AND project_id=$2 AND scope_id='main' AND work_id=$3",
