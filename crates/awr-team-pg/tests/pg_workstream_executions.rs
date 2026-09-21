@@ -471,6 +471,183 @@ async fn caller_reports_preserve_observations_and_unknown_effects_after_lease_ex
 }
 
 #[tokio::test]
+async fn caller_report_marks_only_receipt_bound_resources_unknown_after_takeover() {
+    let (_g, admin, _, store, legacy) = setup_with_legacy_resource().await;
+    enable_writes(&admin).await;
+    let (c, e) = ready_intent(&store).await;
+    let started = store
+        .commands()
+        .execute(TENANT, PROJECT, A, admission(&store, &c, &e, "start").await)
+        .await
+        .unwrap();
+    let running = &started["receipt"]["data"];
+    let owned = running["resources"][0]["reservation_id"].as_str().unwrap();
+    store
+        .commands()
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            report(&store, running, "report", "succeeded").await,
+        )
+        .await
+        .unwrap();
+    let states = admin
+        .query_one(
+            "SELECT
+                (SELECT state FROM awr_team.resource_reservations WHERE id=$1),
+                (SELECT state FROM awr_team.resource_reservations WHERE id=$2)",
+            &[&owned, &legacy],
+        )
+        .await
+        .unwrap();
+    assert_eq!(states.get::<_, String>(0), "unknown");
+    assert_eq!(states.get::<_, String>(1), "reserved");
+}
+
+#[tokio::test]
+async fn caller_report_requires_the_committed_start_receipt_without_partial_writes() {
+    let (_g, admin, _, store) = setup().await;
+    enable_writes(&admin).await;
+    let (c, e) = ready_intent(&store).await;
+    let started = store
+        .commands()
+        .execute(TENANT, PROJECT, A, admission(&store, &c, &e, "start").await)
+        .await
+        .unwrap();
+    admin
+        .batch_execute("DELETE FROM awr_team.operations WHERE op='execution.start'")
+        .await
+        .unwrap();
+    let before = snapshot(&admin).await;
+    assert!(matches!(
+        store
+            .commands()
+            .execute(
+                TENANT,
+                PROJECT,
+                A,
+                report(&store, &started["receipt"]["data"], "report", "succeeded").await
+            )
+            .await,
+        Err(PgError::SourceDivergence)
+    ));
+    assert_eq!(snapshot(&admin).await, before);
+}
+
+#[tokio::test]
+async fn caller_report_rejects_ambiguous_start_receipts_without_partial_writes() {
+    let (_g, admin, _, store) = setup().await;
+    enable_writes(&admin).await;
+    let (c, e) = ready_intent(&store).await;
+    let started = store
+        .commands()
+        .execute(TENANT, PROJECT, A, admission(&store, &c, &e, "start").await)
+        .await
+        .unwrap();
+    admin
+        .batch_execute(
+            "INSERT INTO awr_team.operations(
+                tenant_id,project_id,id,actor_id,client_id,request_id,op,request_hash,
+                state,committed_project_revision,result_json)
+             SELECT tenant_id,project_id,'duplicate-start',actor_id,client_id,
+                'duplicate-start',op,request_hash,state,committed_project_revision,result_json
+             FROM awr_team.operations WHERE op='execution.start'",
+        )
+        .await
+        .unwrap();
+    let before = snapshot(&admin).await;
+    assert!(matches!(
+        store
+            .commands()
+            .execute(
+                TENANT,
+                PROJECT,
+                A,
+                report(&store, &started["receipt"]["data"], "report", "succeeded").await
+            )
+            .await,
+        Err(PgError::SourceDivergence)
+    ));
+    assert_eq!(snapshot(&admin).await, before);
+}
+
+#[tokio::test]
+async fn caller_report_rejects_a_mismatched_start_receipt_without_partial_writes() {
+    let (_g, admin, _, store) = setup().await;
+    enable_writes(&admin).await;
+    let (c, e) = ready_intent(&store).await;
+    let started = store
+        .commands()
+        .execute(TENANT, PROJECT, A, admission(&store, &c, &e, "start").await)
+        .await
+        .unwrap();
+    admin
+        .batch_execute(
+            "UPDATE awr_team.operations
+             SET result_json=jsonb_set(result_json,'{work_id}','\"b-private\"')
+             WHERE op='execution.start'",
+        )
+        .await
+        .unwrap();
+    let before = snapshot(&admin).await;
+    assert!(matches!(
+        store
+            .commands()
+            .execute(
+                TENANT,
+                PROJECT,
+                A,
+                report(&store, &started["receipt"]["data"], "report", "succeeded").await
+            )
+            .await,
+        Err(PgError::SourceDivergence)
+    ));
+    assert_eq!(snapshot(&admin).await, before);
+}
+
+#[tokio::test]
+async fn empty_admission_resources_remain_a_valid_report_binding() {
+    let (_g, admin, _, store) = setup().await;
+    enable_writes(&admin).await;
+    let c = claim(&store).await;
+    let mut prepare = intent(&store, &c, "prepare-empty").await;
+    prepare.args["declared_scope"] = json!([]);
+    let e = store
+        .commands()
+        .execute(TENANT, PROJECT, A, prepare)
+        .await
+        .unwrap()["receipt"]["data"]
+        .clone();
+    let started = store
+        .commands()
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            admission(&store, &c, &e, "start-empty").await,
+        )
+        .await
+        .unwrap();
+    assert_eq!(started["receipt"]["data"]["resources"], json!([]));
+    let mut observation = report(
+        &store,
+        &started["receipt"]["data"],
+        "report-empty",
+        "succeeded",
+    )
+    .await;
+    observation.args["observed_paths"] = json!([]);
+    let result = store
+        .commands()
+        .execute(TENANT, PROJECT, A, observation)
+        .await
+        .unwrap();
+    assert_eq!(result["receipt"]["data"]["state"], "unknown");
+    assert_eq!(snapshot(&admin).await["resources"], Value::Null);
+}
+
+#[tokio::test]
 async fn another_client_cannot_start_or_report_and_report_cannot_invent_trust() {
     let (_g, admin, _, store) = setup().await;
     enable_writes(&admin).await;
