@@ -3,11 +3,13 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 fn directory() -> PathBuf {
+    static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let p = std::env::temp_dir().join(format!("awr-access-{}-{nonce}", std::process::id()));
+    let p = std::env::temp_dir().join(format!("awr-access-{}-{nonce}-{id}", std::process::id()));
     std::fs::create_dir(&p).unwrap();
     p
 }
