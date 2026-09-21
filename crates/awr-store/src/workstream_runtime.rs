@@ -170,7 +170,11 @@ pub(crate) fn migrate(conn: &Connection) -> Result<()> {
 /// recovered before a different scope can acquire its execution responsibilities.
 pub(crate) fn require_movable(conn: &Connection, project: Id, work: &str) -> Result<()> {
     let busy: bool = conn.query_row("SELECT
-        EXISTS(SELECT 1 FROM sessions WHERE project_id=?1 AND work_item_id=?2 AND status='active')
+        EXISTS(SELECT 1 FROM sessions s WHERE s.project_id=?1 AND s.work_item_id=?2 AND
+          (s.status='active' OR (s.status IN ('incomplete','interrupted') AND NOT EXISTS(
+            SELECT 1 FROM events e WHERE e.project_id=s.project_id AND
+              ((e.event_type='session.resumed' AND json_extract(e.payload_json,'$.from_session_id')=s.id)
+               OR (e.event_type='work.handoff' AND e.session_id=s.id AND json_extract(e.payload_json,'$.to_session_id') IS NOT NULL))))))
         OR EXISTS(SELECT 1 FROM claims WHERE project_id=?1 AND work_item_id=?2 AND status='active' AND released_at IS NULL AND (expires_at IS NULL OR expires_at>?3))
         OR EXISTS(SELECT 1 FROM events e JOIN sessions s ON s.project_id=e.project_id AND s.id=e.session_id
           WHERE s.project_id=?1 AND s.work_item_id=?2 AND e.event_type='checkpoint.started'
@@ -178,7 +182,8 @@ pub(crate) fn require_movable(conn: &Connection, project: Id, work: &str) -> Res
         params![project.to_string(),work,now_millis()?], |row|row.get(0)).map_err(db_error)?;
     if busy {
         return Err(Error::InvalidTransition(
-            "close active sessions, claims and pending checkpoint saves before moving work".into(),
+            "resolve unfinished sessions, claims and pending checkpoint saves before moving work"
+                .into(),
         ));
     }
     // Execution records carry their own work identity. Do not infer completion
