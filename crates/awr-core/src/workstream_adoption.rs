@@ -126,7 +126,7 @@ pub struct DeliveryAssessment {
 pub enum DeliveryError {
     #[error("invalid or unbounded delivery metadata")]
     InvalidDefinition,
-    #[error("delivery ownership must bind distinct works in one project")]
+    #[error("delivery ownership must bind distinct works and workstreams in one project")]
     BindingMismatch,
     #[error("delivery observation or verification time is invalid")]
     InvalidTime,
@@ -189,6 +189,7 @@ pub fn assess_delivery(
     }
     if required.provider.project_id != required.consumer.project_id
         || required.provider.work_item_id == required.consumer.work_item_id
+        || required.provider.workstream_id == required.consumer.workstream_id
         || required.provider != facts.provider
         || required.consumer != facts.consumer
     {
