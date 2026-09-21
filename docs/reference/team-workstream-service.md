@@ -389,11 +389,13 @@ epoch binding still apply. Reports may be recorded while the workstream is pause
 These are **caller assertions**, not trusted result or stop confirmations. Each
 report is kept verbatim in an attributed execution receipt, including observations
 outside the declared scope and conflicting later reports. The execution becomes
-`unknown`, recovery remains blocked and its work's reserved resources become
-`unknown`; work is not completed and resources are not released. An already
-terminal attempt cannot be rewritten by this operation. Unknown fields such as
-`receipt_kind: "trusted_executor"` are rejected. A newer current contract does
-not erase observations against the original execution contract.
+`unknown`, recovery remains blocked and only reservations bound to that execution
+by the persisted schema 13 execution identity become `unknown`; legacy/unbound or
+other-execution reservations on the same work are preserved. Work is not completed
+and resources are not released. An already terminal attempt cannot be rewritten.
+Unknown fields such as `receipt_kind: "trusted_executor"` are rejected. A newer
+current contract does not erase observations against the original execution
+contract.
 
 ## Executor attestations and operator reconciliation
 
@@ -486,12 +488,15 @@ command receipts and never repeat effects or issue execution permission.
 Schema 13 gives existing grants neither new authority, leaves existing admissions
 without attestation delegation, and retains legacy resource reservations as
 unbound. It does not infer a resource's execution from today's work owner. Such
-reservations cannot be released by these commands. Schema 14 adds the operator
-provisioning CLI and its immutable receipts without granting existing clients
-new rights. The [scoped reference runner](team-reference-runner.md) integrates
-bounded local file writes and saved-fact reporting. Generic agent dispatch,
-enabled-project backup/restore and history migration remain outside the available
-workflow.
+reservations cannot be released by these commands. Reporting or reconciling an
+upgraded in-flight attempt preserves its unbound reservations and keeps recovery
+blocked until an explicit history migration resolves them. Schema 14 adds the
+operator provisioning CLI and its immutable receipts without granting existing
+clients new rights. The [scoped reference runner](team-reference-runner.md)
+integrates bounded local file writes and saved-fact reporting, but does not adopt
+or backfill existing in-flight execution history. Generic agent dispatch and
+enabled-project backup/restore remain outside the available workflow; enabled-project
+history still requires explicit migration.
 
 ## Limits and errors
 
