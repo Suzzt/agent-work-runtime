@@ -461,8 +461,9 @@ reservations cannot be released by these commands. Reporting or reconciling an
 upgraded in-flight attempt preserves its unbound reservations and keeps recovery
 blocked until an explicit history migration resolves them. Schema 14 adds the
 operator provisioning CLI and its immutable receipts without granting existing
-clients new rights. Bundled executor integration and enabled-project history migration
-are still required for the complete Team execution workflow.
+clients new rights. The bundled reference runner does not adopt or backfill existing
+in-flight execution history; enabled-project history still requires explicit
+migration for the complete Team execution workflow.
 
 ## Limits and errors
 
