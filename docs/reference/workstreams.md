@@ -229,10 +229,11 @@ the current binding and revision for that review. The caller first invalidates
 the edited source and supplies its current source/project revisions. An ordinary
 reindex cannot silently move established work. Each move checks the previous
 scope and ownership revision, requires an active destination, and rejects active
-sessions, effective claims, unfinished checkpoint saves and nonterminal execution
-records. An external success report alone does not establish a supervised terminal
-outcome. Candidate ownership, source fingerprint and the move receipt commit
-atomically; failed imports retain the previous projection marked stale.
+or otherwise unresolved sessions, effective claims, unfinished checkpoint saves
+and nonterminal execution records. An external success report alone does not
+establish a supervised terminal outcome. Candidate ownership, source fingerprint
+and the move receipt commit atomically; failed imports retain the previous
+projection marked stale.
 
 Movement leaves historical sessions, checkpoints and claims in their original
 scope. New sessions capture the new ownership generation; automatic recovery does

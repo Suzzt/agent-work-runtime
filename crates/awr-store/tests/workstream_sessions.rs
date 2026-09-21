@@ -574,7 +574,14 @@ fn reviewed_move_preserves_history_and_rejects_stale_resumes_and_receipts() {
 
 #[test]
 fn moves_wait_for_sessions_checkpoint_recovery_and_unverified_execution_outcomes() {
-    for blocker in ["session", "checkpoint", "external", "managed"] {
+    for blocker in [
+        "session",
+        "incomplete",
+        "interrupted",
+        "checkpoint",
+        "external",
+        "managed",
+    ] {
         let mut f = Fixture::new();
         let started = f.start("W0", true);
         let scope = f
@@ -617,8 +624,29 @@ fn moves_wait_for_sessions_checkpoint_recovery_and_unverified_execution_outcomes
                 )
                 .unwrap();
         }
-        if blocker != "session" {
-            f.end(started.session.id);
+        match blocker {
+            "session" => {}
+            "incomplete" => {
+                f.store
+                    .end_session(
+                        f.project,
+                        f.rev(),
+                        started.session.id,
+                        SessionOutcome::Incomplete,
+                    )
+                    .unwrap();
+            }
+            "interrupted" => {
+                f.store
+                    .end_session(
+                        f.project,
+                        f.rev(),
+                        started.session.id,
+                        SessionOutcome::Interrupted,
+                    )
+                    .unwrap();
+            }
+            _ => f.end(started.session.id),
         }
         let candidate = f.move_candidate();
         let mut movement = f.movement();
@@ -644,6 +672,64 @@ fn moves_wait_for_sessions_checkpoint_recovery_and_unverified_execution_outcomes
                 .unwrap(),
             scope
         );
+    }
+}
+
+#[test]
+fn moves_accept_sessions_after_their_recovery_responsibility_is_resolved() {
+    for recovery in ["resume", "handoff"] {
+        let mut f = Fixture::new();
+        let started = f.start("W0", true);
+        let scope = f
+            .store
+            .session_workstream(f.project, started.session.id)
+            .unwrap();
+        let checkpoint = f.checkpoint(started.session.id);
+        let successor = if recovery == "resume" {
+            f.store
+                .end_session(
+                    f.project,
+                    f.rev(),
+                    started.session.id,
+                    SessionOutcome::Incomplete,
+                )
+                .unwrap();
+            f.store
+                .resume_session(
+                    f.project,
+                    f.rev(),
+                    Fixture::resume_draft(started.session.id, Some(checkpoint.id)),
+                )
+                .unwrap()
+                .0
+                .session
+        } else {
+            let receiver = f.start("W0", false).session;
+            f.store
+                .handoff(
+                    f.project,
+                    f.rev(),
+                    started.session.id,
+                    Some(receiver.id),
+                    None,
+                )
+                .unwrap();
+            receiver
+        };
+        f.end(successor.id);
+
+        let candidate = f.move_candidate();
+        let mut movement = f.movement();
+        movement.expected_ownership_revision = scope.ownership_revision.unwrap();
+        f.store
+            .commit_source_projection_with_moves(
+                f.rev(),
+                &f.source,
+                "moved",
+                candidate,
+                &[movement],
+            )
+            .unwrap();
     }
 }
 
