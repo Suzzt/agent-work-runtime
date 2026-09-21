@@ -318,8 +318,8 @@ pub(super) async fn report(
     .await?;
     tx.execute(
         "UPDATE awr_team.resource_reservations SET state='unknown'
-        WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3 AND state='reserved'",
-        &[&tenant, &project, &command.work_id],
+        WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3 AND execution_id=$4 AND state='reserved'",
+        &[&tenant, &project, &command.work_id, &a.execution_id],
     )
     .await?;
     let work_version = advance_work(tx, tenant, project, &command.work_id).await?;
