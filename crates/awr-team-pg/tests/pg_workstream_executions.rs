@@ -471,7 +471,7 @@ async fn caller_reports_preserve_observations_and_unknown_effects_after_lease_ex
 }
 
 #[tokio::test]
-async fn caller_report_marks_only_receipt_bound_resources_unknown_after_takeover() {
+async fn caller_report_marks_only_execution_bound_resources_unknown_after_takeover() {
     let (_g, admin, _, store, legacy) = setup_with_legacy_resource().await;
     enable_writes(&admin).await;
     let (c, e) = ready_intent(&store).await;
@@ -482,6 +482,10 @@ async fn caller_report_marks_only_receipt_bound_resources_unknown_after_takeover
         .unwrap();
     let running = &started["receipt"]["data"];
     let owned = running["resources"][0]["reservation_id"].as_str().unwrap();
+    admin.batch_execute("INSERT INTO awr_team.executions(tenant_id,project_id,id,work_id,fence,contract_hash,executor_actor_id,state)
+        VALUES('reader-tenant','reader-project','other-execution','a',0,'old','old-runner','unknown');
+        INSERT INTO awr_team.resource_reservations(tenant_id,project_id,id,work_id,resource_kind,canonical_key,state,execution_id)
+        VALUES('reader-tenant','reader-project','other-resource','a','named','other','reserved','other-execution')").await.unwrap();
     store
         .commands()
         .execute(
@@ -496,114 +500,20 @@ async fn caller_report_marks_only_receipt_bound_resources_unknown_after_takeover
         .query_one(
             "SELECT
                 (SELECT state FROM awr_team.resource_reservations WHERE id=$1),
+                (SELECT execution_id FROM awr_team.resource_reservations WHERE id=$1),
+                (SELECT state FROM awr_team.resource_reservations WHERE id='other-resource'),
                 (SELECT state FROM awr_team.resource_reservations WHERE id=$2)",
             &[&owned, &legacy],
         )
         .await
         .unwrap();
     assert_eq!(states.get::<_, String>(0), "unknown");
-    assert_eq!(states.get::<_, String>(1), "reserved");
-}
-
-#[tokio::test]
-async fn caller_report_requires_the_committed_start_receipt_without_partial_writes() {
-    let (_g, admin, _, store) = setup().await;
-    enable_writes(&admin).await;
-    let (c, e) = ready_intent(&store).await;
-    let started = store
-        .commands()
-        .execute(TENANT, PROJECT, A, admission(&store, &c, &e, "start").await)
-        .await
-        .unwrap();
-    admin
-        .batch_execute("DELETE FROM awr_team.operations WHERE op='execution.start'")
-        .await
-        .unwrap();
-    let before = snapshot(&admin).await;
-    assert!(matches!(
-        store
-            .commands()
-            .execute(
-                TENANT,
-                PROJECT,
-                A,
-                report(&store, &started["receipt"]["data"], "report", "succeeded").await
-            )
-            .await,
-        Err(PgError::SourceDivergence)
-    ));
-    assert_eq!(snapshot(&admin).await, before);
-}
-
-#[tokio::test]
-async fn caller_report_rejects_ambiguous_start_receipts_without_partial_writes() {
-    let (_g, admin, _, store) = setup().await;
-    enable_writes(&admin).await;
-    let (c, e) = ready_intent(&store).await;
-    let started = store
-        .commands()
-        .execute(TENANT, PROJECT, A, admission(&store, &c, &e, "start").await)
-        .await
-        .unwrap();
-    admin
-        .batch_execute(
-            "INSERT INTO awr_team.operations(
-                tenant_id,project_id,id,actor_id,client_id,request_id,op,request_hash,
-                state,committed_project_revision,result_json)
-             SELECT tenant_id,project_id,'duplicate-start',actor_id,client_id,
-                'duplicate-start',op,request_hash,state,committed_project_revision,result_json
-             FROM awr_team.operations WHERE op='execution.start'",
-        )
-        .await
-        .unwrap();
-    let before = snapshot(&admin).await;
-    assert!(matches!(
-        store
-            .commands()
-            .execute(
-                TENANT,
-                PROJECT,
-                A,
-                report(&store, &started["receipt"]["data"], "report", "succeeded").await
-            )
-            .await,
-        Err(PgError::SourceDivergence)
-    ));
-    assert_eq!(snapshot(&admin).await, before);
-}
-
-#[tokio::test]
-async fn caller_report_rejects_a_mismatched_start_receipt_without_partial_writes() {
-    let (_g, admin, _, store) = setup().await;
-    enable_writes(&admin).await;
-    let (c, e) = ready_intent(&store).await;
-    let started = store
-        .commands()
-        .execute(TENANT, PROJECT, A, admission(&store, &c, &e, "start").await)
-        .await
-        .unwrap();
-    admin
-        .batch_execute(
-            "UPDATE awr_team.operations
-             SET result_json=jsonb_set(result_json,'{work_id}','\"b-private\"')
-             WHERE op='execution.start'",
-        )
-        .await
-        .unwrap();
-    let before = snapshot(&admin).await;
-    assert!(matches!(
-        store
-            .commands()
-            .execute(
-                TENANT,
-                PROJECT,
-                A,
-                report(&store, &started["receipt"]["data"], "report", "succeeded").await
-            )
-            .await,
-        Err(PgError::SourceDivergence)
-    ));
-    assert_eq!(snapshot(&admin).await, before);
+    assert_eq!(
+        states.get::<_, Option<String>>(1).as_deref(),
+        running["execution_id"].as_str()
+    );
+    assert_eq!(states.get::<_, String>(2), "reserved");
+    assert_eq!(states.get::<_, String>(3), "reserved");
 }
 
 #[tokio::test]
@@ -1278,7 +1188,11 @@ async fn barriers_and_active_contract_checks_preserve_recovery_only_cancellation
 #[tokio::test]
 async fn schema_twelve_preserves_legacy_executions_and_failed_migration_is_atomic() {
     let (_g, admin, _, _store) = setup().await;
-    admin.batch_execute("ALTER TABLE awr_team.executions DROP CONSTRAINT executions_workstream_binding;
+    admin.batch_execute("ALTER TABLE awr_team.resource_reservations DROP COLUMN execution_id;
+        ALTER TABLE awr_team.executions DROP CONSTRAINT executions_resource_identity;
+        ALTER TABLE awr_team.executions DROP COLUMN attestation_grant_version;
+        ALTER TABLE awr_team.workstream_grants DROP COLUMN can_attest_execution,DROP COLUMN can_reconcile_execution;
+        ALTER TABLE awr_team.executions DROP CONSTRAINT executions_workstream_binding;
         ALTER TABLE awr_team.executions DROP COLUMN workstream_id,DROP COLUMN ownership_version,DROP COLUMN executor_client_id,DROP COLUMN execution_version;
         UPDATE awr_team.schema_state SET version=11;
         INSERT INTO awr_team.executions(tenant_id,project_id,id,work_id,fence,contract_hash,executor_actor_id,state)
