@@ -136,11 +136,12 @@ impl ScopedReferenceRunner {
         if admitted["execution_authorized"] != true || admitted["replayed"] != false {
             // A historical start receipt cannot determine current report state.
             result["report_required"] = Value::Null;
-            let saved = root
-                .join("reports")
-                .join(format!("{}.json", text(&receipt["data"], "execution_id")?));
+            let execution = text(&receipt["data"], "execution_id")?;
+            let saved = root.join("reports").join(format!("{execution}.json"));
             if saved.is_file() {
                 result["report_request_file"] = json!(saved);
+            } else if let Ok(Some(recovered)) = recover_report(&root, execution, receipt) {
+                result["report_request_file"] = json!(recovered);
             }
             result["next_action"] = json!(
                 "Inspect the original execution and saved journal; replay never runs effects or extends the lease."
@@ -267,10 +268,14 @@ impl ScopedReferenceRunner {
         {
             return Err(invalid());
         }
-        let outcome: RunnerOutcome = serde_json::from_value(read_json(
-            &root.join("observations").join(format!("{execution}.json")),
-        )?)
-        .map_err(|_| invalid())?;
+        let observation = root.join("observations").join(format!("{execution}.json"));
+        let outcome: RunnerOutcome = if observation.is_file() {
+            serde_json::from_value(read_json(&observation)?).map_err(|_| invalid())?
+        } else {
+            ReferenceRunner::new(&root)
+                .recover_saved_outcome(execution)
+                .ok_or_else(invalid)?
+        };
         let expected = report_request(&local, &outcome)?;
         if command.args["facts"] != expected.command.args["facts"] {
             return Err(invalid());
@@ -284,6 +289,33 @@ impl ScopedReferenceRunner {
             )
             .await
     }
+}
+
+fn recover_report(root: &Path, execution: &str, receipt: &Value) -> PgResult<Option<PathBuf>> {
+    let admission = root.join("admissions").join(format!("{execution}.json"));
+    if !admission.is_file() {
+        return Ok(None);
+    }
+    let local: Admission = serde_json::from_value(read_json(&admission)?).map_err(|_| invalid())?;
+    if local.receipt != *receipt {
+        return Err(invalid());
+    }
+    let Some(outcome) = ReferenceRunner::new(root).recover_saved_outcome(execution) else {
+        return Ok(None);
+    };
+    let observation = root.join("observations").join(format!("{execution}.json"));
+    if !observation.is_file()
+        && persist_new(&observation, &json!(outcome)).is_err()
+        && !observation.is_file()
+    {
+        return Err(invalid());
+    }
+    let report = report_request(&local, &outcome)?;
+    let path = root.join("reports").join(format!("{execution}.json"));
+    if !path.is_file() && persist_new(&path, &json!(report)).is_err() && !path.is_file() {
+        return Err(invalid());
+    }
+    Ok(Some(path))
 }
 
 fn report_request(local: &Admission, outcome: &RunnerOutcome) -> PgResult<ReferenceReportRequest> {
