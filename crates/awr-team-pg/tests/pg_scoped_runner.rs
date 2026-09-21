@@ -274,6 +274,52 @@ async fn failed_report_retries_only_saved_facts_and_keeps_resources_until_confir
 }
 
 #[tokio::test]
+async fn replay_recovers_report_from_native_journal_without_reexecuting_effects() {
+    let (_g, admin, _, store) = setup().await;
+    trust(&admin).await;
+    let req = request(&store, writes()).await;
+    admin.batch_execute("CREATE FUNCTION awr_team.reject_recovered_report() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.event_type='execution.attest' THEN RAISE EXCEPTION 'synthetic report failure'; END IF; RETURN NEW; END $$;
+        CREATE TRIGGER reject_recovered_report BEFORE INSERT ON awr_team.events FOR EACH ROW EXECUTE FUNCTION awr_team.reject_recovered_report()")
+        .await
+        .unwrap();
+    let dir = Directory::new();
+    let runner = ScopedReferenceRunner::new(store.commands(), &dir.0);
+    let first = runner.run(A, req.clone()).await.unwrap();
+    assert_eq!(first["outcome"]["state"], "succeeded");
+    let root = runner.project_root(TENANT, PROJECT).unwrap();
+    let artifact = root.join("worktree/src/api/result.txt");
+    std::fs::write(&artifact, "later user edit").unwrap();
+    let execution = first["outcome"]["execution_id"].as_str().unwrap();
+    let report_path = root.join("reports").join(format!("{execution}.json"));
+    let expected: ReferenceReportRequest =
+        serde_json::from_slice(&std::fs::read(&report_path).unwrap()).unwrap();
+    std::fs::remove_file(root.join("observations").join(format!("{execution}.json"))).unwrap();
+    std::fs::remove_file(report_path).unwrap();
+
+    let replay = runner.run(A, req).await.unwrap();
+    assert_eq!(replay["replayed"], true);
+    assert_eq!(replay["effects_attempted"], false);
+    assert!(replay["report_required"].is_null());
+    assert_eq!(
+        std::fs::read_to_string(&artifact).unwrap(),
+        "later user edit"
+    );
+    let report: ReferenceReportRequest = serde_json::from_slice(
+        &std::fs::read(replay["report_request_file"].as_str().unwrap()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(report.command.args["facts"], expected.command.args["facts"]);
+    admin.batch_execute("DROP TRIGGER reject_recovered_report ON awr_team.events; DROP FUNCTION awr_team.reject_recovered_report()")
+        .await
+        .unwrap();
+    assert_eq!(
+        runner.report(A, report).await.unwrap()["receipt"]["data"]["state"],
+        "succeeded"
+    );
+}
+
+#[tokio::test]
 async fn stale_or_expired_admission_writes_nothing() {
     let (_g, admin, _, store) = setup().await;
     trust(&admin).await;

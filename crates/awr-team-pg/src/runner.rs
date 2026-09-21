@@ -351,6 +351,21 @@ impl ReferenceRunner {
         self.handle_delivery_inner(delivery, CrashPoint::None, Some(deadline))
     }
 
+    pub(crate) fn recover_saved_outcome(&self, execution_id: &str) -> Option<RunnerOutcome> {
+        let existing = match self.load(execution_id) {
+            JournalLoad::Owned(existing) => existing,
+            JournalLoad::Missing | JournalLoad::Corrupt(_) => return None,
+        };
+        let outcome =
+            if matches!(existing.state.as_str(), "succeeded" | "failed") || existing.unknown {
+                existing
+            } else {
+                self.recover_or_wait(existing)
+            };
+        (matches!(outcome.state.as_str(), "succeeded" | "failed") || outcome.unknown)
+            .then_some(outcome)
+    }
+
     fn handle_delivery_inner(
         &self,
         delivery: &OutboxDelivery,
