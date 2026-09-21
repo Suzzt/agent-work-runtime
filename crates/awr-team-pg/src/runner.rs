@@ -340,6 +340,38 @@ impl ReferenceRunner {
     }
 
     pub fn handle_delivery(&self, delivery: &OutboxDelivery, crash: CrashPoint) -> RunnerOutcome {
+        self.handle_delivery_inner(delivery, crash, None)
+    }
+
+    pub(crate) fn handle_scoped_delivery(
+        &self,
+        delivery: &OutboxDelivery,
+        deadline: std::time::Instant,
+    ) -> RunnerOutcome {
+        self.handle_delivery_inner(delivery, CrashPoint::None, Some(deadline))
+    }
+
+    pub(crate) fn recover_saved_outcome(&self, execution_id: &str) -> Option<RunnerOutcome> {
+        let existing = match self.load(execution_id) {
+            JournalLoad::Owned(existing) => existing,
+            JournalLoad::Missing | JournalLoad::Corrupt(_) => return None,
+        };
+        let outcome =
+            if matches!(existing.state.as_str(), "succeeded" | "failed") || existing.unknown {
+                existing
+            } else {
+                self.recover_or_wait(existing)
+            };
+        (matches!(outcome.state.as_str(), "succeeded" | "failed") || outcome.unknown)
+            .then_some(outcome)
+    }
+
+    fn handle_delivery_inner(
+        &self,
+        delivery: &OutboxDelivery,
+        crash: CrashPoint,
+        deadline: Option<std::time::Instant>,
+    ) -> RunnerOutcome {
         if let Err(error) = fs::create_dir_all(&self.journal_dir)
             .and_then(|_| fs::create_dir_all(&self.fencing_dir()))
             .and_then(|_| fs::create_dir_all(&self.exec_lock_dir()))
@@ -477,6 +509,15 @@ impl ReferenceRunner {
         let mut observed = Vec::new();
         let mut partial = Vec::new();
         for (rel, dest, content) in &plan {
+            if deadline.is_some_and(|d| std::time::Instant::now() >= d) {
+                let mut outcome = self.base_outcome(delivery, "unknown");
+                outcome.unknown = true;
+                outcome.started = !observed.is_empty();
+                outcome.observed_paths = observed;
+                outcome.error = Some("admission lease elapsed; no further writes attempted".into());
+                let _ = self.persist_result(&outcome);
+                return outcome;
+            }
             let result = self
                 .verify_chain(&root_canon, dest)
                 .map_err(|e| std::io::Error::new(ErrorKind::PermissionDenied, e))
