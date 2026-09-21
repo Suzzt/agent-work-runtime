@@ -814,9 +814,9 @@
           ],
           "level": "postgres_integration",
           "key_assertion": "并发提交返回有序project revision",
-          "reviewed_source_sha": "259b235de75f63ee45832a8352deaad7e8366ce5",
+          "reviewed_source_sha": "4508bd7066554d7e647b9a4040781f7ba22e8b54",
           "last_run": null,
-          "test_file_sha256": "bfe933c057283f667128e0909fcc198feaae569ba6b7bdd7671c2c3749c19d8f"
+          "test_file_sha256": "0346400ab59f0bc1bc338dd7e9103c7331931da0dbddc3983faeb957bbab6086"
         }
       ],
       "real_postgresql": true,
@@ -846,9 +846,9 @@
           ],
           "level": "postgres_integration",
           "key_assertion": "单条分页覆盖同revision的三个event_index",
-          "reviewed_source_sha": "259b235de75f63ee45832a8352deaad7e8366ce5",
+          "reviewed_source_sha": "4508bd7066554d7e647b9a4040781f7ba22e8b54",
           "last_run": null,
-          "test_file_sha256": "bfe933c057283f667128e0909fcc198feaae569ba6b7bdd7671c2c3749c19d8f"
+          "test_file_sha256": "0346400ab59f0bc1bc338dd7e9103c7331931da0dbddc3983faeb957bbab6086"
         }
       ],
       "real_postgresql": true,
@@ -977,9 +977,9 @@
           ],
           "level": "postgres_integration",
           "key_assertion": "缺goals返回incomplete和missing_goals",
-          "reviewed_source_sha": "259b235de75f63ee45832a8352deaad7e8366ce5",
+          "reviewed_source_sha": "4508bd7066554d7e647b9a4040781f7ba22e8b54",
           "last_run": null,
-          "test_file_sha256": "bfe933c057283f667128e0909fcc198feaae569ba6b7bdd7671c2c3749c19d8f"
+          "test_file_sha256": "0346400ab59f0bc1bc338dd7e9103c7331931da0dbddc3983faeb957bbab6086"
         }
       ],
       "real_postgresql": true,
@@ -1943,9 +1943,9 @@
           ],
           "level": "postgres_integration",
           "key_assertion": "仅事件分页；缺快照边界与增量衔接断言",
-          "reviewed_source_sha": "259b235de75f63ee45832a8352deaad7e8366ce5",
+          "reviewed_source_sha": "4508bd7066554d7e647b9a4040781f7ba22e8b54",
           "last_run": null,
-          "test_file_sha256": "bfe933c057283f667128e0909fcc198feaae569ba6b7bdd7671c2c3749c19d8f"
+          "test_file_sha256": "0346400ab59f0bc1bc338dd7e9103c7331931da0dbddc3983faeb957bbab6086"
         }
       ],
       "real_postgresql": true,
