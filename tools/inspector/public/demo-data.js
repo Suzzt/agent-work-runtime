@@ -1,20 +1,23 @@
 /**
- * 演示数据
+ * Demo data
  *
- * 桥接连不上、或者项目还没初始化时，用这份数据。
+ * Use this data when the bridge is unavailable or the project is not initialized.
  *
- * 它的结构照着仓库源码里真实的 JSON 形状写：
- *   status  → crates/awr-runtime/src/status_action.rs（四个顶层队列数组 + omissions）
- *   条目    → crates/awr-runtime/src/status_summary.rs 的 brief()
- *   work    → crates/awr-cli/src/query.rs（work 在 `work` 下，acceptance 是字符串数组）
+ * Match the actual JSON shapes in the repository:
+ *   status -> crates/awr-runtime/src/status_action.rs (four queues plus omissions)
+ *   item   -> brief() in crates/awr-runtime/src/status_summary.rs
+ *   work   -> crates/awr-cli/src/query.rs (nested work and string-array acceptance)
  *   context → crates/awr-context/src/{compile,budget}.rs（work_context.selected_chunks）
  *
- * 这样 app.js 里那套字段映射在演示模式下也在跑——演示模式同时是映射的测试夹具。
- * 工作项和缺口都是编的；token 数取自仓库公开 benchmark。
+ * Demo mode exercises the same field mappings as live mode.
+ * Work items and gaps are synthetic; token counts come from the public benchmark.
  */
 
 (function () {
   'use strict';
+
+  const i18n = typeof module !== 'undefined' && module.exports
+    ? require('./i18n.js') : window.AWR_I18N;
 
   const details = (key) => ({ cli: ['work', 'show', key], mcp: 'awr_work_get' });
 
@@ -33,8 +36,8 @@
 
   const CURRENT = [
     item({
-      key: 'EXAMPLE-001', title: '确定性的上下文编译', status: 'in_progress', owner: 'lin',
-      next_action: '把渲染器第三遍过完，然后催一下 OL-14 的 review',
+      key: 'EXAMPLE-001', title: i18n.t('ui.deterministic_context_compilation'), status: 'in_progress', owner: 'lin',
+      next_action: i18n.t('ui.finish_the_third_renderer_pass_then_follow'),
       extra: {
         ownership_required: true,
         codes: [],
@@ -45,25 +48,25 @@
 
   const READY = [
     item({
-      key: 'EXAMPLE-005', title: 'Windows 路径规范化', status: 'planned',
-      next_action: '先在 windows-latest 上把 flaky 复现出来',
+      key: 'EXAMPLE-005', title: i18n.t('ui.windows_path_normalization'), status: 'planned',
+      next_action: i18n.t('ui.reproduce_the_flaky_test_on_windows_latest'),
       extra: { codes: [] },
     }),
     item({
-      key: 'EXAMPLE-006', title: '检查点压缩策略', status: 'planned',
-      next_action: '设计已定，等 EXAMPLE-002',
+      key: 'EXAMPLE-006', title: i18n.t('ui.checkpoint_compaction_strategy'), status: 'planned',
+      next_action: i18n.t('ui.design_agreed_waiting_for_example_002'),
       extra: { codes: [] },
     }),
   ];
 
   const WAITING = [
     item({
-      key: 'EXAMPLE-004', title: '对已有仓库做 intake inspect', status: 'in_review', owner: 'mei',
+      key: 'EXAMPLE-004', title: i18n.t('ui.run_intake_inspect_on_an_existing_repository'), status: 'in_review', owner: 'mei',
       next_action: 'Collect and record the actual user reply before resuming.',
       extra: { wait_ids: [9021], wait_total: 1, execution_total: 0, executions: [], codes: [] },
     }),
     item({
-      key: 'EXAMPLE-002', title: '源漂移时重建 SQLite 投影', status: 'planned',
+      key: 'EXAMPLE-002', title: i18n.t('ui.rebuild_the_sqlite_projection_after_source_drift'), status: 'planned',
       next_action: 'Continue the unfinished prerequisite; recheck its source state.',
       extra: { wait_total: 0, codes: ['dependency_not_completed'] },
     }),
@@ -71,20 +74,20 @@
 
   const BLOCKED = [
     item({
-      key: 'EXAMPLE-003', title: 'context compile 的 MCP 工具面', status: 'blocked',
-      blocker: 'OL-09：从 symlink 路径启动时，handshake 返回的 project root 是陈旧的',
-      next_action: '先查清楚 symlink 路径下 handshake 拿到的 root 为什么是旧的',
+      key: 'EXAMPLE-003', title: i18n.t('ui.mcp_tool_surface_for_context_compile'), status: 'blocked',
+      blocker: i18n.t('ui.ol_09_handshake_returns_a_stale_project'),
+      next_action: i18n.t('ui.investigate_why_the_symlink_path_handshake_returns'),
       extra: { codes: ['source_blocked'], structural_codes: [] },
     }),
     item({
-      key: 'EXAMPLE-008', title: '砍掉 YAML front-matter 回退路径', status: 'blocked',
-      blocker: 'OL-19：决策本身还没做，没有决策记录之前没有可实现的东西',
-      next_action: '先把决策记录写出来',
+      key: 'EXAMPLE-008', title: i18n.t('ui.remove_the_yaml_front_matter_fallback'), status: 'blocked',
+      blocker: i18n.t('ui.ol_19_the_decision_is_still_pending'),
+      next_action: i18n.t('ui.write_the_decision_record_first'),
       extra: { codes: ['missing_decision_record'], structural_codes: ['goal_not_linked'] },
     }),
   ];
 
-  // work show 的完整响应（键是 work 的 external key）
+  // Full work show responses, indexed by external work key.
   const DETAIL = {
     'EXAMPLE-001': {
       acceptance: [
@@ -153,13 +156,13 @@
     },
   };
 
-  // 证据与决策：只有少数工作项有，正好演示「有」和「没有」两种样子。
+  // Only some items have evidence/decisions, demonstrating populated and empty states.
   const DETAIL_EXTRA = {
     'EXAMPLE-001': {
       evidence: [
         { external_key: 'bench-p95-0917', evidence_type: 'benchmark', level: 'locally_verified' },
       ],
-      decisions: [{ external_key: 'dec-0003', title: '渲染器按段落切块，不按文件切' }],
+      decisions: [{ external_key: 'dec-0003', title: i18n.t('ui.split_renderer_chunks_by_paragraph_rather_than') }],
     },
     'EXAMPLE-004': {
       evidence: [
@@ -211,21 +214,21 @@
         gap_total: 3,
         project_gap_total: 3,
         gaps: [
-          { code: 'goal_not_linked', target: 'EXAMPLE-008', detail: '这个工作项没有关联到任何目标' },
-          { code: 'acceptance_missing', target: 'EXAMPLE-011', detail: '源文件里没有写验收标准' },
-          { code: 'plan_not_found', target: 'project', detail: '项目没有可索引的计划文件' },
+          { code: 'goal_not_linked', target: 'EXAMPLE-008', detail: i18n.t('ui.this_work_item_has_no_linked_goal') },
+          { code: 'acceptance_missing', target: 'EXAMPLE-011', detail: i18n.t('ui.the_source_does_not_declare_acceptance_criteria') },
+          { code: 'plan_not_found', target: 'project', detail: i18n.t('ui.the_project_has_no_indexable_plan_source') },
         ],
       },
-      // 概览那张对比图用的数字（公开 benchmark，不是本项目实测）
+      // Overview comparison values from the public benchmark, not this project's measurements.
       context_sample: {
         full_corpus_tokens: 18955,
         json_dump_tokens: 12748,
         compiled_tokens: 4998,
-        note: '公开 benchmark 值（39 个活跃任务，o200k_base 计数），不是本项目实测。',
+        note: i18n.t('ui.public_benchmark_39_active_tasks_counted_with'),
       },
     },
 
-    /** work show 的响应 */
+    /** The work show response. */
     workShow(key) {
       const brief = ALL.find((w) => w.key === key) || ALL[0];
       const extra = DETAIL[brief.key] || { acceptance: [], required_dependencies: [], missing_dependencies: [] };
@@ -260,7 +263,7 @@
           rejection: {
             rule: 'secret-boundaries/assigned-credential',
             location: { line: 42, column: 3 },
-            repair: '把赋了值的凭据挪到环境变量，或改成不带值的类型声明。',
+            repair: i18n.t('ui.move_assigned_credentials_to_environment_variables_or'),
           },
         },
         { path: 'agents/handoff.yaml', kind: 'yaml', items: 4, state: 'indexed', indexed_at: iso(1440) },
@@ -269,7 +272,7 @@
       ],
     },
 
-    /** context compile 的响应；预算小于 5,000 时会省略非必需的块。 */
+    /** The context compile response; budgets below 5,000 omit optional chunks. */
     compile(key, budget) {
       const brief = ALL.find((w) => w.key === key) || ALL[0];
       const extra = DETAIL[brief.key] || { acceptance: [], required_dependencies: [] };
@@ -297,29 +300,29 @@
         '# goal: ' + (extra.milestone || 'goal#demo'),
         '# revision: 128',
         '',
-        '## 必须遵守的规则',
-        '- Markdown / YAML 是唯一的记录来源；SQLite 只是投影。',
-        '- 任何写操作都要带上你读到的 revision。',
+        i18n.t('ui.required_rules'),
+        i18n.t('ui.markdown_yaml_are_authoritative_sqlite_is_a'),
+        i18n.t('ui.every_mutation_must_include_the_revision_you'),
         '',
-        '## 验收标准（逐字取自源文件）',
+        i18n.t('ui.acceptance_criteria_verbatim_from_source'),
       ].concat(
         extra.acceptance.map((a) => '- ' + a),
         [
           '',
-          '## 依赖',
+          i18n.t('ui.dependencies_187'),
           extra.required_dependencies.length
             ? extra.required_dependencies.map((d) => `- ${d.external_key}（${d.status}）`).join('\n')
-            : '- 无',
+            : i18n.t('ui.none'),
           '',
-          '## 阻塞',
-          brief.blocker ? '- ' + brief.blocker : '- 无',
+          i18n.t('ui.blocker_189'),
+          brief.blocker ? '- ' + brief.blocker : i18n.t('ui.none'),
           '',
-          '## 下一步',
-          '- ' + (brief.next_action || '（源文件里没写）'),
+          i18n.t('ui.next_step_190'),
+          '- ' + (brief.next_action || i18n.t('ui.not_specified_in_the_source')),
           '',
           omitted.length
-            ? `（因预算省略了 ${omitted.length} 块非必需内容，详见完整性面板）`
-            : '（全部选中的块均已装入）',
+            ? i18n.t('ui.p0_optional_chunks_omitted_due_to_budget', { p0: omitted.length })
+            : i18n.t('ui.all_selected_chunks_are_included'),
         ]
       );
 
