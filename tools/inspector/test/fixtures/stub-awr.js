@@ -68,6 +68,37 @@ if (mode === 'hugewrite') {
   return;
 }
 
+if (mode === 'incomplete' && joined.includes('context compile')) {
+  // Reproduce context compile: incomplete context exits with code 1
+  // while stdout still contains the report.
+  fs.writeSync(1,
+    JSON.stringify({
+      ok: false,
+      project_revision: 9,
+      error: { code: 'ContextIncomplete', message: 'context incomplete: L1 has required gaps' },
+      completeness: {
+        complete: false,
+        status: 'CONTEXT INCOMPLETE',
+        project_revision: 9,
+        rules_complete: false,
+        acceptance_complete: true,
+        issues: [{ code: 'hard_rule_unresolved', field: 'rules_complete' }],
+        evidence_gaps: [],
+        unresolved_required_dependencies: [],
+      },
+      work_context: {
+        rendered_context: '# 不完整但仍然有内容',
+        token_estimate: 120,
+        required_tokens: 100,
+        token_budget: 8000,
+        selected_chunks: [{ key: 'rules/a', section: 'rules', required: true }],
+        omitted_chunks: [],
+      },
+    })
+  );
+  process.exit(1);
+}
+
 if (mode === 'huge') {
   // Exceed the stdout limit using writeSync; process.stdout.write is asynchronous,
   // so an immediate process.exit() would discard bytes still buffered in the pipe.

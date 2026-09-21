@@ -295,7 +295,8 @@ button { font: inherit; color: inherit; }
   }
 }
 
-main { position: relative; z-index: 1; padding: 30px 16px 64px; max-width: 1120px; }
+/* Fill the available width. Text and footnotes retain readable ch-based line lengths. */
+main { position: relative; z-index: 1; padding: 30px 16px 64px; }
 @media (min-width: 940px) { main { padding: 38px 40px 80px; } }
 
 /* Headings */

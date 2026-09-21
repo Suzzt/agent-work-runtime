@@ -84,7 +84,7 @@
 
     <!-- Overview -->
     <section class="view" id="view-overview">
-      <div class="hero">
+      <div class="view-head">
         <div>
           <span class="eyebrow">awr status</span>
           <h1><span data-i18n="ui.what_to_work_on_now">What to work on now</span></h1>
@@ -95,31 +95,11 @@
             <span data-i18n="ui.this_viewer_does_not_edit_authoritative_sources">This viewer does not edit authoritative sources or advance work status. It is not an agent client or a replacement for CLI or MCP.</span>
           </p>
         </div>
-        <div class="headline">
-          <span class="big" id="heroBig">—</span>
-          <span class="cap" id="heroCap"><span data-i18n="ui.context_compression_ratio">Context compression ratio</span></span>
-        </div>
       </div>
 
       <div class="stack-lg">
 
         <div class="strip" id="statusStrip"></div>
-
-        <div class="panel lift">
-          <header>
-            <h2><span data-i18n="ui.context_size_per_compilation">Context size per compilation</span></h2>
-            <button class="why" data-why="contextChart" aria-label="What is this?" data-i18n-aria-label="ui.what_is_this">?</button>
-            <span class="sub" id="cmpSub"></span>
-          </header>
-          <p class="why-note" data-note="contextChart" hidden>
-            <span data-i18n="ui.each_new_agent_session_needs_to_understand">Each new agent session needs to understand the project.</span> <b><span data-i18n="ui.without_awr">Without AWR</span></b><span data-i18n="ui.a_full_source_read_consumes_the_entire">, a full-source read consumes the entire corpus;</span>
-            <b><span data-i18n="ui.with_awr">with AWR</span></b><span data-i18n="ui.the_agent_reads_a_compiled_packet_this">, the agent reads a compiled packet. This chart compares their token counts. Smaller packets use less context-window space.</span>
-          </p>
-          <div class="body">
-            <div class="cmp" id="cmpChart"></div>
-            <p class="figure-note" id="cmpNote"></p>
-          </div>
-        </div>
 
         <div class="grid two">
           <div class="panel">
@@ -209,6 +189,7 @@
 
       <div class="stack-lg">
         <div class="chips" id="workFilters"></div>
+        <div class="chips" id="workPagination" aria-label="Work item pagination" data-i18n-aria-label="ui.work_pagination"></div>
 
         <div class="panel lift">
           <header>
@@ -250,24 +231,34 @@
 
     <!-- Context -->
     <section class="view" id="view-context" hidden>
-      <div class="view-head">
-        <span class="eyebrow">awr context compile</span>
-        <h1><span data-i18n="ui.compile_a_context_packet">Compile a context packet</span></h1>
-        <p class="lede">
-          <span data-i18n="ui.choose_a_work_item_and_budget_awr">Choose a work item and budget. AWR collects the required rules, acceptance criteria, blockers, and source quotations into a bounded packet for the agent.</span>
-        </p>
+      <div class="hero">
+        <div>
+          <span class="eyebrow">awr context compile</span>
+          <h1><span data-i18n="ui.compile_a_context_packet">Compile a context packet</span></h1>
+          <p class="lede">
+            <span data-i18n="ui.choose_a_work_item_and_budget_awr">Choose a work item and budget. AWR collects the required rules, acceptance criteria, blockers, and source quotations into a bounded packet for the agent.</span>
+          </p>
+        </div>
+        <div class="headline">
+          <span class="big" id="ctxBig">—</span>
+          <span class="cap" id="ctxCap"><span data-i18n="ui.not_compiled_yet">Not compiled yet</span></span>
+        </div>
       </div>
 
       <div class="stack-lg">
         <div class="panel lift">
           <header>
             <h2><span data-i18n="ui.parameters">Parameters</span></h2>
+            <button class="why" data-why="params" aria-label="What is this?" data-i18n-aria-label="ui.what_is_this">?</button>
             <span class="sub"><span data-i18n="ui.match_cli_options">Match CLI options</span></span>
           </header>
+          <p class="why-note" data-note="params" hidden>
+            <span data-i18n="ui.parameters_help">These four parameters map to awr context compile; the command below updates as you type. work selects the task; goal selects its goal, with the project default when empty; budget limits rendered tokens and must fit required content; intent describes what you plan to do.</span>
+          </p>
           <div class="body">
             <div class="form">
               <div class="field">
-                <label for="fWork">work <button class="why" data-why="fWork" aria-label="What is this?" data-i18n-aria-label="ui.what_is_this">?</button></label>
+                <label for="fWork">work</label>
                 <select id="fWork"></select>
                 <span class="help"><span data-i18n="ui.the_work_item_that_needs_context">The work item that needs context.</span></span>
               </div>
@@ -278,14 +269,18 @@
               </div>
               <div class="field">
                 <label for="fBudget"><span data-i18n="ui.budget_token_limit">Budget (token limit)</span></label>
-                <select id="fBudget">
-                  <option value="4000">4,000</option>
-                  <option value="5000">5,000</option>
-                  <option value="6000" selected>6,000</option>
-                  <option value="8000">8,000</option>
-                  <option value="16000">16,000</option>
-                </select>
-                <span class="help"><span data-i18n="ui.limits_the_rendered_context_not_the_entire">Limits the rendered context, not the entire JSON response.</span></span>
+                <input id="fBudget" type="number" list="budgetPresets" value="6000"
+                       min="500" max="100000" step="500" inputmode="numeric">
+                <datalist id="budgetPresets">
+                  <option value="4000"></option>
+                  <option value="6000"></option>
+                  <option value="8000"></option>
+                  <option value="16000"></option>
+                  <option value="32000"></option>
+                  <option value="64000"></option>
+                  <option value="100000"></option>
+                </datalist>
+                <span class="help"><span data-i18n="ui.budget_help">Enter any integer from 500 to 100,000, not just a preset. This limits rendered context text, not the entire JSON response.</span></span>
               </div>
               <div class="field">
                 <label for="fIntent"><span data-i18n="ui.intent_optional">Intent (optional)</span></label>
@@ -306,6 +301,21 @@
                 <button class="copy" data-copy-target="cliMirror"><span data-i18n="ui.copy">Copy</span></button>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div class="panel lift">
+          <header>
+            <h2><span data-i18n="ui.packet_size_title">Packet size</span></h2>
+            <button class="why" data-why="size" aria-label="What is this?" data-i18n-aria-label="ui.what_is_this">?</button>
+            <span class="sub" id="sizeSub"></span>
+          </header>
+          <p class="why-note" data-note="size" hidden>
+            <span data-i18n="ui.packet_size_help">All three values come from this compilation: required content cannot be omitted, included content is what the agent will read, and the budget is your limit. When included content approaches the limit, check the completeness panel for omissions.</span>
+          </p>
+          <div class="body">
+            <div class="cmp" id="sizeChart"></div>
+            <p class="figure-note" id="sizeNote"></p>
           </div>
         </div>
 
@@ -331,6 +341,10 @@
               <span data-i18n="ui.the_token_budget_is_a_hard_limit">The token budget is a hard limit. AWR reports omitted optional source quotations. Incomplete required facts need resolution before the agent proceeds; a larger budget only resolves budget-related gaps.</span>
             </p>
             <div class="body" id="completeBody"></div>
+            <details class="rawbox" id="omittedBox" hidden>
+              <summary id="omittedSummary"></summary>
+              <div class="body"><pre class="packet" id="omittedList"></pre></div>
+            </details>
           </div>
         </div>
 

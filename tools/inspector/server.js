@@ -72,6 +72,65 @@ function parseArgs(argv) {
 const ARGS = parseArgs(process.argv.slice(2));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
+// awr executable resolution
+
+/**
+ * Extract the Node.js entry point from a .cmd wrapper.
+ * npm wrapper format:`"%_prog%" "<entry_point>" %*`
+ * Test wrapper format:`"node" "<entry_point>" %*`
+ * Return the path after expanding %dp0%, or null when unavailable.
+ */
+function parseCmdEntryPoint(cmdPath) {
+  try {
+    const content = fs.readFileSync(cmdPath, 'utf8');
+    const match = content.match(/"[^"]+"\s+"([^"]+)"\s+%\*/);
+    if (match) {
+      let entryPoint = match[1].replace(/%dp0%/g, path.dirname(cmdPath));
+      if (fs.existsSync(entryPoint)) return entryPoint;
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Resolve awr through PATH and PATHEXT without a shell.
+ *
+ * Return { exe, needsNode, entryPoint? }. Native executables and POSIX scripts
+ * run directly; Node wrappers run entryPoint through process.execPath.
+ * If resolution fails, exe is null and the caller enters demo mode.
+ */
+function resolveAwr() {
+  const sep = process.platform === 'win32' ? ';' : ':';
+  const exts = process.platform === 'win32'
+    ? (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').map(e => e.toUpperCase())
+    : [''];
+  const dirs = (process.env.PATH || '').split(sep);
+
+  for (const dir of dirs) {
+    for (const ext of exts) {
+      const candidate = path.join(dir, 'awr' + ext);
+      try {
+        const st = fs.statSync(candidate, { throwIfNoEntry: false });
+        if (st && st.isFile()) {
+          const extUpper = path.extname(candidate).toUpperCase();
+          // Spawn native executables and extensionless POSIX scripts directly.
+          if (extUpper === '.EXE' || extUpper === '') {
+            return { exe: candidate, needsNode: false };
+          }
+          // Resolve the Node entry point from npm command wrappers.
+          if (extUpper === '.CMD' || extUpper === '.BAT') {
+            const entryPoint = parseCmdEntryPoint(candidate);
+            if (entryPoint) return { exe: candidate, needsNode: true, entryPoint };
+          }
+        }
+      } catch {}
+    }
+  }
+  return { exe: null, needsNode: false };
+}
+
+const AWR_RESOLVED = resolveAwr();
+
 // awr detection
 
 const runtime = {
@@ -89,7 +148,14 @@ const runtime = {
 function detectAwr() {
   return new Promise((resolve) => {
     if (ARGS.demo) return resolve();
-    execFile('awr', ['--version'], { timeout: 8000 }, (err, stdout) => {
+    if (!AWR_RESOLVED.exe) {
+      runtime.mode = 'demo';
+      runtime.reason = 'The awr command was not found. Install it and restart this process to view live data.';
+      return resolve();
+    }
+    const args = AWR_RESOLVED.needsNode ? [AWR_RESOLVED.entryPoint, '--version'] : ['--version'];
+    const cmd = AWR_RESOLVED.needsNode ? process.execPath : AWR_RESOLVED.exe;
+    execFile(cmd, args, { timeout: 8000 }, (err, stdout) => {
       if (err) {
         runtime.mode = 'demo';
         runtime.reason = 'The awr command was not found. Install it and restart this process to view live data.';
@@ -225,7 +291,9 @@ function execAwr(argv, opts) {
   const timeoutMs = write ? LIMITS.writeTimeoutMs : LIMITS.readTimeoutMs;
 
   return new Promise((resolve) => {
-    const child = spawn('awr', argv, { shell: false });
+    const cmd = AWR_RESOLVED.needsNode ? process.execPath : AWR_RESOLVED.exe;
+    const args = AWR_RESOLVED.needsNode ? [AWR_RESOLVED.entryPoint, ...argv] : argv;
+    const child = spawn(cmd, args, { stdio: 'pipe', windowsHide: true });
 
     // Concurrency slots follow child lifetimes, not HTTP responses. A timed-out child
     // must retain its slot until it exits, or the concurrency limit is ineffective.
@@ -391,6 +459,11 @@ async function runCommand(commandKey, extra) {
       const errJson =
         (parsed && (parsed.code || parsed.error) ? parsed : null) || tryParseJson(result.stderr);
       const domain = errJson && (errJson.error || errJson);
+
+      // A nonzero exit can still include a usable report. Preserve context
+      // completeness, issues and evidence gaps for the interface to render.
+      const payload = carriesPayload(parsed) ? parsed : null;
+
       return {
         ok: false,
         command,
@@ -398,6 +471,7 @@ async function runCommand(commandKey, extra) {
         error: domain && domain.code
           ? domain
           : { code: 'CommandFailed', message: (result.stderr || result.stdout || '').trim() },
+        data: payload,
         raw: errJson || null,
       };
     }
@@ -413,6 +487,15 @@ async function runCommand(commandKey, extra) {
 
     return { ok: true, command, data: parsed };
   }
+}
+
+/**
+ * Distinguish result payloads from envelopes containing only error metadata.
+ */
+function carriesPayload(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const shell = ['code', 'message', 'error', 'details', 'ok'];
+  return Object.keys(value).some((k) => shell.indexOf(k) < 0);
 }
 
 /** Match only an unrecognized --json flag, not other argument errors. */
@@ -469,6 +552,18 @@ const routes = {
     return runCommand('status', extra);
   },
 
+  'GET /api/work-page': async (url) => {
+    const queue = url.searchParams.get('queue') || 'all';
+    const offset = Number(url.searchParams.get('offset') || '0');
+    const limit = Number(url.searchParams.get('limit') || '10');
+    if (!['all', 'current', 'ready', 'waiting', 'blocked'].includes(queue) ||
+        !Number.isSafeInteger(offset) || offset < 0 ||
+        !Number.isInteger(limit) || limit < 1 || limit > 100) {
+      return { ok: false, error: { code: 'BadRequest', message: 'Invalid pagination parameters' } };
+    }
+    return runCommand('status', ['--queue', queue, '--offset', String(offset), '--page-size', String(limit)]);
+  },
+
   'GET /api/ready': async (url) => {
     const extra = [];
     const limit = Number(url.searchParams.get('limit'));
@@ -507,8 +602,16 @@ const routes = {
     const goal = asKey(body.goal);
     if (goal) extra.push('--goal', goal);
 
-    const budget = Number(body.budget);
-    if (Number.isInteger(budget) && budget >= 500 && budget <= 200000) {
+    // Match the AWR limit and reject invalid budgets explicitly instead of
+    // silently falling back to the CLI default.
+    if (body.budget !== undefined && body.budget !== null && body.budget !== '') {
+      const budget = Number(body.budget);
+      if (!Number.isInteger(budget) || budget < 500 || budget > 100000) {
+        return {
+          ok: false,
+          error: { code: 'BadRequest', message: 'budget must be an integer from 500 to 100000' },
+        };
+      }
       extra.push('--budget', String(budget));
     }
 

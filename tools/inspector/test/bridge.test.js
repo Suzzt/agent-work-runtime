@@ -23,11 +23,14 @@ const GUARD = { 'x-awr-inspector': '1' };
 /** Create a bin directory containing an awr launcher for the stub. */
 function makeStubBin() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awr-stub-'));
+  const stub = path.join(__dirname, 'fixtures', 'stub-awr.js');
+  if (process.platform === 'win32') {
+    const bin = path.join(dir, 'awr.cmd');
+    fs.writeFileSync(bin, `"${process.execPath}" "${stub}" %*\r\n`);
+    return dir;
+  }
   const bin = path.join(dir, 'awr');
-  fs.writeFileSync(
-    bin,
-    `#!/bin/sh\nexec "${process.execPath}" "${path.join(__dirname, 'fixtures', 'stub-awr.js')}" "$@"\n`
-  );
+  fs.writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${stub}" "$@"\n`);
   fs.chmodSync(bin, 0o755);
   return dir;
 }
@@ -38,13 +41,16 @@ let nextPort = 7500;
 /** Start a bridge, wait until it listens, and return {port, stop}. */
 async function startBridge(opts = {}) {
   const port = nextPort++;
-  const args = ['server.js', '--no-open', '--port', String(port), '--project', ROOT];
+  const args = ['server.js', '--no-open', '--port', String(port)];
+  const project = opts.project || ROOT;
+  args.push('--project', project);
   if (opts.allowReindex) args.push('--allow-reindex');
   if (opts.demo) args.push('--demo');
 
+  const sep = process.platform === 'win32' ? ';' : ':';
   const child = spawn(process.execPath, args, {
     cwd: ROOT,
-    env: Object.assign({}, process.env, opts.env, { PATH: `${STUB_BIN}:${process.env.PATH}` }),
+    env: Object.assign({}, process.env, opts.env, { PATH: `${STUB_BIN}${sep}${process.env.PATH}` }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
@@ -425,4 +431,125 @@ test('refresh invalidates in-flight detail requests', () => {
   const older = { generation: fresh.generation - 1, key: 'A' };
   assert.equal(guard.isCurrent(older), false);
   assert.equal(guard.isCurrent(fresh), true);
+});
+
+test('preserve reports returned with a nonzero exit code', async () => {
+  // Incomplete context exits with code 1 but its stdout report must remain available.
+  const b = await startBridge({ env: { STUB_MODE: 'incomplete' } });
+  try {
+    const r = await (
+      await fetch(`${b.base}/api/context/compile`, {
+        method: 'POST',
+        headers: Object.assign({ 'content-type': 'application/json' }, GUARD),
+        body: JSON.stringify({ work: 'RECON-020', budget: 8000 }),
+      })
+    ).json();
+
+    assert.equal(r.ok, false, 'Report the nonzero exit as failure');
+    assert.equal(r.error.code, 'ContextIncomplete');
+    assert.ok(r.data, 'Preserve the report for the completeness panel');
+    assert.equal(r.data.completeness.status, 'CONTEXT INCOMPLETE');
+    assert.equal(r.data.completeness.rules_complete, false);
+    assert.ok(r.data.work_context.rendered_context.length > 0);
+  } finally {
+    await b.stop();
+  }
+});
+
+test('do not mistake an error envelope for a report', async () => {
+  // An envelope containing only code/message is not a report.
+  const b = await startBridge({ env: { STUB_MODE: 'stderrjson' } });
+  try {
+    const r = await (await fetch(`${b.base}/api/status`, { headers: GUARD })).json();
+    assert.equal(r.ok, false);
+    assert.equal(r.error.code, 'SourceStale');
+    assert.ok(!r.data, 'Do not return error metadata as report data');
+  } finally {
+    await b.stop();
+  }
+});
+
+// 8. Issue #63: budget limits
+
+test('budgets may reach the AWR limit instead of being capped at 16000', async () => {
+  // The CLI limit is 100000, not the old selector cap of 16000
+  // or the previous bridge constant of 200000.
+  const r = await (
+    await fetch(`${bridge.base}/api/context/compile`, {
+      method: 'POST',
+      headers: Object.assign({ 'content-type': 'application/json' }, GUARD),
+      body: JSON.stringify({ work: 'RECON-001', budget: 100000 }),
+    })
+  ).json();
+  assert.ok(r.command.includes('--budget 100000'), `Budget was not forwarded: ${r.command}`);
+});
+
+test('reject excessive budgets instead of falling back to the default', async () => {
+  const r = await (
+    await fetch(`${bridge.base}/api/context/compile`, {
+      method: 'POST',
+      headers: Object.assign({ 'content-type': 'application/json' }, GUARD),
+      body: JSON.stringify({ work: 'RECON-001', budget: 100001 }),
+    })
+  ).json();
+  // Reject invalid budgets with an explicit range instead of omitting --budget.
+  assert.equal(r.ok, false);
+  assert.equal(r.error.code, 'BadRequest');
+  assert.ok(/100000/.test(r.error.message), `The error must state the valid range: ${r.error.message}`);
+  assert.ok(!r.command, 'Do not spawn a child process');
+});
+
+// 9. Shell-free path handling
+
+test('project paths containing spaces are passed correctly', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proj '));
+  try {
+    const b = await startBridge({ project: tmpDir });
+    try {
+      const r = await fetch(`${b.base}/api/status`, { headers: GUARD });
+      const body = await r.json();
+      assert.equal(body.ok, true, `Project paths with spaces must work, got: ${JSON.stringify(body)}`);
+    } finally {
+      await b.stop();
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('search preserves shell metacharacters as one literal argument', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awr-argv-'));
+  const argvLog = path.join(dir, 'argv.jsonl');
+  const text = 'literal & | ^ > < %PATH% "quoted words"';
+  let b;
+  try {
+    b = await startBridge({ env: { STUB_ARGV_OUT: argvLog } });
+    const res = await fetch(`${b.base}/api/search?text=${encodeURIComponent(text)}`, {
+      headers: GUARD,
+    });
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(body.ok, true, JSON.stringify(body));
+    assert.equal(body.data.query.text, text);
+
+    const calls = fs.readFileSync(argvLog, 'utf8').trim().split('\n').map(JSON.parse);
+    const searches = calls.filter((args) => args.includes('search'));
+    assert.equal(searches.length, 1, 'Exactly one search command must run');
+    const args = searches[0];
+    const separator = args.indexOf('--');
+    assert.ok(separator >= 0, 'Search text must follow the option terminator');
+    assert.deepEqual(args.slice(separator + 1), [text]);
+  } finally {
+    if (b) await b.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('forward pagination to status and reject invalid sizes or offsets before execution', async () => {
+  const result = await (await fetch(`${bridge.base}/api/work-page?queue=ready&offset=10&limit=20`, {headers:GUARD})).json();
+  assert.match(result.command, /--queue ready --offset 10 --page-size 20/);
+  for (const query of ['queue=other', 'offset=-1', 'offset=1.5', 'limit=0', 'limit=101']) {
+    const invalid=await (await fetch(`${bridge.base}/api/work-page?${query}`, {headers:GUARD})).json();
+    assert.equal(invalid.ok,false); assert.equal(invalid.error.code,'BadRequest');
+  }
 });

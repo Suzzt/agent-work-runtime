@@ -97,3 +97,11 @@ test('interpolation preserves multilingual source content and replacement metach
     assert.equal(page.api.t('unknown.key'), 'unknown.key');
   }
 });
+
+
+test('missing Chinese messages fall back to English', () => {
+  const page = browser({ url: 'http://localhost/?lang=zh-CN' });
+  page.context.AWR_LOCALES['zh-CN'] = { ...zh };
+  delete page.context.AWR_LOCALES['zh-CN']['language.label'];
+  assert.equal(page.api.t('language.label'), en['language.label']);
+});

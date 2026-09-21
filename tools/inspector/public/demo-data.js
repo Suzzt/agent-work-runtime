@@ -62,12 +62,12 @@
   const WAITING = [
     item({
       key: 'EXAMPLE-004', title: i18n.t('ui.run_intake_inspect_on_an_existing_repository'), status: 'in_review', owner: 'mei',
-      next_action: 'Collect and record the actual user reply before resuming.',
+      next_action: i18n.t('demo.collect_reply'),
       extra: { wait_ids: [9021], wait_total: 1, execution_total: 0, executions: [], codes: [] },
     }),
     item({
       key: 'EXAMPLE-002', title: i18n.t('ui.rebuild_the_sqlite_projection_after_source_drift'), status: 'planned',
-      next_action: 'Continue the unfinished prerequisite; recheck its source state.',
+      next_action: i18n.t('demo.continue_prerequisite'),
       extra: { wait_total: 0, codes: ['dependency_not_completed'] },
     }),
   ];
@@ -91,9 +91,9 @@
   const DETAIL = {
     'EXAMPLE-001': {
       acceptance: [
-        'Packet fits the declared budget without truncating open loops',
-        'Rendered facts round-trip against the source of record',
-        'Compile p95 stays under 150 ms on a single host',
+        i18n.t('demo.packet_budget'),
+        i18n.t('demo.facts_round_trip'),
+        i18n.t('demo.compile_latency'),
       ],
       required_dependencies: [],
       missing_dependencies: [],
@@ -101,8 +101,8 @@
     },
     'EXAMPLE-002': {
       acceptance: [
-        'Drift is detected from mtime plus content hash',
-        'A rebuild touches only rows derived from changed files',
+        i18n.t('demo.detect_drift'),
+        i18n.t('demo.rebuild_changed'),
       ],
       required_dependencies: [{ external_key: 'EXAMPLE-001', status: 'in_progress', revision: 128 }],
       missing_dependencies: [],
@@ -110,8 +110,8 @@
     },
     'EXAMPLE-003': {
       acceptance: [
-        'Tool schemas match the CLI --json output',
-        'Handshake resolves the project root absolutely',
+        i18n.t('demo.tool_schemas'),
+        i18n.t('demo.absolute_root'),
       ],
       required_dependencies: [{ external_key: 'EXAMPLE-001', status: 'in_progress', revision: 128 }],
       missing_dependencies: [],
@@ -119,9 +119,9 @@
     },
     'EXAMPLE-004': {
       acceptance: [
-        'Dry run writes nothing to .local',
-        'Reports matched, skipped and ambiguous files separately',
-        'Exit code distinguishes empty match from failure',
+        i18n.t('demo.dry_run'),
+        i18n.t('demo.matched_files'),
+        i18n.t('demo.exit_code'),
       ],
       required_dependencies: [],
       missing_dependencies: [],
@@ -129,8 +129,8 @@
     },
     'EXAMPLE-005': {
       acceptance: [
-        'UNC and drive-letter paths normalise to the same key',
-        'intake inspect passes on windows-latest CI',
+        i18n.t('demo.windows_paths'),
+        i18n.t('demo.windows_ci'),
       ],
       required_dependencies: [],
       missing_dependencies: [],
@@ -138,8 +138,8 @@
     },
     'EXAMPLE-006': {
       acceptance: [
-        'Compaction preserves every open loop and its age',
-        'A compacted history replays to the same projection',
+        i18n.t('demo.preserve_open_loops'),
+        i18n.t('demo.history_replay'),
       ],
       required_dependencies: [{ external_key: 'EXAMPLE-002', status: 'planned', revision: 128 }],
       missing_dependencies: [],
@@ -147,8 +147,8 @@
     },
     'EXAMPLE-008': {
       acceptance: [
-        'A decision record exists and is indexed',
-        'Migration note covers projects relying on the fallback',
+        i18n.t('demo.decision_indexed'),
+        i18n.t('demo.migration_note'),
       ],
       required_dependencies: [{ external_key: 'EXAMPLE-004', status: 'in_review', revision: 128 }],
       missing_dependencies: ['EXAMPLE-011'],
@@ -197,7 +197,7 @@
       omissions: { current: 0, ready: 2, waiting: 0, blocked: 0 },
       freshness_basis: 'source_refresh',
       guidance: {
-        when: 'Current work can be continued',
+        when: i18n.t('demo.continue_work'),
         next_action: 'Prepare the selected work; continue only with its owned session or explicitly resume it',
       },
       pending_operations: {
@@ -218,13 +218,6 @@
           { code: 'acceptance_missing', target: 'EXAMPLE-011', detail: i18n.t('ui.the_source_does_not_declare_acceptance_criteria') },
           { code: 'plan_not_found', target: 'project', detail: i18n.t('ui.the_project_has_no_indexable_plan_source') },
         ],
-      },
-      // Overview comparison values from the public benchmark, not this project's measurements.
-      context_sample: {
-        full_corpus_tokens: 18955,
-        json_dump_tokens: 12748,
-        compiled_tokens: 4998,
-        note: i18n.t('ui.public_benchmark_39_active_tasks_counted_with'),
       },
     },
 

@@ -178,6 +178,12 @@
     mode: 'demo',          // 'live' | 'demo'
     project: '…',
     reason: null,
+    workPagination: false,
+    workPage: null,
+    workOffset: 0,
+    workPageSize: 10,
+    workPageError: null,
+    workPageLoading: false,
     status: null,          // Normalized status.
     works: [],             // Normalized work-item list.
     workDetail: {},        // Key to details.
@@ -187,6 +193,7 @@
     queueTab: 'blocked',   // Selected queue in the overview.
     workFilter: 'all',
     selectedWork: null,
+    overviewWork: null,    // Explicit Overview selection; independent of the current page.
     view: 'overview',
   };
 
@@ -198,7 +205,10 @@
   ];
   const queueMeta = (k) => QUEUES.find((q) => q.key === k) || { label: k || '—', dot: '', why: '' };
 
-  // Generation guard
+  /** Keep the budget limit aligned with the bridge and awr-context/src/budget.rs. */
+  const BUDGET_MAX = 100000;
+
+  // Generation guards
 
   /**
    * Guard concurrent detail requests by generation.
@@ -229,6 +239,7 @@
   }
 
   const detailGuard = createGenerationGuard();
+  let sourceGeneration = 0;
 
   // ───────────────────────── API ─────────────────────────
 
@@ -312,8 +323,8 @@
 
   /**
    * @param raw       The awr status response.
-   * @param readyRaw  The awr ready response supplements release 0.4.0, whose status
-   *                                  lacks ready/blocked lists; it is redundant for the four-array shape.
+   * @param readyRaw  The awr ready response supplements 0.4.0 status, which lacks
+   *                  ready/blocked arrays. Matching revisions can fill action-view summaries.
    */
   function normStatus(raw, readyRaw) {
     const M = FIELD_MAP.status;
@@ -332,7 +343,11 @@
       let omitted = pick(raw, FIELD_MAP.queueOmitted[q.key], 0) || 0;
       let source = 'status';
 
-      if (items == null && fallback[q.key] != null) {
+      if (fallback[q.key] != null && (items == null || (
+        q.key === 'ready' && omitted > 0 &&
+        raw.project_revision === readyRaw.project_revision &&
+        fallback.ready.length > items.length
+      ))) {
         items = fallback[q.key];
         source = 'ready';
         if (q.key === 'ready') {
@@ -383,7 +398,6 @@
       orgState: pick(raw, M.orgState, null),
       freshness: pick(raw, M.freshness, null),
       guidance: pick(raw, M.guidance, null),
-      contextSample: raw && raw.context_sample ? raw.context_sample : null,
     };
   }
 
@@ -442,8 +456,13 @@
 
     const omissions = (pick(raw, M.omissions, []) || []).map((o) =>
       typeof o === 'string'
-        ? { detail: o }
-        : { detail: [o.key, o.section].filter((x) => x != null).join(' · ') || JSON.stringify(o), reason: o.reason }
+        ? { detail: o, key: o, section: null, reason: null }
+        : {
+            key: o.key || null,
+            section: o.section != null ? String(o.section) : null,
+            reason: o.reason || null,
+            detail: [o.key, o.section].filter((x) => x != null).join(' · ') || JSON.stringify(o),
+          }
     );
 
     // Show each completeness dimension so missing requirements are visible.
@@ -462,6 +481,7 @@
 
     return {
       rendered: pick(raw, M.rendered, ''),
+      work: pick(raw, ['work_context.identity.work_item_key'], null),
       sections,
       chunkTotal: chunks.length,
       dimensions,
@@ -524,6 +544,28 @@
     box.appendChild(t);
     box.appendChild(el('div', 'msg', msg));
     if (advice) box.appendChild(el('div', 'msg', advice));
+
+    // Offer a retry using the required token count returned by AWR.
+    const required = error && error.details && Number(error.details.required);
+    if (code === 'BudgetExceeded' && Number.isFinite(required)) {
+      if (required > BUDGET_MAX) {
+        // Required content exceeds the hard limit; no larger budget can succeed.
+        box.appendChild(el('div', 'msg',
+          i18n.t('ui.required_exceeds_limit', { required: group(required), limit: group(BUDGET_MAX) })));
+      } else {
+        // Leave 10% headroom without exceeding the limit enforced by the bridge.
+        const target = Math.min(BUDGET_MAX, Math.ceil((required * 1.1) / 500) * 500);
+        const act = el('div', 'actions');
+        const bump = el('button', 'btn', i18n.t('ui.retry_budget', { budget: group(target) }));
+        bump.addEventListener('click', () => {
+          $('fBudget').value = String(target);
+          updateCliMirror();
+          doCompile();
+        });
+        act.appendChild(bump);
+        box.appendChild(act);
+      }
+    }
     if (command) {
       const cmd = el('div', 'cmd');
       cmd.appendChild(el('span', 'prompt', '$'));
@@ -598,48 +640,48 @@
       strip.appendChild(kv);
     }
 
-    renderContextChart(s);
     renderQueueTabs();
     renderQueueList();
     renderGaps(s);
     renderPending(s);
 
-    setText('navWorkCount', String(s.works.length || ''));
+    setText('navWorkCount', String(Object.values(s.queues).reduce((sum, q) => sum + (q.available ? q.total : 0), 0)));
     setText('mcpCmd', `awr-mcp --project ${state.project}`);
     setText('mcpSub', state.mode === 'live' ? i18n.t('ui.this_viewer_uses_cli_agents_use_mcp') : i18n.t('ui.demo_mode'));
   }
 
-  function renderContextChart(s) {
-    const wrap = $('cmpChart');
+  /**
+   * Show required, included and budget tokens reported by this compilation.
+   * Keep measurements next to the action that produces them. Corpus comparisons
+   * are unavailable: AWR does not report corpus size and the browser has no tokenizer.
+   */
+  function renderPacketSize(ctx) {
+    const wrap = $('sizeChart');
     clear(wrap);
-    const sample = s.contextSample;
 
-    if (!sample) {
-      setText('heroBig', '—');
-      setText('heroCap', i18n.t('ui.no_compilation_yet'));
-      wrap.appendChild(stateBlock('empty', i18n.t('ui.no_comparison_data_yet'),
-        i18n.t('ui.compile_from_context_to_display_this_project')));
-      setText('cmpNote', '');
-      setText('cmpSub', '');
+    if (!ctx || ctx.total == null) {
+      setText('ctxBig', '—');
+      setText('ctxCap', i18n.t('ui.not_compiled_yet'));
+      setText('sizeSub', '');
+      setText('sizeNote', '');
+      wrap.appendChild(stateBlock('empty', i18n.t('ui.not_compiled_yet'),
+        i18n.t('ui.packet_empty')));
       return;
     }
 
-    const full = sample.full_corpus_tokens;
+    const budget = ctx.budget || ctx.total || 1;
     const rows = [
-      { label: i18n.t('ui.entire_source_corpus'), tokens: full, lead: false },
-      { label: i18n.t('ui.full_cli_json_response'), tokens: sample.json_dump_tokens, lead: false },
-      { label: i18n.t('ui.awr_context_packet'), tokens: sample.compiled_tokens, lead: true },
-    ];
+      { label: i18n.t('ui.required_content'), tokens: ctx.requiredTokens, lead: false },
+      { label: i18n.t('ui.included_content'), tokens: ctx.total, lead: true },
+      { label: i18n.t('ui.budget_limit'), tokens: ctx.budget, lead: false },
+    ].filter((r) => Number.isFinite(r.tokens));
 
     for (const r of rows) {
-      const pct = full ? (r.tokens / full) * 100 : 0;
+      const pct = Math.min(100, (r.tokens / budget) * 100);
       const row = el('div', 'cmp-row' + (r.lead ? ' is-lead' : ''));
       const label = el('div', 'cmp-label');
       label.appendChild(document.createTextNode(r.label + ' '));
       label.appendChild(el('span', 'num', group(r.tokens) + ' tokens'));
-      if (r.tokens !== full) {
-        label.appendChild(el('span', 'delta', '−' + (100 - pct).toFixed(1) + '%'));
-      }
       row.appendChild(label);
       const track = el('div', 'cmp-track');
       const fill = el('div', 'cmp-fill');
@@ -649,11 +691,13 @@
       wrap.appendChild(row);
     }
 
-    const saved = full ? (100 - (sample.compiled_tokens / full) * 100).toFixed(1) : '0';
-    setText('heroBig', '−' + saved + '%');
-    setText('heroCap', i18n.t('ui.context_tokens_versus_the_full_source_corpus'));
-    setText('cmpSub', sample.note ? i18n.t('ui.public_benchmark') : i18n.t('ui.measured_for_this_project'));
-    setText('cmpNote', sample.note || '');
+    const used = ctx.budget ? Math.round((ctx.total / ctx.budget) * 100) : null;
+    setText('ctxBig', group(ctx.total));
+    setText('ctxCap', 'tokens' + (ctx.work ? ' · ' + ctx.work : ''));
+    setText('sizeSub', used != null ? i18n.t('ui.budget_used', { percent: used }) : '');
+    setText('sizeNote', ctx.omissions.length
+      ? i18n.t('ui.omitted_note', { count: ctx.omissions.length })
+      : i18n.t('ui.nothing_omitted'));
   }
 
   function renderQueueTabs() {
@@ -725,8 +769,11 @@
       li.style.cursor = 'pointer';
       li.addEventListener('click', () => {
         state.selectedWork = w.key;
-        state.workFilter = 'all';
+        state.overviewWork = w.key;
+        state.workFilter = w.queue;
+        state.workOffset = 0;
         go('work');
+        if (state.workPagination) return loadWorkPage();
         renderWork();
       });
       list.appendChild(li);
@@ -793,6 +840,37 @@
 
   // Work items
 
+  let workPageGeneration = 0;
+  async function loadWorkPage() {
+    const generation = ++workPageGeneration;
+    detailGuard.invalidate();
+    state.workDetail = {};
+    state.workPageLoading = true;
+    state.workPage = null;
+    state.workPageError = null;
+    renderWork();
+    const response = await callApi(`/api/work-page?queue=${state.workFilter}&offset=${state.workOffset}&limit=${state.workPageSize}`);
+    if (generation !== workPageGeneration) return;
+    state.workPageLoading = false;
+    if (!response.ok || !response.data || !response.data.page) {
+      state.workPageError = response.error || { code: 'MissingPage', message: i18n.t('ui.missing_page') };
+    } else {
+      const page = response.data.page;
+      // Removing or completing tasks may invalidate the previous last page.
+      if (state.workOffset > 0 && state.workOffset >= page.total) {
+        state.workOffset = Math.max(0, Math.ceil(page.total / state.workPageSize) - 1) * state.workPageSize;
+        return loadWorkPage();
+      }
+      detailGuard.invalidate();
+      state.status = normStatus(response.data, null);
+      state.workPage = page;
+      state.raw.overview = { status: response };
+      renderOverview();
+      showRaw('rawOverviewBody', state.raw.overview);
+    }
+    return renderWork();
+  }
+
   function renderWork() {
     const s = state.status;
     if (!s) return;
@@ -800,7 +878,7 @@
     // Filter chips.
     const filters = $('workFilters');
     clear(filters);
-    const options = [{ key: 'all', label: i18n.t('ui.all'), count: s.works.length }].concat(
+    const options = [{ key: 'all', label: i18n.t('ui.current_queues'), count: Object.values(s.queues).reduce((sum, q) => sum + (q.available ? q.total : 0), 0) }].concat(
       QUEUES.map((q) => ({ key: q.key, label: q.label, count: s.queues[q.key].total }))
     );
     for (const o of options) {
@@ -809,27 +887,93 @@
       chip.appendChild(document.createTextNode(o.label + ' '));
       chip.appendChild(el('b', null, String(o.count)));
       chip.addEventListener('click', () => {
+        state.overviewWork = null;
         state.workFilter = o.key;
-        renderWork();
+        state.workOffset = 0;
+        if (state.workPagination) loadWorkPage();
+        else renderWork();
       });
       filters.appendChild(chip);
     }
 
-    const rows = state.workFilter === 'all'
-      ? s.works
-      : s.works.filter((w) => w.queue === state.workFilter);
+    const rows = state.workPagination
+      ? (state.workPage ? state.workPage.items.map(normWorkBrief) : [])
+      : state.workFilter === 'all' ? s.works : s.works.filter((w) => w.queue === state.workFilter);
+    const pager = $('workPagination');
+    clear(pager);
+    if (state.workPagination) {
+      const page = state.workPage;
+      const total = page ? page.total : 0;
+      const pages = Math.max(1, Math.ceil(total / state.workPageSize));
+      const previous = el('button', 'chip', i18n.t('ui.previous_page'));
+      previous.disabled = state.workPageLoading || !page || state.workOffset === 0;
+      previous.addEventListener('click', () => {
+        state.overviewWork = null;
+        state.workOffset = Math.max(0, state.workOffset - state.workPageSize);
+        return loadWorkPage();
+      });
+      pager.appendChild(previous);
+      pager.appendChild(el('span', 'sub', page ? i18n.t('ui.page_summary', { page: Math.floor(state.workOffset / state.workPageSize) + 1, pages, total }) : state.workPageError ? i18n.t('ui.query_failed') : i18n.t('ui.query_loading')));
+      const next = el('button', 'chip', i18n.t('ui.next_page'));
+      next.disabled = state.workPageLoading || !page || !page.has_more;
+      next.addEventListener('click', () => {
+        state.overviewWork = null;
+        state.workOffset += state.workPageSize;
+        return loadWorkPage();
+      });
+      pager.appendChild(next);
+      const size = el('select');
+      size.setAttribute('aria-label', i18n.t('ui.page_size'));
+      for (const n of [10, 20, 50, 100]) {
+        const option = el('option', null, i18n.t('ui.items_per_page', { count: n })); option.value = String(n); size.appendChild(option);
+      }
+      size.value = String(state.workPageSize);
+      size.disabled = state.workPageLoading;
+      size.addEventListener('change', () => {
+        state.overviewWork = null;
+        state.workPageSize = Number(size.value);
+        state.workOffset = 0;
+        return loadWorkPage();
+      });
+      pager.appendChild(size);
+    }
 
     const tbody = $('workRows');
     clear(tbody);
     clear($('workEmpty'));
-    setText('workSub', i18n.t('ui.p0_items', { p0: rows.length }));
-
-    if (!rows.length) {
-      $('workEmpty').appendChild(stateBlock('empty', i18n.t('ui.no_work_items_match_this_filter'), i18n.t('ui.try_another_filter')));
-      return;
+    const selectedQueues = state.workFilter === 'all'
+      ? Object.values(s.queues) : [s.queues[state.workFilter]];
+    const omitted = state.workPagination ? 0 : selectedQueues.reduce((sum, q) => sum + q.omitted, 0);
+    setText('workSub', omitted ? i18n.t('ui.items_not_loaded', { shown: rows.length, omitted }) : i18n.t('ui.p0_items', { p0: rows.length }));
+    if (omitted) {
+      $('workEmpty').appendChild(stateBlock('warning', i18n.t('ui.list_incomplete'),
+        i18n.t('ui.list_incomplete_help')));
     }
 
-    if (!state.selectedWork || !rows.some((w) => w.key === state.selectedWork)) {
+    if (state.workPagination && state.workPageLoading) {
+      clear($('workDetail'));
+      setText('detailId', state.overviewWork || i18n.t('ui.details'));
+      setText('detailStatus', '—');
+      $('workEmpty').appendChild(stateBlock('loading', i18n.t('ui.tasks_loading'), ''));
+      return;
+    }
+    if (state.workPagination && state.workPageError) {
+      $('workEmpty').appendChild(errorBlock(state.workPageError));
+    } else if (!rows.length) {
+      $('workEmpty').appendChild(stateBlock('empty', i18n.t('ui.no_work_items_match_this_filter'), i18n.t('ui.try_another_filter')));
+    }
+    if (state.overviewWork) {
+      state.selectedWork = state.overviewWork;
+      if (!rows.some((w) => w.key === state.overviewWork) && !state.workPageError) {
+        $('workEmpty').appendChild(stateBlock('warning', i18n.t('ui.selected_off_page'),
+          i18n.t('ui.selected_off_page_help', { work: state.overviewWork })));
+      }
+    } else if (!rows.length) {
+      clear($('workDetail'));
+      setText('detailId', i18n.t('ui.details'));
+      setText('detailStatus', '—');
+      return;
+    } else if (!state.selectedWork || !rows.some((w) => w.key === state.selectedWork)) {
       state.selectedWork = rows[0].key;
     }
 
@@ -857,13 +1001,14 @@
       tr.appendChild(el('td', 'num', w.revision != null ? String(w.revision) : '—'));
 
       tr.addEventListener('click', () => {
+        state.overviewWork = null;
         state.selectedWork = w.key;
-        renderWork();
+        return renderWork();
       });
       tbody.appendChild(tr);
     }
 
-    renderWorkDetail(state.selectedWork);
+    return renderWorkDetail(state.selectedWork);
   }
 
   async function renderWorkDetail(key) {
@@ -871,6 +1016,7 @@
     const box = $('workDetail');
     clear(box);
     setText('detailId', key || i18n.t('ui.details'));
+    setText('detailStatus', '—');
 
     // Cache {detail, raw} together, not just normalized details.
     // Otherwise a cache hit could display A's details while the raw JSON panel
@@ -896,6 +1042,9 @@
           state.raw.work = res;
           showRaw('rawWorkBody', res);
           clear(box);
+          if (res.error && res.error.code === 'NotFound') {
+            box.appendChild(stateBlock('empty', i18n.t('ui.work_missing'), i18n.t('ui.work_missing_help', { work: key })));
+          }
           box.appendChild(errorBlock(res.error, res.command));
           return;
         }
@@ -1030,6 +1179,7 @@
     const act = el('div', 'actions');
     const btn = el('button', 'btn', i18n.t('ui.compile_context_for_this_item'));
     btn.addEventListener('click', () => {
+      fillWorkSelect(detail);
       $('fWork').value = detail.key;
       if (detail.goal) {
         const m = String(detail.goal).match(/goal#[\w.-]+/);
@@ -1045,15 +1195,21 @@
 
   // Context
 
-  function fillWorkSelect() {
+  function fillWorkSelect(selectedWork = null) {
     const sel = $('fWork');
     const keep = sel.value;
+    const previous = Array.from(sel.children).find(option => option.value === keep);
+    const works = new Map((state.status ? state.status.works : []).map(w => [w.key, w]));
+    for (const w of state.workPage ? state.workPage.items : []) works.set(w.key, w);
+    if (selectedWork) works.set(selectedWork.key, selectedWork);
     clear(sel);
-    for (const w of state.status ? state.status.works : []) {
+    for (const w of works.values()) {
       const o = el('option', null, `${w.key} — ${w.title}`);
       o.value = w.key;
       sel.appendChild(o);
     }
+    // Preserve a context target even after its page is no longer displayed.
+    if (previous && !works.has(keep)) sel.appendChild(previous);
     if (keep) sel.value = keep;
     updateCliMirror();
   }
@@ -1071,6 +1227,7 @@
   }
 
   async function doCompile() {
+    const generation = sourceGeneration;
     const btn = $('compileBtn');
     btn.disabled = true;
     setText('compileHint', i18n.t('ui.compiling'));
@@ -1085,6 +1242,7 @@
 
     if (state.mode === 'demo') {
       await new Promise((r) => setTimeout(r, 260));
+      if (generation !== sourceGeneration) return;
       const raw = window.AWR_DEMO.compile(work, budget);
       state.raw.context = { ok: true, data: raw };
       showRaw('rawContextBody', state.raw.context);
@@ -1094,27 +1252,50 @@
         method: 'POST',
         body: JSON.stringify({ work, goal, budget, intent }),
       });
+      if (generation !== sourceGeneration) return;
       state.raw.context = res;
       showRaw('rawContextBody', res);
-      if (res.ok) ctx = normContext(res.data);
-      else failure = res;
+      if (res.ok) {
+        ctx = normContext(res.data);
+      } else if (res.data) {
+        // An incomplete context exits with code 1 but still provides a report.
+        // Render the report alongside its diagnostic.
+        ctx = normContext(res.data);
+        failure = res;
+      } else {
+        failure = res;
+      }
     }
 
     btn.disabled = false;
+    if (ctx) ctx.work = ctx.work || work;
     state.compile = ctx;
 
-    if (failure) {
+    // Only clear the result when no report is available.
+    if (failure && !ctx) {
+      // Reset every result panel so previous measurements do not accompany this error.
+      renderCompile();
       clear($('breakdown'));
       $('breakdown').appendChild(errorBlock(failure.error, failure.command));
-      clear($('completeBody'));
-      setText('packetTotal', '');
-      setText('packetNote', '');
-      setText('packetPreview', '');
       setText('compileHint', i18n.t('ui.compilation_failed'));
       return;
     }
 
     renderCompile();
+
+    if (failure) {
+      // Preserve the original AWR diagnostic above the incomplete report.
+      const cb = $('completeBody');
+      const note = el('div', 'state err');
+      note.style.padding = '12px 0 0';
+      const t = el('div', 'title');
+      t.appendChild(el('span', 'errcode', (failure.error && failure.error.code) || 'Error'));
+      note.appendChild(t);
+      note.appendChild(el('div', 'msg', (failure.error && failure.error.message) || ''));
+      cb.appendChild(note);
+      setText('compileHint', i18n.t('ui.context_incomplete'));
+      return;
+    }
     setText('compileHint', ctx.revision != null
       ? i18n.t('ui.revision_p0_sources_unchanged_projection_may_refresh', { p0: ctx.revision })
       : i18n.t('ui.sources_unchanged_projection_may_refresh'));
@@ -1122,12 +1303,18 @@
 
   function renderCompile() {
     const ctx = state.compile;
+    renderPacketSize(ctx);
+
     const bd = $('breakdown');
     clear(bd);
     if (!ctx) {
+      resetOmissions();
       bd.appendChild(stateBlock('empty', i18n.t('ui.not_compiled_yet'), i18n.t('ui.choose_parameters_above_then_select_compile')));
       clear($('completeBody'));
       $('completeBody').appendChild(stateBlock('empty', '—', i18n.t('ui.after_compilation_this_panel_shows_whether_any')));
+      setText('packetTotal', '');
+      setText('packetNote', '');
+      setText('completeSub', '');
       setText('packetPreview', '');
       return;
     }
@@ -1219,21 +1406,66 @@
       cb.appendChild(ul);
     }
 
-    if (ctx.omissions.length) {
-      const ul = el('ul', 'crit-list');
-      ul.style.marginTop = '14px';
-      for (const o of ctx.omissions) {
-        const item = el('li');
-        item.appendChild(el('span', 'box', '—'));
-        item.appendChild(el('span', null, o.reason ? `${o.detail}（${o.reason}）` : o.detail));
-        ul.appendChild(item);
-      }
-      cb.appendChild(ul);
-      const tip = el('p', 'figure-note', i18n.t('ui.increase_the_budget_and_compile_again_to'));
-      cb.appendChild(tip);
-    }
+    renderOmissions(ctx, cb);
 
     setText('packetPreview', ctx.rendered || i18n.t('ui.no_rendered_text_was_returned'));
+  }
+
+  /**
+   * Group omitted chunks by section so internal IDs do not obscure missing facts.
+   * Keep the original IDs in an expandable section for inspection.
+   */
+  /** Clear collapsed content as well as hiding it to prevent stale IDs reappearing. */
+  function resetOmissions() {
+    const box = $('omittedBox');
+    if (box) {
+      box.hidden = true;
+      box.open = false;
+    }
+    setText('omittedSummary', '');
+    setText('omittedList', '');
+  }
+
+  function renderOmissions(ctx, cb) {
+    const box = $('omittedBox');
+    if (!ctx.omissions.length) {
+      resetOmissions();
+      return;
+    }
+
+    const bySection = new Map();
+    const reasons = new Set();
+    for (const o of ctx.omissions) {
+      const name = o.section || i18n.t('ui.unsectioned');
+      bySection.set(name, (bySection.get(name) || 0) + 1);
+      if (o.reason) reasons.add(o.reason);
+    }
+
+    const line = el('p', 'figure-note');
+    line.style.marginTop = '14px';
+    const parts = [...bySection.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, n]) => `${name} ${n}`);
+    line.appendChild(el('b', null, i18n.t('ui.omitted_count', { count: ctx.omissions.length })));
+    line.appendChild(document.createTextNode(': ' + parts.join(' · ')));
+    if (reasons.size) {
+      line.appendChild(document.createTextNode(i18n.t('ui.omission_reasons', { reasons: [...reasons].join(', ') })));
+    }
+    cb.appendChild(line);
+
+    const tip = el('p', 'figure-note', i18n.t('ui.increase_the_budget_and_compile_again_to'));
+    tip.style.marginTop = '4px';
+    cb.appendChild(tip);
+
+    if (box) {
+      box.hidden = false;
+      box.open = false;
+      setText('omittedSummary', i18n.t('ui.omitted_ids', { count: ctx.omissions.length }));
+      setText(
+        'omittedList',
+        ctx.omissions.map((o) => `${o.section || '—'}\t${o.key || o.detail}`).join('\n')
+      );
+    }
   }
 
   // Indexed sources
@@ -1346,8 +1578,49 @@
 
   // Loading
 
+  function resetProjectData() {
+    // Work keys, options and caches belong to one source; demo is a separate source.
+    ++sourceGeneration;
+    ++workPageGeneration;
+    detailGuard.invalidate();
+    state.overviewWork = null;
+    state.selectedWork = null;
+    state.workFilter = 'all';
+    state.workOffset = 0;
+    state.workPage = null;
+    state.workPageLoading = false;
+    state.workPageError = null;
+    state.workDetail = {};
+    state.status = null;
+    state.sources = null;
+    state.compile = null;
+    state.raw = {};
+    for (const id of ['fWork', 'workRows', 'workFilters', 'workPagination', 'workEmpty', 'workDetail',
+      'statusStrip', 'queueList', 'queueTabs', 'cpList', 'pendingList',
+      'rawWorkBody', 'rawContextBody', 'rawOverviewBody', 'rawSourcesBody']) clear($(id));
+    for (const id of ['navWorkCount', 'navSourceCount', 'workSub', 'queueSub', 'gapSub', 'pendingSub',
+      'srcTitle', 'srcSub', 'srcCmd', 'compileHint']) setText(id, '');
+    $('fGoal').value = '';
+    $('fIntent').value = '';
+    $('compileBtn').disabled = false;
+    setText('detailId', i18n.t('ui.details'));
+    setText('detailStatus', '—');
+    renderSources();
+    renderCompile();
+    updateCliMirror();
+  }
+
+  let loadGeneration = 0;
   async function loadAll() {
+    const generation = ++loadGeneration;
+    const previousMode = state.mode;
+    const previousProject = state.project;
+    ++workPageGeneration;
+    detailGuard.invalidate();
+    state.workDetail = {};
+    state.workPage = null;
     const health = await callApi('/api/health');
+    if (generation !== loadGeneration) return;
     if (health.ok) {
       state.mode = health.data.mode;
       // In demo mode, show the sample project name rather than this tool's directory;
@@ -1361,6 +1634,8 @@
       state.project = '.local/demo';
     }
 
+    if (state.mode !== previousMode || state.project !== previousProject) resetProjectData();
+    state.workPagination = state.mode !== 'demo';
     setText('projPath', state.project);
     renderModeUi();
 
@@ -1370,15 +1645,16 @@
       state.raw.overview = { ok: true, data: window.AWR_DEMO.status, note: i18n.t('ui.demo_data') };
       state.raw.sources = { ok: true, data: window.AWR_DEMO.sources, note: i18n.t('ui.demo_data') };
     } else {
-      // Release 0.4.0 status lacks ready/blocked lists, so fetch both responses.
-      const [st, rdy, src] = await Promise.all([
-        callApi('/api/status'), callApi('/api/ready'), callApi('/api/sources'),
+      // Use summaries for Overview and fetch work pages on demand.
+      const [st, src] = await Promise.all([
+        callApi('/api/status'), callApi('/api/sources'),
       ]);
-      state.raw.overview = { status: st, ready: rdy };
+      if (generation !== loadGeneration) return;
+      state.raw.overview = { status: st };
       state.raw.sources = src;
 
       if (st.ok) {
-        state.status = normStatus(st.data, rdy.ok ? rdy.data : null);
+        state.status = normStatus(st.data, null);
       } else {
         state.status = null;
         clear($('statusStrip'));
@@ -1396,7 +1672,9 @@
 
     if (state.status) {
       renderOverview();
-      renderWork();
+      if (state.workPagination) await loadWorkPage();
+      else await renderWork();
+      if (generation !== loadGeneration) return;
       fillWorkSelect();
     }
     if (state.sources) renderSources();
@@ -1464,6 +1742,7 @@
         i18n.t('ui.each_new_coding_agent_session_needs_to'),
         i18n.t('ui.awr_inspector_gives_people_a_view_of'),
         i18n.t('ui.source_filesawr_indexcontext_packet'),
+        i18n.t('ui.benchmark_explanation'),
       ].join(''),
     },
     {
@@ -1552,9 +1831,6 @@
     $('btnRefresh').addEventListener('click', async () => {
       const b = $('btnRefresh');
       b.classList.add('spin');
-      // Invalidate in-flight detail requests so stale data cannot arrive after refresh.
-      detailGuard.invalidate();
-      state.workDetail = {};
       await loadAll();
       b.classList.remove('spin');
     });
@@ -1623,6 +1899,9 @@
 
   // Test exports; browsers have no module object and skip this block.
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { createGenerationGuard, state, detailGuard, renderWorkDetail };
+    module.exports = {
+      createGenerationGuard, state, detailGuard, renderWorkDetail, normStatus, renderWork, loadWorkPage,
+      renderPacketSize, doCompile, renderQueueList, fillWorkSelect, loadAll,
+    };
   }
 })();
