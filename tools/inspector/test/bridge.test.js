@@ -547,3 +547,12 @@ test('search preserves shell metacharacters as one literal argument', async () =
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('分页参数传给 status，非法页大小和偏移不执行命令', async () => {
+  const result = await (await fetch(`${bridge.base}/api/work-page?queue=ready&offset=10&limit=20`, {headers:GUARD})).json();
+  assert.match(result.command, /--queue ready --offset 10 --page-size 20/);
+  for (const query of ['queue=other', 'offset=-1', 'offset=1.5', 'limit=0', 'limit=101']) {
+    const invalid=await (await fetch(`${bridge.base}/api/work-page?${query}`, {headers:GUARD})).json();
+    assert.equal(invalid.ok,false); assert.equal(invalid.error.code,'BadRequest');
+  }
+});
