@@ -471,6 +471,93 @@ async fn caller_reports_preserve_observations_and_unknown_effects_after_lease_ex
 }
 
 #[tokio::test]
+async fn caller_report_marks_only_execution_bound_resources_unknown_after_takeover() {
+    let (_g, admin, _, store, legacy) = setup_with_legacy_resource().await;
+    enable_writes(&admin).await;
+    let (c, e) = ready_intent(&store).await;
+    let started = store
+        .commands()
+        .execute(TENANT, PROJECT, A, admission(&store, &c, &e, "start").await)
+        .await
+        .unwrap();
+    let running = &started["receipt"]["data"];
+    let owned = running["resources"][0]["reservation_id"].as_str().unwrap();
+    admin.batch_execute("INSERT INTO awr_team.executions(tenant_id,project_id,id,work_id,fence,contract_hash,executor_actor_id,state)
+        VALUES('reader-tenant','reader-project','other-execution','a',0,'old','old-runner','unknown');
+        INSERT INTO awr_team.resource_reservations(tenant_id,project_id,id,work_id,resource_kind,canonical_key,state,execution_id)
+        VALUES('reader-tenant','reader-project','other-resource','a','named','other','reserved','other-execution')").await.unwrap();
+    store
+        .commands()
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            report(&store, running, "report", "succeeded").await,
+        )
+        .await
+        .unwrap();
+    let states = admin
+        .query_one(
+            "SELECT
+                (SELECT state FROM awr_team.resource_reservations WHERE id=$1),
+                (SELECT execution_id FROM awr_team.resource_reservations WHERE id=$1),
+                (SELECT state FROM awr_team.resource_reservations WHERE id='other-resource'),
+                (SELECT state FROM awr_team.resource_reservations WHERE id=$2)",
+            &[&owned, &legacy],
+        )
+        .await
+        .unwrap();
+    assert_eq!(states.get::<_, String>(0), "unknown");
+    assert_eq!(
+        states.get::<_, Option<String>>(1).as_deref(),
+        running["execution_id"].as_str()
+    );
+    assert_eq!(states.get::<_, String>(2), "reserved");
+    assert_eq!(states.get::<_, String>(3), "reserved");
+}
+
+#[tokio::test]
+async fn empty_admission_resources_remain_a_valid_report_binding() {
+    let (_g, admin, _, store) = setup().await;
+    enable_writes(&admin).await;
+    let c = claim(&store).await;
+    let mut prepare = intent(&store, &c, "prepare-empty").await;
+    prepare.args["declared_scope"] = json!([]);
+    let e = store
+        .commands()
+        .execute(TENANT, PROJECT, A, prepare)
+        .await
+        .unwrap()["receipt"]["data"]
+        .clone();
+    let started = store
+        .commands()
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            admission(&store, &c, &e, "start-empty").await,
+        )
+        .await
+        .unwrap();
+    assert_eq!(started["receipt"]["data"]["resources"], json!([]));
+    let mut observation = report(
+        &store,
+        &started["receipt"]["data"],
+        "report-empty",
+        "succeeded",
+    )
+    .await;
+    observation.args["observed_paths"] = json!([]);
+    let result = store
+        .commands()
+        .execute(TENANT, PROJECT, A, observation)
+        .await
+        .unwrap();
+    assert_eq!(result["receipt"]["data"]["state"], "unknown");
+    assert_eq!(snapshot(&admin).await["resources"], Value::Null);
+}
+
+#[tokio::test]
 async fn another_client_cannot_start_or_report_and_report_cannot_invent_trust() {
     let (_g, admin, _, store) = setup().await;
     enable_writes(&admin).await;
