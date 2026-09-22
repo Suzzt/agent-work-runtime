@@ -262,8 +262,18 @@ mod tests {
         );
         assert_eq!(report["authorization"], "schema_owner_postgresql_role");
         assert_eq!(report["workstreams_required"], true);
-        assert!(report["next_action"].as_str().unwrap().contains("never mutates"));
-        assert!(report["next_action"].as_str().unwrap().contains("quarantine-*"));
+        assert!(
+            report["next_action"]
+                .as_str()
+                .unwrap()
+                .contains("never mutates")
+        );
+        assert!(
+            report["next_action"]
+                .as_str()
+                .unwrap()
+                .contains("quarantine-*")
+        );
     }
 
     #[test]

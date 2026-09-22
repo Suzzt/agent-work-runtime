@@ -78,10 +78,7 @@ async fn recovery_inspect_is_read_only_and_app_role_is_forbidden() {
     assert_eq!(report["mutation"], false);
     assert_eq!(report["restore"], false);
     assert_eq!(report["execution_authorized"], false);
-    assert_eq!(
-        report["findings"]["recovery_blocked_work"]["count"],
-        1
-    );
+    assert_eq!(report["findings"]["recovery_blocked_work"]["count"], 1);
     assert!(
         report["findings"]["unattributed_history"]["sessions_without_workstream"]
             .as_i64()
@@ -390,10 +387,7 @@ async fn execution_attribution_binds_reviewed_client_id_without_forging_identity
     let preview = OperatorExecutionAttribution::preview(&mut admin, &plan)
         .await
         .unwrap();
-    assert_eq!(
-        preview["protocol"],
-        "awr-operator-execution-attribution-v1"
-    );
+    assert_eq!(preview["protocol"], "awr-operator-execution-attribution-v1");
     let actionable = preview["actionable"].as_array().unwrap();
     assert_eq!(actionable.len(), 1);
     assert_eq!(actionable[0]["action"], "attribute");
@@ -512,10 +506,7 @@ async fn backup_fencing_restore_and_bounded_rebuild_against_real_pg() {
     assert_eq!(restored["receipt"]["completion_receipts_modified"], false);
     assert_eq!(restored["receipt"]["identity_forged"], false);
     assert_eq!(restored["receipt"]["execution_authorized"], false);
-    assert_eq!(
-        restored["receipt"]["report"]["mode"],
-        "verified_fencing"
-    );
+    assert_eq!(restored["receipt"]["report"]["mode"], "verified_fencing");
     let new_epoch: String = admin
         .query_one(
             "SELECT coordinator_epoch FROM awr_team.projects WHERE tenant_id=$1 AND id=$2",
@@ -555,12 +546,7 @@ async fn backup_fencing_restore_and_bounded_rebuild_against_real_pg() {
         .unwrap();
     assert_eq!(rebuild["decision"]["safe_to_apply"], true);
     assert_eq!(rebuild["decision"]["mode"], "ownership_materialize");
-    assert!(
-        rebuild["decision"]["insert_ownership"]
-            .as_u64()
-            .unwrap()
-            >= 1
-    );
+    assert!(rebuild["decision"]["insert_ownership"].as_u64().unwrap() >= 1);
 
     let rebuilt = OperatorBackup::rebuild_apply(
         &mut admin,
@@ -616,7 +602,6 @@ async fn backup_fencing_restore_and_bounded_rebuild_against_real_pg() {
     ));
 }
 
-
 #[tokio::test]
 async fn quarantine_keeps_claim_acquire_recovery_blocked_for_false_and_true_barriers() {
     let (_g, mut admin, _db, store) = setup().await;
@@ -663,7 +648,12 @@ async fn quarantine_keeps_claim_acquire_recovery_blocked_for_false_and_true_barr
         assert!(
             matches!(
                 commands
-                    .execute(TENANT, PROJECT, A, acquire(&store, &format!("pre-{case}")).await)
+                    .execute(
+                        TENANT,
+                        PROJECT,
+                        A,
+                        acquire(&store, &format!("pre-{case}")).await
+                    )
                     .await,
                 Err(PgError::RecoveryBlocked)
             ),

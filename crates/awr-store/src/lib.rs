@@ -11,9 +11,9 @@ mod events;
 mod evidence;
 mod execution;
 mod handoff;
-mod team_handoff;
 mod management;
 mod mcp;
+mod team_handoff;
 pub use mcp::with_mcp_operation;
 mod mutation;
 mod mutation_apply;
@@ -436,7 +436,8 @@ impl Store {
                 tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(8,'responsibility',?1)",[now_millis()?]).map_err(db_error)?;
             }
             if version < 9 {
-                tx.execute_batch(AGENT_AUTHORIZATION_SQL).map_err(db_error)?;
+                tx.execute_batch(AGENT_AUTHORIZATION_SQL)
+                    .map_err(db_error)?;
                 tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(9,'agent_authorization',?1)",[now_millis()?]).map_err(db_error)?;
             }
             if version < 10 {
@@ -617,7 +618,7 @@ impl Store {
     }
 }
 
+pub mod agent_authorization;
 mod content_review;
 mod responsibility;
-pub mod agent_authorization;
 pub use agent_authorization::AuthorizationReceipt;

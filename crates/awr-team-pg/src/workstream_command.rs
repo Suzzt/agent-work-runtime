@@ -4,7 +4,9 @@ pub(crate) mod claims;
 pub(crate) mod executions;
 pub(crate) mod handoffs;
 
-use crate::workstream_auth::{CommandAuthPhase, ReaderAuthority, authenticate_writer, authorize_command};
+use crate::workstream_auth::{
+    CommandAuthPhase, ReaderAuthority, authenticate_writer, authorize_command,
+};
 use crate::workstream_read::{WorkstreamQuery, read, work_binding};
 use crate::{PgError, PgPool, PgResult};
 use awr_core::Id;
@@ -134,12 +136,8 @@ impl WorkstreamCommand {
             "claim.acquire" | "claim.renew" | "claim.release" => Ok(Action::Claim(
                 claims::Action::parse(&self.op, self.args.clone())?,
             )),
-            "handoff.propose"
-            | "handoff.inspect"
-            | "handoff.accept"
-            | "handoff.reject"
-            | "handoff.cancel"
-            | "handoff.timeout" => Ok(Action::Handoff(handoffs::Action::parse(
+            "handoff.propose" | "handoff.inspect" | "handoff.accept" | "handoff.reject"
+            | "handoff.cancel" | "handoff.timeout" => Ok(Action::Handoff(handoffs::Action::parse(
                 &self.op,
                 self.args.clone(),
             )?)),

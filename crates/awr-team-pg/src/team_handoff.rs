@@ -113,7 +113,9 @@ impl HandoffStore {
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
         bind_workstream_scope(&tx, tenant, project).await?;
-        if let Some(receipt) = load_receipt(&tx, tenant, project, &req.request_key, "propose").await? {
+        if let Some(receipt) =
+            load_receipt(&tx, tenant, project, &req.request_key, "propose").await?
+        {
             let h = load_tx(&tx, tenant, project, &receipt.handoff_id)
                 .await?
                 .ok_or_else(|| PgError::Protocol("handoff missing for receipt".into()))?;
@@ -136,9 +138,14 @@ impl HandoffStore {
         project: &str,
         req: &InspectHandoffRequest,
     ) -> PgResult<(TeamHandoff, HandoffReceipt)> {
-        self.mutate(tenant, project, &req.request_key, "inspect", &req.handoff_id, |before| {
-            apply_handoff_inspect(before, req).map_err(map_core)
-        })
+        self.mutate(
+            tenant,
+            project,
+            &req.request_key,
+            "inspect",
+            &req.handoff_id,
+            |before| apply_handoff_inspect(before, req).map_err(map_core),
+        )
         .await
     }
 
@@ -151,7 +158,9 @@ impl HandoffStore {
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
         bind_workstream_scope(&tx, tenant, project).await?;
-        if let Some(receipt) = load_receipt(&tx, tenant, project, &req.request_key, "accept").await? {
+        if let Some(receipt) =
+            load_receipt(&tx, tenant, project, &req.request_key, "accept").await?
+        {
             let h = load_tx(&tx, tenant, project, &receipt.handoff_id)
                 .await?
                 .ok_or_else(|| PgError::Protocol("handoff missing for receipt".into()))?;
@@ -184,9 +193,14 @@ impl HandoffStore {
         project: &str,
         req: &RejectHandoffRequest,
     ) -> PgResult<(TeamHandoff, HandoffReceipt)> {
-        self.mutate(tenant, project, &req.request_key, "reject", &req.handoff_id, |before| {
-            apply_handoff_reject(before, req).map_err(map_core)
-        })
+        self.mutate(
+            tenant,
+            project,
+            &req.request_key,
+            "reject",
+            &req.handoff_id,
+            |before| apply_handoff_reject(before, req).map_err(map_core),
+        )
         .await
     }
 
@@ -196,9 +210,14 @@ impl HandoffStore {
         project: &str,
         req: &CancelHandoffRequest,
     ) -> PgResult<(TeamHandoff, HandoffReceipt)> {
-        self.mutate(tenant, project, &req.request_key, "cancel", &req.handoff_id, |before| {
-            apply_handoff_cancel(before, req).map_err(map_core)
-        })
+        self.mutate(
+            tenant,
+            project,
+            &req.request_key,
+            "cancel",
+            &req.handoff_id,
+            |before| apply_handoff_cancel(before, req).map_err(map_core),
+        )
         .await
     }
 
@@ -208,9 +227,14 @@ impl HandoffStore {
         project: &str,
         req: &TimeoutHandoffRequest,
     ) -> PgResult<(TeamHandoff, HandoffReceipt)> {
-        self.mutate(tenant, project, &req.request_key, "timeout", &req.handoff_id, |before| {
-            apply_handoff_timeout(before, req).map_err(map_core)
-        })
+        self.mutate(
+            tenant,
+            project,
+            &req.request_key,
+            "timeout",
+            &req.handoff_id,
+            |before| apply_handoff_timeout(before, req).map_err(map_core),
+        )
         .await
     }
 
@@ -260,9 +284,10 @@ pub(crate) async fn commit_accepted_transfer(
         return Ok(());
     }
     let work_id = after.work_item_id.as_str();
-    let successor = after.accepted_successor.as_ref().ok_or_else(|| {
-        PgError::Protocol("accepted handoff missing successor execution".into())
-    })?;
+    let successor = after
+        .accepted_successor
+        .as_ref()
+        .ok_or_else(|| PgError::Protocol("accepted handoff missing successor execution".into()))?;
     ensure_person(tx, tenant, project, after.to_person_id.as_str()).await?;
     ensure_person(tx, tenant, project, after.from_person_id.as_str()).await?;
     ensure_person(tx, tenant, project, successor.person_id().as_str()).await?;
@@ -369,9 +394,7 @@ async fn upsert_responsibility_executor(
     version: i64,
 ) -> PgResult<()> {
     let (kind, person, agent, binding): (&str, &str, Option<&str>, Option<&str>) = match successor {
-        ExecutionInstance::Person { person_id } => {
-            ("person", person_id.as_str(), None, None)
-        }
+        ExecutionInstance::Person { person_id } => ("person", person_id.as_str(), None, None),
         ExecutionInstance::AgentRun {
             person_id,
             agent_id,
@@ -411,8 +434,12 @@ async fn upsert_responsibility_executor(
     Ok(())
 }
 
-
-async fn ensure_person(tx: &Transaction<'_>, tenant: &str, project: &str, person_id: &str) -> PgResult<()> {
+async fn ensure_person(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    person_id: &str,
+) -> PgResult<()> {
     tx.execute(
         "INSERT INTO awr_team.persons(tenant_id,project_id,id,display_name,status)
          VALUES($1,$2,$3,$3,'active')

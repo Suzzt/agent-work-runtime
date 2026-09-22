@@ -352,9 +352,10 @@ pub fn apply_assign(
     next.collaborators = req.collaborators.clone();
     next.independent_reviewer = req.independent_reviewer.clone();
     // Assignment alone does not steal or invent an executor.
-    next.version = current.version.checked_add(1).ok_or_else(|| {
-        Error::InvalidInput("responsibility version overflow".into())
-    })?;
+    next.version = current
+        .version
+        .checked_add(1)
+        .ok_or_else(|| Error::InvalidInput("responsibility version overflow".into()))?;
     // Fresh assign clears transfer-pending; departure/disable stay until explicit clear.
     if matches!(
         next.pending.as_ref().map(|p| p.kind),
@@ -408,9 +409,10 @@ pub fn apply_accept(
         }
     }
     let mut next = current.clone();
-    next.version = current.version.checked_add(1).ok_or_else(|| {
-        Error::InvalidInput("responsibility version overflow".into())
-    })?;
+    next.version = current
+        .version
+        .checked_add(1)
+        .ok_or_else(|| Error::InvalidInput("responsibility version overflow".into()))?;
     if matches!(
         next.pending.as_ref().map(|p| p.kind),
         Some(ResponsibilityPendingKind::NoAcceptor)
@@ -454,9 +456,10 @@ pub fn apply_claim_execution(
     let mut next = current.clone();
     // Ownership is untouched — even if the unassigned pool has no owner.
     next.current_executor = Some(req.executor.clone());
-    next.version = current.version.checked_add(1).ok_or_else(|| {
-        Error::InvalidInput("responsibility version overflow".into())
-    })?;
+    next.version = current
+        .version
+        .checked_add(1)
+        .ok_or_else(|| Error::InvalidInput("responsibility version overflow".into()))?;
     next.validate_structure()?;
     Ok(next)
 }
@@ -489,9 +492,10 @@ pub fn apply_release_execution(
     }
     let mut next = current.clone();
     next.current_executor = None;
-    next.version = current.version.checked_add(1).ok_or_else(|| {
-        Error::InvalidInput("responsibility version overflow".into())
-    })?;
+    next.version = current
+        .version
+        .checked_add(1)
+        .ok_or_else(|| Error::InvalidInput("responsibility version overflow".into()))?;
     Ok(next)
 }
 
@@ -547,9 +551,10 @@ pub fn apply_transfer_propose(
             next.current_executor = None;
         }
     }
-    next.version = current.version.checked_add(1).ok_or_else(|| {
-        Error::InvalidInput("responsibility version overflow".into())
-    })?;
+    next.version = current
+        .version
+        .checked_add(1)
+        .ok_or_else(|| Error::InvalidInput("responsibility version overflow".into()))?;
     next.validate_structure()?;
     Ok(next)
 }
@@ -580,9 +585,10 @@ pub fn apply_agent_swap_for_person(
     let owner_before = current.owner.clone();
     let mut next = current.clone();
     next.current_executor = Some(new_executor);
-    next.version = current.version.checked_add(1).ok_or_else(|| {
-        Error::InvalidInput("responsibility version overflow".into())
-    })?;
+    next.version = current
+        .version
+        .checked_add(1)
+        .ok_or_else(|| Error::InvalidInput("responsibility version overflow".into()))?;
     if next.owner != owner_before {
         return Err(Error::RuleViolation(
             "agent swap must not alter responsibility ownership".into(),
@@ -610,9 +616,10 @@ pub fn apply_mark_pending(
     }
     let mut next = current.clone();
     next.pending = Some(pending);
-    next.version = current.version.checked_add(1).ok_or_else(|| {
-        Error::InvalidInput("responsibility version overflow".into())
-    })?;
+    next.version = current
+        .version
+        .checked_add(1)
+        .ok_or_else(|| Error::InvalidInput("responsibility version overflow".into()))?;
     next.validate_structure()?;
     Ok(next)
 }

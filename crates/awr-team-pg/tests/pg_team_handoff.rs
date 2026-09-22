@@ -198,7 +198,6 @@ async fn timeout_preserves_original_without_stop() {
     assert!(duty.note.contains("not stop"));
 }
 
-
 #[tokio::test]
 async fn accept_transfers_responsibility_owner_and_execution_claim() {
     let (_g, admin, db, store) = setup().await;
@@ -311,7 +310,11 @@ async fn accept_transfers_responsibility_owner_and_execution_claim() {
         .await
         .unwrap();
     let after = resp.get(TENANT, PROJECT, "work-a").await.unwrap();
-    assert_eq!(after.owner, Some(bob.clone()), "responsibility owner must move");
+    assert_eq!(
+        after.owner,
+        Some(bob.clone()),
+        "responsibility owner must move"
+    );
 
     // Fresh execution handoff moves executor + closes claim.
     let (assigned2, _) = resp
@@ -406,17 +409,18 @@ async fn accept_transfers_responsibility_owner_and_execution_claim() {
         .await
         .unwrap();
     let exec_after = resp.get(TENANT, PROJECT, "work-b").await.unwrap();
-    assert_eq!(exec_after.owner, Some(alice), "execution handoff keeps ownership");
+    assert_eq!(
+        exec_after.owner,
+        Some(alice),
+        "execution handoff keeps ownership"
+    );
     assert_eq!(
         exec_after.current_executor.as_ref().map(|e| e.person_id()),
         Some(&bob),
         "executor must transfer"
     );
     let claim_state: String = admin
-        .query_one(
-            "SELECT state FROM awr_team.claims WHERE id='claim-b'",
-            &[],
-        )
+        .query_one("SELECT state FROM awr_team.claims WHERE id='claim-b'", &[])
         .await
         .unwrap()
         .get(0);
@@ -475,7 +479,10 @@ async fn authenticated_accept_requires_receiver_credential() {
         .execute(fixture::TENANT, fixture::PROJECT, fixture::A, start)
         .await
         .unwrap();
-    let sess_a = started["receipt"]["data"]["session_id"].as_str().unwrap().to_string();
+    let sess_a = started["receipt"]["data"]["session_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // Bob needs a write grant on stream 1 (work a). Grant may be stream 2 only for cli-b.
     admin
@@ -540,7 +547,10 @@ async fn authenticated_accept_requires_receiver_credential() {
         .await
         .unwrap();
     assert_eq!(proposed["receipt"]["data"]["status"], "proposed");
-    let version = proposed["receipt"]["data"]["version"].as_str().unwrap().to_string();
+    let version = proposed["receipt"]["data"]["version"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // Same alice credential forges acceptor_person_id=bob.
     let current_a = fixture::prepare(&store, fixture::A, "a").await;
