@@ -675,9 +675,14 @@ fn mutations_cannot_hide_missing_cases_or_fabricate_coverage() {
 #[test]
 fn sealed_historical_agent_evidence_accepts_the_versioned_positive_control() {
     let source = historical_agent_index_source();
-    let source_sha = normalized_source_sha256(source);
-    validate_historical_agent_evidence(&matrix(), &historical_agent_index(), &source_sha).unwrap();
-    let crlf_source = source.replace('\n', "\r\n");
+    let lf_source = source.replace("\r\n", "\n");
+    validate_historical_agent_evidence(
+        &matrix(),
+        &serde_json::from_str(&lf_source).unwrap(),
+        &normalized_source_sha256(&lf_source),
+    )
+    .unwrap();
+    let crlf_source = lf_source.replace('\n', "\r\n");
     validate_historical_agent_evidence(
         &matrix(),
         &serde_json::from_str(&crlf_source).unwrap(),
