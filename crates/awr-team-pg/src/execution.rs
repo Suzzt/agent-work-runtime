@@ -622,8 +622,9 @@ impl ExecutionStore {
                 )
                 .await?;
             }
+            let execution = load_execution(&tx, tenant_id, project_id, execution_id).await?;
             tx.commit().await?;
-            return self.get(tenant_id, project_id, execution_id).await;
+            return Ok(execution);
         }
         // Explicit state machine for ordinary reports (CR #41 P2-8):
         // - terminal + same outcome        → idempotent audit receipt
@@ -663,8 +664,9 @@ impl ExecutionStore {
                 None => false,
             };
             if facts_match {
+                let execution = load_execution(&tx, tenant_id, project_id, execution_id).await?;
                 tx.commit().await?;
-                return self.get(tenant_id, project_id, execution_id).await;
+                return Ok(execution);
             }
             insert_receipt(
                 &tx,
@@ -811,9 +813,10 @@ impl ExecutionStore {
             json!({"execution_id": execution_id, "outcome": next, "receipt_kind": receipt_kind}),
         )
         .await?;
+        let execution = load_execution(&tx, tenant_id, project_id, execution_id).await?;
         tx.commit().await?;
         let _ = _exactly_once;
-        self.get(tenant_id, project_id, execution_id).await
+        Ok(execution)
     }
 
     pub async fn reconcile(
@@ -915,8 +918,9 @@ impl ExecutionStore {
             json!({"execution_id": execution_id, "terminal_state": terminal_state, "clear_block": clear_block}),
         )
         .await?;
+        let execution = load_execution(&tx, tenant_id, project_id, execution_id).await?;
         tx.commit().await?;
-        self.get(tenant_id, project_id, execution_id).await
+        Ok(execution)
     }
 
     pub async fn get(
@@ -928,30 +932,9 @@ impl ExecutionStore {
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
         bind_scope(&tx, tenant_id, project_id).await?;
-        let row = tx
-            .query_opt(
-                "SELECT id, work_id, session_id, claim_id, fence, contract_hash, effect_key,
-                        state, cancel_requested, fencing_class
-                 FROM awr_team.executions
-                 WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
-                &[&tenant_id, &project_id, &execution_id],
-            )
-            .await?
-            .ok_or(PgError::ExecutionNotFound)?;
+        let execution = load_execution(&tx, tenant_id, project_id, execution_id).await?;
         tx.commit().await?;
-        Ok(ExecutionRecord {
-            id: row.get(0),
-            work_id: row.get(1),
-            session_id: row.get::<_, Option<String>>(2).unwrap_or_default(),
-            claim_id: row.get::<_, Option<String>>(3).unwrap_or_default(),
-            fence: row.get(4),
-            contract_hash: row.get(5),
-            effect_key: row.get::<_, Option<String>>(6).unwrap_or_default(),
-            state: row.get(7),
-            cancel_requested: row.get(8),
-            fencing_class: row.get(9),
-            replayed: false,
-        })
+        Ok(execution)
     }
 
     async fn transition(
@@ -1020,8 +1003,9 @@ impl ExecutionStore {
         // 'accepted'/'running' are in their own allowed sets, so this check
         // must come first (CR #58 P2-7).
         if state == next {
+            let execution = load_execution(&tx, tenant_id, project_id, execution_id).await?;
             tx.commit().await?;
-            return self.get(tenant_id, project_id, execution_id).await;
+            return Ok(execution);
         }
         if !allowed.contains(&state.as_str()) {
             return Err(PgError::Protocol(format!(
@@ -1046,8 +1030,9 @@ impl ExecutionStore {
             json!({"execution_id": execution_id, "from": state, "to": next}),
         )
         .await?;
+        let execution = load_execution(&tx, tenant_id, project_id, execution_id).await?;
         tx.commit().await?;
-        self.get(tenant_id, project_id, execution_id).await
+        Ok(execution)
     }
 }
 
@@ -1078,6 +1063,37 @@ fn scope_exceeded(declared: &Value, observed: &[String]) -> bool {
     observed
         .iter()
         .any(|path| !declared.iter().any(|item| path_within_scope(item, path)))
+}
+
+async fn load_execution(
+    tx: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    project_id: &str,
+    execution_id: &str,
+) -> PgResult<ExecutionRecord> {
+    let row = tx
+        .query_opt(
+            "SELECT id, work_id, session_id, claim_id, fence, contract_hash, effect_key,
+                    state, cancel_requested, fencing_class
+             FROM awr_team.executions
+             WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+            &[&tenant_id, &project_id, &execution_id],
+        )
+        .await?
+        .ok_or(PgError::ExecutionNotFound)?;
+    Ok(ExecutionRecord {
+        id: row.get(0),
+        work_id: row.get(1),
+        session_id: row.get::<_, Option<String>>(2).unwrap_or_default(),
+        claim_id: row.get::<_, Option<String>>(3).unwrap_or_default(),
+        fence: row.get(4),
+        contract_hash: row.get(5),
+        effect_key: row.get::<_, Option<String>>(6).unwrap_or_default(),
+        state: row.get(7),
+        cancel_requested: row.get(8),
+        fencing_class: row.get(9),
+        replayed: false,
+    })
 }
 
 async fn insert_receipt(
