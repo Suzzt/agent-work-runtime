@@ -38,7 +38,7 @@ def main() -> int:
     assert method["baseline"] == "same_source_assessment_explain_off"
     assert method["candidate"] == "same_source_readonly_assessment_explain_on"
     assert set(method["costs_recorded"]) == {"collect", "judge", "output"}
-    assert manifest["dec_020_started"] is False
+    assert manifest["dec_020_started"] is True
     assert manifest["evo_000_started"] is False
 
     assert len(manifest["fixtures"]) == 20
@@ -99,6 +99,7 @@ def main() -> int:
 
     assert DOC.is_file(), "docs/reference/assessment.md missing"
     assert "DEC-013" in DOC.read_text()
+    assert "DEC-020" in DOC.read_text()
 
     assert BENCH_DOC.is_file(), "docs/benchmarks/assessment.md missing"
     bench_doc = BENCH_DOC.read_text()

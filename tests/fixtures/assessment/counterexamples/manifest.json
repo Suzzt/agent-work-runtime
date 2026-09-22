@@ -74,6 +74,6 @@
     "delivery_unknown",
     "time_budget"
   ],
-  "dec_020_started": false,
+  "dec_020_started": true,
   "evo_000_started": false
 }

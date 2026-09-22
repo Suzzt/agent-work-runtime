@@ -23,6 +23,7 @@ pub use host_save::{
     HostChange, HostSaveReport, HostSaveRequest, host_preview, host_recover, host_save, host_status,
 };
 mod execution;
+mod explanation_chain;
 mod fact_snapshot;
 mod fs_sync;
 mod management;
@@ -47,6 +48,12 @@ pub use branch_close::{CloseBranchRequest, close_branch};
 pub use completion::{CompleteWorkRequest, complete_work};
 pub use doctor::{ProjectDoctorReport, diagnose_project};
 pub use execution::{inspect_execution, inspect_work_executions, render_execution_observations};
+pub use explanation_chain::{
+    CompletionExplanationInput, DeliveryExplanationInput, EXPLANATION_CHAIN_PROFILE,
+    ExplanationAuthority, ExplanationChainInput, ExplanationChainResult, FORBIDDEN_RERUN_CUES,
+    ProbeSupport, UnresolvedSideEffect, compose_explanation_chain,
+    explanation_chain_from_prepare_json, prior_explanation_still_valid,
+};
 pub use fact_snapshot::{
     PREPARE_FACT_MAX_BYTES, PREPARE_FACT_MAX_CANDIDATES, PREPARE_FACT_MAX_SCAN_OPS,
     PreparedFactView, fact_snapshot_from_prepared_view, prepared_view_from_prepare_json,
