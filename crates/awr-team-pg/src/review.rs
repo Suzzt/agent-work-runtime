@@ -729,12 +729,27 @@ impl ReviewStore {
             // Explicit: merge flag is recorded but does not authorize completion.
             let _ = _gh_merged;
         }
+        let verified_executor = if let Some(eid) = evidence.execution_id.as_deref() {
+            tx.query_opt(
+                "SELECT executor_actor_id FROM awr_team.executions
+                 WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+                &[&tenant_id, &project_id, &eid],
+            )
+            .await?
+            .map(|r| r.get::<_, String>(0))
+        } else {
+            None
+        };
+        let author_actor = pr_author
+            .clone()
+            .or_else(|| Some(evidence.created_by.clone()));
+        let executor_actor = pr_executor.clone().or(verified_executor);
         let approved_by = json!({
             "approved_by": approver,
             "submitted_by": actor_id,
-            "author_actor_id": pr_author.clone().or_else(|| Some(evidence.created_by.clone())),
+            "author_actor_id": author_actor,
             "owner_person_id": pr_owner.clone(),
-            "executor_actor_id": pr_executor.clone().or_else(|| evidence.execution_id.as_ref().map(|_| evidence.created_by.clone())),
+            "executor_actor_id": executor_actor,
             "reviewer_actor_id": approver.clone(),
             "final_submitter_actor_id": actor_id,
             "pr_delivery_id": pr_delivery_id.clone(),
@@ -742,12 +757,6 @@ impl ReviewStore {
         });
         let dependency_binding_hash = sha256_hex(json!(dependency_links).to_string().as_bytes());
         let receipt_id = new_id();
-        let author_actor = pr_author
-            .clone()
-            .unwrap_or_else(|| evidence.created_by.clone());
-        let executor_actor = pr_executor
-            .clone()
-            .unwrap_or_else(|| evidence.created_by.clone());
         tx.execute(
             "INSERT INTO awr_team.completion_receipts(
                 tenant_id, project_id, id, work_id, scope_id, contract_hash,
