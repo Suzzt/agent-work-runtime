@@ -564,5 +564,7 @@ explicit CHECK-safe execution attribution with a reviewed `executor_client_id`, 
 enabled-project logical backup/fencing restore and bounded ownership rebuild are
 separate schema-owner CLI flows
 (`awr-server access history-*` / `quarantine-*` / `execution-attribution-*` / `backup-*`), not HTTP/MCP client
-capabilities. Physical database basebackup
+capabilities. `operator_surface_denial` (HTTP + MCP with real PG and provisioned
+client bearers) asserts Unsupported/404 for those surfaces while schema-owner
+CLI recovery-inspect/history-preview still succeed. Physical database basebackup
 stays an external operator responsibility.

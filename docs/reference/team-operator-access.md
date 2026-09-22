@@ -120,7 +120,11 @@ awr-server access execution-attribution-outcome --tenant-id tenant-a --project-i
 Real PostgreSQL integration coverage lives in
 `crates/awr-team-pg/tests/pg_operator_recovery.rs` (recovery-inspect, history
 migration, quarantine, execution attribution, backup/fencing restore/rebuild)
-and `pg_operator_access.rs`, run with `--features pg-tests`.
+and `pg_operator_access.rs`, run with `--features pg-tests`. HTTP/MCP real-client
+denial that provisioned workstream bearers cannot reach these operator surfaces
+(Unsupported on query/command tools; no operator HTTP routes) is covered by
+`crates/awr-server/tests/operator_surface_denial.rs`, which also rechecks
+schema-owner `access recovery-inspect` / `history-preview` on the same project.
 
 
 Enabled-project logical backup metadata, guarded fencing restore, and a bounded
