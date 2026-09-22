@@ -99,7 +99,10 @@ async fn writeback_capabilities_and_runtime_fields_separated() {
     let caps = SourceStore::planning_writeback_capabilities();
     assert_eq!(caps["source_writeback"], "tmcp_022");
     assert_eq!(caps["project_claim_barrier_retained_when_unproven"], true);
-    assert_eq!(caps["cancel_expiry_session_end_prove_process_stopped"], false);
+    assert_eq!(
+        caps["cancel_expiry_session_end_prove_process_stopped"],
+        false
+    );
     assert_eq!(caps["runtime_fields_writable_via_source"], false);
     assert_eq!(caps["source_status_is_completion_receipt"], false);
     assert_eq!(caps["idempotent_request_id"], true);
@@ -174,10 +177,7 @@ async fn affected_live_claim_requires_explicit_stop() {
         )
         .await
         .unwrap_err();
-    assert!(
-        matches!(err, PgError::WritebackRefused(_)),
-        "{err:?}"
-    );
+    assert!(matches!(err, PgError::WritebackRefused(_)), "{err:?}");
 }
 
 struct TmpLedger {
@@ -261,12 +261,18 @@ async fn refused_writeback_journal_is_durable_and_replay_stays_refused() {
         .activate_planning_writeback(TENANT, PROJECT, A, &req)
         .await
         .unwrap_err();
-    assert!(matches!(err1, PgError::ActivationImpactUnproven(_)), "{err1:?}");
+    assert!(
+        matches!(err1, PgError::ActivationImpactUnproven(_)),
+        "{err1:?}"
+    );
     let err2 = store
         .activate_planning_writeback(TENANT, PROJECT, A, &req)
         .await
         .unwrap_err();
-    assert!(matches!(err2, PgError::ActivationImpactUnproven(_)), "{err2:?}");
+    assert!(
+        matches!(err2, PgError::ActivationImpactUnproven(_)),
+        "{err2:?}"
+    );
     // No activation receipt until success.
     let receipt = store
         .get_planning_activation_receipt(TENANT, PROJECT, A, "req-replay-1")

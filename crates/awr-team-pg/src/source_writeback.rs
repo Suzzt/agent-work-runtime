@@ -9,6 +9,8 @@ use super::{IngestRequest, PgError, PgResult, SourceFile, SourceStore};
 use crate::lock_order::lock_works_sorted;
 use crate::tx::{bind_workstream_scope, lock_active_project, new_id};
 use crate::workstream_auth::{authenticate, authenticate_writer, authorize_domain_action};
+#[allow(unused_imports)]
+use awr_source::SOURCE_BINDING_FILE;
 use awr_source::{
     PublishPrepOptions, SoleSourceLocation, apply_planning_changes_to_ledger, fingerprint,
     prepare_publish_from_ledger_bytes, refuse_external_overwrite,
@@ -19,8 +21,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-#[allow(unused_imports)]
-use awr_source::SOURCE_BINDING_FILE;
 use tokio_postgres::Transaction;
 
 /// Proven impact set supplied to activation. When `impact_proven` is false the
@@ -98,7 +98,8 @@ impl SourceStore {
             .unwrap_or(0);
         crate::delegation_auth::resolve_agent_delegation(
             &tx, &mut auth, project_id, None, None, None, now_ms,
-        ).await?;
+        )
+        .await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningPublish, None, None)?;
 
         // Lock order (WS-023): project barrier → sorted affected works → receipts.
@@ -268,9 +269,8 @@ impl SourceStore {
         tx.commit().await?;
 
         // Fingerprint re-check immediately before write (external race).
-        let recheck = std::fs::read(&ledger_path).map_err(|e| {
-            PgError::Protocol(format!("re-read ledger failed: {e}"))
-        })?;
+        let recheck = std::fs::read(&ledger_path)
+            .map_err(|e| PgError::Protocol(format!("re-read ledger failed: {e}")))?;
         refuse_external_overwrite(&patch.before_fingerprint, &fingerprint(&recheck))
             .map_err(|e| PgError::Protocol(e.to_string()))?;
         atomic_write(&ledger_path, &patch.after_bytes)?;
@@ -289,7 +289,8 @@ impl SourceStore {
             .unwrap_or(0);
         crate::delegation_auth::resolve_agent_delegation(
             &tx, &mut auth, project_id, None, None, None, now_ms,
-        ).await?;
+        )
+        .await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningPublish, None, None)?;
         bind_workstream_scope(&tx, tenant_id, project_id).await?;
         lock_active_project(&tx, tenant_id, project_id).await?;
@@ -330,8 +331,9 @@ impl SourceStore {
         )
         .await?;
 
-        let location = SoleSourceLocation::server_directory(&req.source_root, &req.ledger_relative_path)
-            .map_err(|e| PgError::Protocol(e.to_string()))?;
+        let location =
+            SoleSourceLocation::server_directory(&req.source_root, &req.ledger_relative_path)
+                .map_err(|e| PgError::Protocol(e.to_string()))?;
         let package = prepare_publish_from_ledger_bytes(
             &location,
             &req.source_root,
@@ -546,7 +548,6 @@ impl SourceStore {
             "audit": audit,
         }))
     }
-
 
     async fn record_writeback_source_approval(
         &self,

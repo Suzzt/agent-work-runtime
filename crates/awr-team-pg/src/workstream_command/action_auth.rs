@@ -5,9 +5,9 @@
 //! TMCP-030 intersects WS-016 agent delegation action sets with these TMCP actions
 //! in `crate::delegation_auth` before `authorize_command` runs.
 
-use crate::workstream_auth::command_business_action;
 #[cfg(test)]
 use crate::workstream_auth::command_authority;
+use crate::workstream_auth::command_business_action;
 
 /// Every durable workstream command either maps to a TMCP-010 action or is a
 /// special authority (attest / reconcile) outside role templates.
@@ -50,9 +50,11 @@ mod tests {
         assert!(matrix.iter().any(|(op, action)| {
             *op == "session.start" && *action == Some("session.maintain_own")
         }));
-        assert!(matrix.iter().any(|(op, action)| {
-            *op == "execution.attest" && action.is_none()
-        }));
+        assert!(
+            matrix
+                .iter()
+                .any(|(op, action)| { *op == "execution.attest" && action.is_none() })
+        );
     }
 
     #[test]

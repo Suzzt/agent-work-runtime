@@ -194,7 +194,6 @@ impl SourceProjection {
         Ok(())
     }
 
-
     /// Selective activation gate (TMCP-022). See `ActivationImpactGate`.
     pub async fn validate_transition_with_impact(
         &self,
@@ -205,7 +204,10 @@ impl SourceProjection {
         impact: Option<&crate::source::writeback::ActivationImpactGate>,
     ) -> PgResult<()> {
         match impact {
-            None => self.validate_transition(tx, tenant, project, previous_snapshot).await,
+            None => {
+                self.validate_transition(tx, tenant, project, previous_snapshot)
+                    .await
+            }
             Some(gate) if !gate.impact_proven => Err(PgError::ActivationImpactUnproven(
                 gate.refuse_reason
                     .clone()
@@ -235,7 +237,9 @@ impl SourceProjection {
                         .await?
                         .get(0);
                     if !live {
-                        return self.validate_transition(tx, tenant, project, previous_snapshot).await;
+                        return self
+                            .validate_transition(tx, tenant, project, previous_snapshot)
+                            .await;
                     }
                     // Live activity exists: run validate_transition's catalog checks by
                     // temporarily relying on selective claim/exec filtering below.
@@ -413,7 +417,6 @@ pub(super) fn reject_external_graph(files: &[(String, Vec<u8>)]) -> PgResult<()>
     }
     Ok(())
 }
-
 
 /// Source status and historical human `done` retain source meaning only
 /// (AWR-TMCP-020). Installing a projection never treats them as completion

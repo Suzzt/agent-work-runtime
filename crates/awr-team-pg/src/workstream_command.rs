@@ -148,21 +148,13 @@ impl WorkstreamCommand {
             "claim.acquire" | "claim.renew" | "claim.release" => Ok(Action::Claim(
                 claims::Action::parse(&self.op, self.args.clone())?,
             )),
-            "handoff.propose"
-            | "handoff.inspect"
-            | "handoff.accept"
-            | "handoff.reject"
-            | "handoff.cancel"
-            | "handoff.timeout" => Ok(Action::Handoff(handoffs::Action::parse(
+            "handoff.propose" | "handoff.inspect" | "handoff.accept" | "handoff.reject"
+            | "handoff.cancel" | "handoff.timeout" => Ok(Action::Handoff(handoffs::Action::parse(
                 &self.op,
                 self.args.clone(),
             )?)),
-            "evidence.submit"
-            | "review.open"
-            | "review.accept"
-            | "review.return"
-            | "work.rework"
-            | "work.complete" => Ok(Action::Review(reviews::Action::parse(
+            "evidence.submit" | "review.open" | "review.accept" | "review.return"
+            | "work.rework" | "work.complete" => Ok(Action::Review(reviews::Action::parse(
                 &self.op,
                 self.args.clone(),
             )?)),
@@ -415,7 +407,9 @@ async fn apply(
     action: Action,
 ) -> PgResult<Value> {
     match action {
-        Action::Claim(_) | Action::Execution(_) | Action::Handoff(_) | Action::Review(_) => Err(invalid()), // Same outer transaction.
+        Action::Claim(_) | Action::Execution(_) | Action::Handoff(_) | Action::Review(_) => {
+            Err(invalid())
+        } // Same outer transaction.
         Action::Start(a) => {
             let active: bool = tx.query_one("SELECT EXISTS(SELECT 1 FROM awr_team.sessions
                 WHERE tenant_id=$1 AND project_id=$2 AND actor_id=$3 AND client_id=$4 AND conversation_id=$5 AND work_id=$6 AND state='active')",

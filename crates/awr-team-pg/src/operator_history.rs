@@ -264,10 +264,7 @@ impl OperatorHistory {
         {
             return Err(PgError::PreconditionsChanged);
         }
-        let attributable = plan["attributable"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default();
+        let attributable = plan["attributable"].as_array().cloned().unwrap_or_default();
         let mut attributed = Vec::new();
         for item in &attributable {
             let kind = item["kind"].as_str().unwrap_or("");
@@ -279,36 +276,42 @@ impl OperatorHistory {
                 .ok_or_else(invalid)?;
             match kind {
                 "session" => {
-                    let n = tx.execute(
-                        "UPDATE awr_team.sessions SET workstream_id=$4,ownership_version=$5
+                    let n = tx
+                        .execute(
+                            "UPDATE awr_team.sessions SET workstream_id=$4,ownership_version=$5
                         WHERE tenant_id=$1 AND project_id=$2 AND id=$3
                           AND workstream_id IS NULL AND ownership_version IS NULL",
-                        &[&tenant, &project, &id, &workstream, &ownership],
-                    ).await?;
+                            &[&tenant, &project, &id, &workstream, &ownership],
+                        )
+                        .await?;
                     if n != 1 {
                         return Err(PgError::PreconditionsChanged);
                     }
                 }
                 "claim" => {
                     let epoch = item["coordinator_epoch"].as_str().ok_or_else(invalid)?;
-                    let n = tx.execute(
-                        "UPDATE awr_team.claims
+                    let n = tx
+                        .execute(
+                            "UPDATE awr_team.claims
                         SET workstream_id=$4,ownership_version=$5,coordinator_epoch=$6
                         WHERE tenant_id=$1 AND project_id=$2 AND id=$3
                           AND workstream_id IS NULL AND ownership_version IS NULL
                           AND coordinator_epoch IS NULL AND state<>'active'",
-                        &[&tenant, &project, &id, &workstream, &ownership, &epoch],
-                    ).await?;
+                            &[&tenant, &project, &id, &workstream, &ownership, &epoch],
+                        )
+                        .await?;
                     if n != 1 {
                         return Err(PgError::PreconditionsChanged);
                     }
                 }
                 "event" => {
-                    let n = tx.execute(
-                        "UPDATE awr_team.events SET workstream_id=$4
+                    let n = tx
+                        .execute(
+                            "UPDATE awr_team.events SET workstream_id=$4
                         WHERE tenant_id=$1 AND project_id=$2 AND id=$3 AND workstream_id IS NULL",
-                        &[&tenant, &project, &id, &workstream],
-                    ).await?;
+                            &[&tenant, &project, &id, &workstream],
+                        )
+                        .await?;
                     if n != 1 {
                         return Err(PgError::PreconditionsChanged);
                     }
@@ -477,7 +480,10 @@ async fn build_plan(
     for r in events {
         let id: String = r.get(0);
         let work_id: Option<String> = r.get(1);
-        let d = classify_event(work_id.as_deref(), work_id.as_ref().and_then(|w| ownership.get(w)));
+        let d = classify_event(
+            work_id.as_deref(),
+            work_id.as_ref().and_then(|w| ownership.get(w)),
+        );
         push(HistoryKind::Event, id, work_id, d);
     }
 
@@ -492,7 +498,12 @@ async fn build_plan(
     for r in executions {
         let id: String = r.get(0);
         let work_id: String = r.get(1);
-        push(HistoryKind::Execution, id, Some(work_id), classify_execution());
+        push(
+            HistoryKind::Execution,
+            id,
+            Some(work_id),
+            classify_execution(),
+        );
     }
 
     let counts = json!({
@@ -565,10 +576,7 @@ async fn build_plan(
 }
 
 fn count_kind(items: &[Value], kind: &str) -> usize {
-    items
-        .iter()
-        .filter(|i| i["kind"] == kind)
-        .count()
+    items.iter().filter(|i| i["kind"] == kind).count()
 }
 
 fn sessions_count(attr: &[Value], refused: &[Value], kind: &str) -> usize {

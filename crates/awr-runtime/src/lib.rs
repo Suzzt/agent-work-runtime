@@ -22,27 +22,26 @@ pub use document::{
 pub use host_save::{
     HostChange, HostSaveReport, HostSaveRequest, host_preview, host_recover, host_save, host_status,
 };
+mod agent_authorization;
 mod execution;
 mod fs_sync;
 mod management;
 mod mutation;
 mod mutation_apply;
 mod operation_readset;
-mod source_concurrency;
-mod planning_writeback;
 mod organization;
+mod planning_writeback;
 mod read;
-mod resume;
 mod responsibility;
-mod agent_authorization;
+mod resume;
+mod source_concurrency;
 mod team_handoff;
 mod work_action;
 mod work_create;
 mod work_edit;
 pub use work_edit::edit_work;
-mod work_graph;
 mod selective_invalidation;
-pub use work_graph::{SharedOutcomeRef, WorkGraphRequest, necessary_dependencies_ready, reference_shared_outcome, unique_shared_work_keys, validate_cross_stream_work_graph, work_graph};
+mod work_graph;
 pub use selective_invalidation::{
     AdoptedConsumerEdge, BoundaryDecision, BoundaryRevalidation, BoundarySnapshot,
     CancelSplitRelation, DiscoverDependencyRequest, ExecutionBoundary, PlanningChangeApplication,
@@ -50,6 +49,10 @@ pub use selective_invalidation::{
     action_blocked_by_planning_changes, confirm_planning_change, consumers_by_provider,
     planning_change_fingerprint, record_discovered_dependency_change, reject_planning_change,
     revalidate_execution_boundary, select_downstream_reevaluation,
+};
+pub use work_graph::{
+    SharedOutcomeRef, WorkGraphRequest, necessary_dependencies_ready, reference_shared_outcome,
+    unique_shared_work_keys, validate_cross_stream_work_graph, work_graph,
 };
 mod response_view;
 mod workflow;
@@ -60,26 +63,31 @@ pub use branch::{CreateBranchRequest, create_branch, observe_git_ref, switch_bra
 pub use branch_close::{CloseBranchRequest, close_branch};
 pub use completion::{CompleteWorkRequest, complete_work};
 pub use doctor::{ProjectDoctorReport, diagnose_project};
-pub use execution::{HostIsolationEvidence, IsolationClass, classify_isolation, inspect_execution, inspect_work_executions, isolation_basis, refuse_unverified_strong_isolation, render_execution_observations};
+pub use execution::{
+    HostIsolationEvidence, IsolationClass, classify_isolation, inspect_execution,
+    inspect_work_executions, isolation_basis, refuse_unverified_strong_isolation,
+    render_execution_observations,
+};
 pub use management::{AssessManagementRequest, ManageWorkRequest, assess_management, manage_work};
 pub use mutation::{
     CreateProposalRequest, ProposalReport, ReviewProposalAction, ReviewProposalRequest,
     create_proposal, review_proposal,
 };
 pub use operation_readset::{append_work_observation, classify_operation_replay_result};
+pub use organization::{OrganizationReport, OrganizationState, inspect_organization};
 pub use planning_writeback::{
     ActivationDisposition, ActivationImpactReport, AffectedWorkDecision, WorkRuntimeObservation,
     WritebackJournal, WritebackPhase, activate_ledger_writeback_precise, analyze_activation_impact,
-    plan_ledger_writeback, planning_change_blocks_until_confirmed, planning_changes_as_selective_replan,
-    reevaluate_graph_consumers, same_request_already_completed, writeback_journal_path,
+    plan_ledger_writeback, planning_change_blocks_until_confirmed,
+    planning_changes_as_selective_replan, reevaluate_graph_consumers,
+    same_request_already_completed, writeback_journal_path,
 };
+pub use response_view::summarize_work_response;
+pub use resume::{ResumeReport, ResumeRequest, resume_bound_session, resume_session};
 pub use source_concurrency::{
     SourceConcurrencyReport, activate_precise_patch, activate_shard_candidate,
     classify_whole_file_gate, recover_shard_candidate,
 };
-pub use organization::{OrganizationReport, OrganizationState, inspect_organization};
-pub use response_view::summarize_work_response;
-pub use resume::{ResumeReport, ResumeRequest, resume_bound_session, resume_session};
 pub use work_action::{WorkActionRequest, perform_work_action};
 pub use work_create::{
     CreateWorkInput, CreationReport, create_work, creation_status, recover_creation,

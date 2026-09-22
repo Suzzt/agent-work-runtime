@@ -110,21 +110,22 @@ impl ShardWrite {
     }
 
     pub fn after_bytes(&self) -> Result<Vec<u8>> {
-        let encoded = self.after_hex.strip_prefix("hex:").ok_or_else(|| {
-            Error::InvalidInput("shard after_hex requires hex: prefix".into())
-        })?;
+        let encoded = self
+            .after_hex
+            .strip_prefix("hex:")
+            .ok_or_else(|| Error::InvalidInput("shard after_hex requires hex: prefix".into()))?;
         if encoded.len() % 2 != 0 || encoded.is_empty() {
             return Err(Error::InvalidInput("invalid shard after_hex".into()));
         }
         let mut bytes = Vec::with_capacity(encoded.len() / 2);
         let chars: Vec<char> = encoded.chars().collect();
         for pair in chars.chunks(2) {
-            let hi = pair[0].to_digit(16).ok_or_else(|| {
-                Error::InvalidInput("invalid shard after_hex digit".into())
-            })?;
-            let lo = pair[1].to_digit(16).ok_or_else(|| {
-                Error::InvalidInput("invalid shard after_hex digit".into())
-            })?;
+            let hi = pair[0]
+                .to_digit(16)
+                .ok_or_else(|| Error::InvalidInput("invalid shard after_hex digit".into()))?;
+            let lo = pair[1]
+                .to_digit(16)
+                .ok_or_else(|| Error::InvalidInput("invalid shard after_hex digit".into()))?;
             bytes.push(((hi << 4) | lo) as u8);
         }
         Ok(bytes)
@@ -263,7 +264,9 @@ pub fn observe_shard(root: &Path, shard: &ShardWrite) -> Result<ShardObservation
     shard.validate()?;
     let path = root.join(&shard.path);
     match std::fs::symlink_metadata(&path) {
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(ShardObservation::Missing),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(ShardObservation::Missing);
+        }
         Err(err) => {
             return Err(Error::SourceUnavailable(format!(
                 "{}: {err}",
@@ -319,7 +322,10 @@ mod tests {
             "invented-adapter-v9",
         ] {
             let err = source_write_mode(adapter).unwrap_err();
-            assert!(matches!(err, Error::MutationUnsupported(_)), "{adapter}: {err:?}");
+            assert!(
+                matches!(err, Error::MutationUnsupported(_)),
+                "{adapter}: {err:?}"
+            );
         }
     }
 
