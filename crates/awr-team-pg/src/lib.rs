@@ -1,5 +1,6 @@
 //! PostgreSQL coordination store for Team V1.
 //! Personal SQLite runtime does not depend on this crate.
+mod agent_authorization;
 mod bootstrap;
 mod error;
 mod execution;
@@ -8,16 +9,15 @@ mod import;
 mod lease;
 mod migrate;
 mod operator_access;
-mod operator_recovery;
-mod operator_history;
 mod operator_backup;
-mod operator_quarantine;
 mod operator_execution_attribution;
-mod responsibility;
-mod agent_authorization;
+mod operator_history;
+mod operator_quarantine;
+mod operator_recovery;
 mod path;
 mod pool;
 mod read;
+mod responsibility;
 mod review;
 mod runner;
 mod scoped_runner;
@@ -27,6 +27,7 @@ mod workstream_auth;
 mod workstream_command;
 mod workstream_read;
 
+pub use agent_authorization::AuthorizationStore;
 pub use bootstrap::Bootstrap;
 pub use error::{PgError, PgResult};
 pub use execution::{ExecutionRecord, ExecutionStore, OutboxDelivery, exactly_once_supported};
@@ -38,13 +39,13 @@ pub use import::{BackupRecord, FencingBarrier, ImportJob, ImportStore, InspectRe
 pub use lease::{ClaimRecord, LeaseStore, SessionRecord};
 pub use migrate::{EXPECTED_SCHEMA_VERSION, check_schema, migrate};
 pub use operator_access::{AccessActor, AccessCredential, AccessGrant, AccessPlan, OperatorAccess};
-pub use operator_recovery::OperatorRecovery;
-pub use operator_history::OperatorHistory;
 pub use operator_backup::OperatorBackup;
+pub use operator_execution_attribution::{
+    ExecutionAttributionEntry, ExecutionAttributionPlan, OperatorExecutionAttribution,
+};
+pub use operator_history::OperatorHistory;
 pub use operator_quarantine::OperatorQuarantine;
-pub use operator_execution_attribution::{ExecutionAttributionEntry, ExecutionAttributionPlan, OperatorExecutionAttribution};
-pub use responsibility::ResponsibilityStore;
-pub use agent_authorization::AuthorizationStore;
+pub use operator_recovery::OperatorRecovery;
 pub use path::{
     MAX_FILE_BYTES, MAX_PACKAGE_BYTES, MAX_SOURCE_FILES, validate_package, validate_source_path,
 };
@@ -53,6 +54,7 @@ pub use read::{
     EventCursor, EventPage, EventRecord, PreparedWork, ReadStore, WorkGraph, capabilities,
     dispatch_query,
 };
+pub use responsibility::ResponsibilityStore;
 pub use review::{CompletionReceipt, EvidenceRecord, ReviewRound, ReviewStore};
 #[doc(hidden)]
 pub use runner::fence_key;

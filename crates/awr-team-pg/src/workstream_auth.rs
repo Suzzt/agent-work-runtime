@@ -334,8 +334,7 @@ pub(crate) fn workstream_boundary_capabilities() -> serde_json::Value {
 mod tests {
     use super::*;
     use awr_core::{
-        WORKSTREAM_CATALOG_VERSION, Workstream, WorkstreamCatalog, WorkstreamGrant,
-        WorkstreamState,
+        WORKSTREAM_CATALOG_VERSION, Workstream, WorkstreamCatalog, WorkstreamGrant, WorkstreamState,
     };
 
     fn id(value: u128) -> Id {
@@ -369,10 +368,7 @@ mod tests {
     ) -> ReaderAuthority {
         let stream = id(1);
         let mut execution_access = BTreeMap::new();
-        execution_access.insert(
-            stream,
-            ExecutionAccess { attest, reconcile },
-        );
+        execution_access.insert(stream, ExecutionAccess { attest, reconcile });
         ReaderAuthority {
             actor_id: "actor".into(),
             client_id: "client".into(),
@@ -415,12 +411,7 @@ mod tests {
     fn admission_rejects_readers_and_unknown_capabilities() {
         let reader = authority(false, false, false, false, WorkstreamState::Active);
         assert!(matches!(
-            authorize_command(
-                &reader,
-                id(1),
-                "session.start",
-                CommandAuthPhase::Admission
-            ),
+            authorize_command(&reader, id(1), "session.start", CommandAuthPhase::Admission),
             Err(PgError::Forbidden)
         ));
         let writer = authority(true, false, false, false, WorkstreamState::Active);
@@ -433,25 +424,29 @@ mod tests {
             ),
             Err(PgError::Unsupported(_))
         ));
-        assert!(authorize_command(
-            &writer,
-            id(1),
-            "session.checkpoint",
-            CommandAuthPhase::Admission
-        )
-        .is_ok());
+        assert!(
+            authorize_command(
+                &writer,
+                id(1),
+                "session.checkpoint",
+                CommandAuthPhase::Admission
+            )
+            .is_ok()
+        );
     }
 
     #[test]
     fn effect_enforces_active_stream_and_special_grants_after_admission() {
         let paused_writer = authority(true, false, false, false, WorkstreamState::Paused);
-        assert!(authorize_command(
-            &paused_writer,
-            id(1),
-            "session.end",
-            CommandAuthPhase::Effect
-        )
-        .is_ok());
+        assert!(
+            authorize_command(
+                &paused_writer,
+                id(1),
+                "session.end",
+                CommandAuthPhase::Effect
+            )
+            .is_ok()
+        );
         assert!(matches!(
             authorize_command(
                 &paused_writer,
@@ -478,22 +473,26 @@ mod tests {
         ));
 
         let attester = authority(true, false, true, false, WorkstreamState::Active);
-        assert!(authorize_command(
-            &attester,
-            id(1),
-            "execution.attest",
-            CommandAuthPhase::Effect
-        )
-        .is_ok());
+        assert!(
+            authorize_command(
+                &attester,
+                id(1),
+                "execution.attest",
+                CommandAuthPhase::Effect
+            )
+            .is_ok()
+        );
 
         let reconciler = authority(true, true, false, true, WorkstreamState::Active);
-        assert!(authorize_command(
-            &reconciler,
-            id(1),
-            "execution.reconcile",
-            CommandAuthPhase::Effect
-        )
-        .is_ok());
+        assert!(
+            authorize_command(
+                &reconciler,
+                id(1),
+                "execution.reconcile",
+                CommandAuthPhase::Effect
+            )
+            .is_ok()
+        );
     }
 
     #[test]

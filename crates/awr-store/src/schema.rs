@@ -1,7 +1,8 @@
 //! Validate the owned schema against the shipped migrations without repairing it.
 use crate::{
-    AGENT_AUTHORIZATION_SQL, CATALOG_SQL, CONTENT_REVIEWS_SQL, DOMAIN_SQL, DRAFT_WORK_SQL, MigrationInfo, RESPONSIBILITY_SQL,
-    SCHEMA_VERSION, SEARCH_SQL, WORKSTREAM_SESSIONS_SQL, WORKSTREAM_SQL, db_error,
+    AGENT_AUTHORIZATION_SQL, CATALOG_SQL, CONTENT_REVIEWS_SQL, DOMAIN_SQL, DRAFT_WORK_SQL,
+    MigrationInfo, RESPONSIBILITY_SQL, SCHEMA_VERSION, SEARCH_SQL, WORKSTREAM_SESSIONS_SQL,
+    WORKSTREAM_SQL, db_error,
 };
 use awr_core::{Error, Result};
 use rusqlite::Connection;
@@ -44,7 +45,8 @@ fn expected() -> Result<&'static Vec<Objects>> {
                     WORKSTREAM_SESSIONS_SQL,
                     CONTENT_REVIEWS_SQL,
                     RESPONSIBILITY_SQL,
-                    AGENT_AUTHORIZATION_SQL,] {
+                    AGENT_AUTHORIZATION_SQL,
+                ] {
                     conn.execute_batch(sql)?;
                     versions.push(objects(&conn)?);
                 }

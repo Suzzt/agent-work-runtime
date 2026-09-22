@@ -119,7 +119,10 @@ impl AuthorizationScope {
                 validate_id(project_id, "project_id")?;
                 validate_id(work_item_id, "work_item_id")
             }
-            Self::TaskPool { project_id, pool_id } => {
+            Self::TaskPool {
+                project_id,
+                pool_id,
+            } => {
                 validate_id(project_id, "project_id")?;
                 validate_id(pool_id, "pool_id")
             }
@@ -150,9 +153,12 @@ impl AuthorizationScope {
                 },
             ) => p == c,
             (Self::TaskPool { pool_id: p, .. }, Self::TaskPool { pool_id: c, .. }) => p == c,
-            (Self::TaskPool { pool_id: p, .. }, Self::Task { work_item_id: c, .. }) => {
-                c == p || c.starts_with(&format!("{p}/"))
-            }
+            (
+                Self::TaskPool { pool_id: p, .. },
+                Self::Task {
+                    work_item_id: c, ..
+                },
+            ) => c == p || c.starts_with(&format!("{p}/")),
             _ => false,
         }
     }
@@ -259,10 +265,7 @@ impl AgentAuthorization {
     pub fn validate(&self) -> Result<()> {
         validate_id(&self.id, "authorization_id")?;
         validate_id(self.authorizer_person_id.as_str(), "authorizer_person_id")?;
-        validate_id(
-            self.responsible_person_id.as_str(),
-            "responsible_person_id",
-        )?;
+        validate_id(self.responsible_person_id.as_str(), "responsible_person_id")?;
         validate_id(&self.subject_id, "subject_id")?;
         validate_id(&self.client_id, "client_id")?;
         if let Some(session) = &self.session_id {
@@ -391,7 +394,8 @@ impl AgentAuthorization {
                 task_workstream_id == Some(workstream_id.as_str())
             }
             AuthorizationScope::Task {
-                work_item_id: scoped, ..
+                work_item_id: scoped,
+                ..
             } => scoped == work_item_id,
             AuthorizationScope::TaskPool { pool_id, .. } => {
                 work_item_id == pool_id || work_item_id.starts_with(&format!("{pool_id}/"))
@@ -745,7 +749,11 @@ pub fn explain_claim_eligibility(
                     authorization_id: auth.id.clone(),
                     detail: "authorization responsible person does not match candidate".into(),
                 });
-            } else if !auth.covers_task(input.project_id, input.work_item_id, input.task_workstream_id) {
+            } else if !auth.covers_task(
+                input.project_id,
+                input.work_item_id,
+                input.task_workstream_id,
+            ) {
                 shared.push(ClaimEligibilityFactor::DelegationInactive {
                     authorization_id: auth.id.clone(),
                     detail: "authorization scope does not cover this task".into(),
@@ -993,16 +1001,18 @@ mod tests {
         child.authorizer_person_id = person("bob");
         child.actions.insert(AuthorizedAction::Review);
         child.expires_at_ms = Some(20_000);
-        assert!(apply_delegate(
-            &parent,
-            &DelegateAuthorizationRequest {
-                request_key: "dlg-1".into(),
-                parent_authorization_id: parent.id.clone(),
-                child: child.clone(),
-            },
-            2_000,
-        )
-        .is_err());
+        assert!(
+            apply_delegate(
+                &parent,
+                &DelegateAuthorizationRequest {
+                    request_key: "dlg-1".into(),
+                    parent_authorization_id: parent.id.clone(),
+                    child: child.clone(),
+                },
+                2_000,
+            )
+            .is_err()
+        );
 
         child.actions = BTreeSet::from([AuthorizedAction::StartWork]);
         child.expires_at_ms = Some(5_000);
@@ -1077,11 +1087,18 @@ mod tests {
         assert!(explanation.collaborative_occupancy.allowed);
         assert!(!explanation.start_work_admission.allowed);
         assert_eq!(explanation.skill_hints_ignored, vec!["rust".to_string()]);
+        assert!(
+            explanation
+                .start_work_admission
+                .reasons
+                .iter()
+                .any(|r| { matches!(r, ClaimEligibilityFactor::DependenciesUnmet { .. }) })
+        );
         assert!(explanation.start_work_admission.reasons.iter().any(|r| {
-            matches!(r, ClaimEligibilityFactor::DependenciesUnmet { .. })
-        }));
-        assert!(explanation.start_work_admission.reasons.iter().any(|r| {
-            matches!(r, ClaimEligibilityFactor::SelfReportedSkillHintIgnored { .. })
+            matches!(
+                r,
+                ClaimEligibilityFactor::SelfReportedSkillHintIgnored { .. }
+            )
         }));
     }
 
