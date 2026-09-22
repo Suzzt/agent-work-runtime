@@ -88,7 +88,10 @@ pub fn validate_required_graph(nodes: &[String], edges: &[DependencyEdge]) -> Pg
             return Err(PgError::MissingDependency);
         }
         if edge.from == edge.to {
-            return Err(PgError::DependencyCycle(vec![edge.from.clone(), edge.to.clone()]));
+            return Err(PgError::DependencyCycle(vec![
+                edge.from.clone(),
+                edge.to.clone(),
+            ]));
         }
     }
     awr_core::validate_dependency_dag(
@@ -267,14 +270,8 @@ impl GraphStore {
         // serialize on the project row, so the last writer replaces the
         // committed graph wholesale instead of merging (CR #40 P2-3).
         lock_project(&tx, tenant_id, project_id).await?;
-        let authoritative = Self::load_contract_work_ids(
-            &tx,
-            tenant_id,
-            project_id,
-            snapshot_id,
-            scope_id,
-        )
-        .await?;
+        let authoritative =
+            Self::load_contract_work_ids(&tx, tenant_id, project_id, snapshot_id, scope_id).await?;
         validate_required_graph(&authoritative, edges)?;
         Self::write_edges(&tx, tenant_id, project_id, snapshot_id, scope_id, edges).await?;
         tx.commit().await?;
@@ -736,19 +733,14 @@ impl GraphStore {
         let tx = client.transaction().await?;
         bind_scope(&tx, tenant_id, project_id).await?;
         lock_project(&tx, tenant_id, project_id).await?;
-        let nodes = Self::load_contract_work_ids(&tx, tenant_id, project_id, snapshot_id, scope_id)
-            .await?;
-        let mut by_key: BTreeMap<(String, String, String), DependencyEdge> = Self::load_edges(
-            &tx,
-            tenant_id,
-            project_id,
-            snapshot_id,
-            scope_id,
-        )
-        .await?
-        .into_iter()
-        .map(|edge| (edge_key(&edge), edge))
-        .collect();
+        let nodes =
+            Self::load_contract_work_ids(&tx, tenant_id, project_id, snapshot_id, scope_id).await?;
+        let mut by_key: BTreeMap<(String, String, String), DependencyEdge> =
+            Self::load_edges(&tx, tenant_id, project_id, snapshot_id, scope_id)
+                .await?
+                .into_iter()
+                .map(|edge| (edge_key(&edge), edge))
+                .collect();
         for mutation in mutations {
             match mutation {
                 EdgeMutation::Upsert(edge) => {
@@ -933,7 +925,15 @@ mod tests {
         let err = validate_cross_stream_graph(&catalog, &ids, &ownership, &cyclic).unwrap_err();
         match err {
             PgError::DependencyCycle(path) => {
-                assert_eq!(path, vec!["A1".to_string(), "B1".to_string(), "A2".to_string(), "A1".to_string()]);
+                assert_eq!(
+                    path,
+                    vec![
+                        "A1".to_string(),
+                        "B1".to_string(),
+                        "A2".to_string(),
+                        "A1".to_string()
+                    ]
+                );
             }
             other => panic!("expected explainable path, got {other}"),
         }

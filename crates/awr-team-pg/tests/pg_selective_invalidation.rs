@@ -11,7 +11,11 @@ use std::sync::MutexGuard;
 const TENANT: &str = "tenant-a";
 const PROJECT: &str = "project-a";
 
-async fn setup() -> (MutexGuard<'static, ()>, SelectiveInvalidationStore, tokio_postgres::Client) {
+async fn setup() -> (
+    MutexGuard<'static, ()>,
+    SelectiveInvalidationStore,
+    tokio_postgres::Client,
+) {
     let (guard, admin, db) = fresh_team_schema().await;
     admin
         .batch_execute(
@@ -247,10 +251,7 @@ async fn discovered_dependency_blocks_affected_until_confirmed() {
         .unwrap();
     assert!(!receipt.replayed);
     assert_eq!(change.status, "affected_blocked");
-    assert_eq!(
-        unrelated,
-        vec!["api".to_string(), "docs".to_string()]
-    );
+    assert_eq!(unrelated, vec!["api".to_string(), "docs".to_string()]);
     assert_eq!(
         store.action_blocked(TENANT, PROJECT, "sdk").await.unwrap(),
         Some("pc-1".into())

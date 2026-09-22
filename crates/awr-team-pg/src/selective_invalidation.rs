@@ -330,13 +330,21 @@ impl SelectiveInvalidationStore {
         req: &SelectiveInvalidateRequest,
     ) -> PgResult<(SelectiveInvalidationPlan, SelectiveInvalidationReceipt)> {
         if req.now_ms < 0 || req.request_key.is_empty() || req.event_id.is_empty() {
-            return Err(PgError::Protocol("invalid selective invalidate request".into()));
+            return Err(PgError::Protocol(
+                "invalid selective invalidate request".into(),
+            ));
         }
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
         bind_workstream_scope(&tx, tenant, project).await?;
-        if let Some(receipt) =
-            load_receipt(&tx, tenant, project, &req.request_key, "selective_invalidate").await?
+        if let Some(receipt) = load_receipt(
+            &tx,
+            tenant,
+            project,
+            &req.request_key,
+            "selective_invalidate",
+        )
+        .await?
         {
             let plan = load_plan(&tx, tenant, project, &receipt.subject_id).await?;
             tx.commit().await?;
@@ -428,13 +436,21 @@ impl SelectiveInvalidationStore {
         req: &BoundaryRevalidateRequest,
     ) -> PgResult<(BoundaryRevalidation, SelectiveInvalidationReceipt)> {
         if req.now_ms < 0 || req.request_key.is_empty() || req.check_id.is_empty() {
-            return Err(PgError::Protocol("invalid boundary revalidate request".into()));
+            return Err(PgError::Protocol(
+                "invalid boundary revalidate request".into(),
+            ));
         }
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
         bind_workstream_scope(&tx, tenant, project).await?;
-        if let Some(receipt) =
-            load_receipt(&tx, tenant, project, &req.request_key, "boundary_revalidate").await?
+        if let Some(receipt) = load_receipt(
+            &tx,
+            tenant,
+            project,
+            &req.request_key,
+            "boundary_revalidate",
+        )
+        .await?
         {
             let decision = load_boundary(&tx, tenant, project, &receipt.subject_id).await?;
             tx.commit().await?;
@@ -539,7 +555,11 @@ impl SelectiveInvalidationStore {
         tenant: &str,
         project: &str,
         req: &RecordPlanningChangeRequest,
-    ) -> PgResult<(ScopedPlanningChange, Vec<String>, SelectiveInvalidationReceipt)> {
+    ) -> PgResult<(
+        ScopedPlanningChange,
+        Vec<String>,
+        SelectiveInvalidationReceipt,
+    )> {
         if req.now_ms < 0
             || req.request_key.is_empty()
             || req.change_id.is_empty()
@@ -675,7 +695,8 @@ impl SelectiveInvalidationStore {
         project: &str,
         req: &DecidePlanningChangeRequest,
     ) -> PgResult<(ScopedPlanningChange, SelectiveInvalidationReceipt)> {
-        self.decide_planning_change(tenant, project, req, true).await
+        self.decide_planning_change(tenant, project, req, true)
+            .await
     }
 
     pub async fn reject_planning_change(
@@ -684,7 +705,8 @@ impl SelectiveInvalidationStore {
         project: &str,
         req: &DecidePlanningChangeRequest,
     ) -> PgResult<(ScopedPlanningChange, SelectiveInvalidationReceipt)> {
-        self.decide_planning_change(tenant, project, req, false).await
+        self.decide_planning_change(tenant, project, req, false)
+            .await
     }
 
     async fn decide_planning_change(
@@ -695,7 +717,9 @@ impl SelectiveInvalidationStore {
         confirm: bool,
     ) -> PgResult<(ScopedPlanningChange, SelectiveInvalidationReceipt)> {
         if req.now_ms < 0 || req.request_key.is_empty() || req.actor_id.is_empty() {
-            return Err(PgError::Protocol("invalid planning decision request".into()));
+            return Err(PgError::Protocol(
+                "invalid planning decision request".into(),
+            ));
         }
         let op = if confirm {
             "confirm_planning_change"
@@ -1008,7 +1032,12 @@ mod tests {
             "api",
             ProviderChangeKind::NewVersionOrProgress,
             &consumers,
-            &["api".into(), "sdk".into(), "integration".into(), "docs".into()],
+            &[
+                "api".into(),
+                "sdk".into(),
+                "integration".into(),
+                "docs".into(),
+            ],
         );
         assert_eq!(plan.reevaluate, vec!["integration".to_string()]);
         assert_eq!(plan.leave_valid, vec!["sdk".to_string()]);

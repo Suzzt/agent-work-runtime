@@ -109,7 +109,9 @@ impl HandoffStore {
     ) -> PgResult<(TeamHandoff, HandoffReceipt)> {
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
-        if let Some(receipt) = load_receipt(&tx, tenant, project, &req.request_key, "propose").await? {
+        if let Some(receipt) =
+            load_receipt(&tx, tenant, project, &req.request_key, "propose").await?
+        {
             let h = load_tx(&tx, tenant, project, &receipt.handoff_id)
                 .await?
                 .ok_or_else(|| PgError::Protocol("handoff missing for receipt".into()))?;
@@ -132,9 +134,14 @@ impl HandoffStore {
         project: &str,
         req: &InspectHandoffRequest,
     ) -> PgResult<(TeamHandoff, HandoffReceipt)> {
-        self.mutate(tenant, project, &req.request_key, "inspect", &req.handoff_id, |before| {
-            apply_handoff_inspect(before, req).map_err(map_core)
-        })
+        self.mutate(
+            tenant,
+            project,
+            &req.request_key,
+            "inspect",
+            &req.handoff_id,
+            |before| apply_handoff_inspect(before, req).map_err(map_core),
+        )
         .await
     }
 
@@ -146,7 +153,9 @@ impl HandoffStore {
     ) -> PgResult<(TeamHandoff, HandoffReceipt)> {
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
-        if let Some(receipt) = load_receipt(&tx, tenant, project, &req.request_key, "accept").await? {
+        if let Some(receipt) =
+            load_receipt(&tx, tenant, project, &req.request_key, "accept").await?
+        {
             let h = load_tx(&tx, tenant, project, &receipt.handoff_id)
                 .await?
                 .ok_or_else(|| PgError::Protocol("handoff missing for receipt".into()))?;
@@ -164,9 +173,7 @@ impl HandoffStore {
         }
         let was_open = before.status.is_open();
         let next = apply_handoff_accept(&before, &live_req).map_err(map_core)?;
-        if was_open
-            && next.status == HandoffStatus::Accepted
-            && next.kind == HandoffKind::Execution
+        if was_open && next.status == HandoffStatus::Accepted && next.kind == HandoffKind::Execution
         {
             bump_fence(&tx, tenant, project, &next.work_item_id).await?;
         }
@@ -182,9 +189,14 @@ impl HandoffStore {
         project: &str,
         req: &RejectHandoffRequest,
     ) -> PgResult<(TeamHandoff, HandoffReceipt)> {
-        self.mutate(tenant, project, &req.request_key, "reject", &req.handoff_id, |before| {
-            apply_handoff_reject(before, req).map_err(map_core)
-        })
+        self.mutate(
+            tenant,
+            project,
+            &req.request_key,
+            "reject",
+            &req.handoff_id,
+            |before| apply_handoff_reject(before, req).map_err(map_core),
+        )
         .await
     }
 
@@ -194,9 +206,14 @@ impl HandoffStore {
         project: &str,
         req: &CancelHandoffRequest,
     ) -> PgResult<(TeamHandoff, HandoffReceipt)> {
-        self.mutate(tenant, project, &req.request_key, "cancel", &req.handoff_id, |before| {
-            apply_handoff_cancel(before, req).map_err(map_core)
-        })
+        self.mutate(
+            tenant,
+            project,
+            &req.request_key,
+            "cancel",
+            &req.handoff_id,
+            |before| apply_handoff_cancel(before, req).map_err(map_core),
+        )
         .await
     }
 
@@ -206,9 +223,14 @@ impl HandoffStore {
         project: &str,
         req: &TimeoutHandoffRequest,
     ) -> PgResult<(TeamHandoff, HandoffReceipt)> {
-        self.mutate(tenant, project, &req.request_key, "timeout", &req.handoff_id, |before| {
-            apply_handoff_timeout(before, req).map_err(map_core)
-        })
+        self.mutate(
+            tenant,
+            project,
+            &req.request_key,
+            "timeout",
+            &req.handoff_id,
+            |before| apply_handoff_timeout(before, req).map_err(map_core),
+        )
         .await
     }
 
@@ -244,7 +266,12 @@ impl HandoffStore {
     }
 }
 
-async fn ensure_person(tx: &Transaction<'_>, tenant: &str, project: &str, person_id: &str) -> PgResult<()> {
+async fn ensure_person(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    person_id: &str,
+) -> PgResult<()> {
     tx.execute(
         "INSERT INTO awr_team.persons(tenant_id,project_id,id,display_name,status)
          VALUES($1,$2,$3,$3,'active')

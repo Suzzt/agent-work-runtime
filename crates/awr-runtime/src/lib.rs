@@ -22,6 +22,7 @@ pub use document::{
 pub use host_save::{
     HostChange, HostSaveReport, HostSaveRequest, host_preview, host_recover, host_save, host_status,
 };
+mod agent_authorization;
 mod execution;
 mod fs_sync;
 mod management;
@@ -29,17 +30,15 @@ mod mutation;
 mod mutation_apply;
 mod organization;
 mod read;
-mod resume;
 mod responsibility;
-mod agent_authorization;
+mod resume;
 mod team_handoff;
 mod work_action;
 mod work_create;
 mod work_edit;
 pub use work_edit::edit_work;
-mod work_graph;
 mod selective_invalidation;
-pub use work_graph::{SharedOutcomeRef, WorkGraphRequest, necessary_dependencies_ready, reference_shared_outcome, unique_shared_work_keys, validate_cross_stream_work_graph, work_graph};
+mod work_graph;
 pub use selective_invalidation::{
     AdoptedConsumerEdge, BoundaryDecision, BoundaryRevalidation, BoundarySnapshot,
     CancelSplitRelation, DiscoverDependencyRequest, ExecutionBoundary, PlanningChangeApplication,
@@ -47,6 +46,10 @@ pub use selective_invalidation::{
     action_blocked_by_planning_changes, confirm_planning_change, consumers_by_provider,
     planning_change_fingerprint, record_discovered_dependency_change, reject_planning_change,
     revalidate_execution_boundary, select_downstream_reevaluation,
+};
+pub use work_graph::{
+    SharedOutcomeRef, WorkGraphRequest, necessary_dependencies_ready, reference_shared_outcome,
+    unique_shared_work_keys, validate_cross_stream_work_graph, work_graph,
 };
 mod response_view;
 mod workflow;

@@ -703,7 +703,9 @@ pub fn adopt_delivery_credential(
         current_selection: req.current_selection.clone(),
         acceptance,
         availability: req.availability,
-        export_authority: req.export_authorization.as_authority(&req.dependency.selected),
+        export_authority: req
+            .export_authorization
+            .as_authority(&req.dependency.selected),
         observed_at_ms: req.now_ms,
     };
     let adopted = adopt_delivery(req.dependency.requirement(), facts, req.now_ms)?;
