@@ -313,3 +313,134 @@ fn unsupported_adapter_cannot_form_or_activate_shards() {
     .unwrap_err();
     assert!(matches!(err, Error::MutationUnsupported(_)), "{err:?}");
 }
+
+#[test]
+fn unregistered_outside_path_refused_before_write() {
+    let mut f = ShardFixture::new();
+    let outside = f.root.join("outside-source.txt");
+    fs::write(&outside, "outside before\n").unwrap();
+    let forged = ShardWrite::from_bytes(
+        f.source_for("docs/a.md"),
+        PathBuf::from("outside-source.txt"),
+        fingerprint(b"outside before\n"),
+        b"outside after forged\n".to_vec(),
+    )
+    .unwrap();
+    let revision = f.store.project(f.project).unwrap().project_revision;
+    let err = activate_shard_candidate(
+        &mut f.store,
+        &f.root,
+        f.project,
+        "shards-forged-outside",
+        "markdown-directory-v1",
+        vec![forged],
+        revision,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            Error::SourceConflict(_) | Error::RuleViolation(_) | Error::MutationUnsupported(_)
+        ),
+        "forged outside path must be refused: {err:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(&outside).unwrap(),
+        "outside before\n",
+        "unregistered sibling must not be overwritten"
+    );
+    assert!(
+        fs::read_to_string(f.root.join("docs/a.md"))
+            .unwrap()
+            .contains("Draft A."),
+        "registered source must remain untouched"
+    );
+    // Binding must happen before journal creation for this request key.
+    let mutations = f.root.join(".awr/mutations");
+    if mutations.exists() {
+        for entry in fs::read_dir(&mutations).unwrap() {
+            let entry = entry.unwrap();
+            let receipt = entry.path().join("receipt.json");
+            if receipt.exists() {
+                let body = fs::read_to_string(&receipt).unwrap();
+                assert!(
+                    !body.contains("shards-forged-outside"),
+                    "forged path must not create a recovery journal: {body}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn recover_pending_shard_receipt_resumes_under_lock() {
+    let mut f = ShardFixture::new();
+    let a_after = "---\nid: A\ntitle: Alpha\nstatus: accepted\n---\n# Alpha\n\nAccepted A.\n";
+    let b_after = "---\nid: B\ntitle: Beta\nstatus: accepted\n---\n# Beta\n\nAccepted B.\n";
+    let shards = vec![
+        f.shard("docs/a.md", a_after),
+        f.shard("docs/b.md", b_after),
+    ];
+    let revision = f.store.project(f.project).unwrap().project_revision;
+    // Journal + durable after artifacts are written before the revision gate, so a
+    // conflicting expected revision leaves a pending receipt to recover.
+    let pending = activate_shard_candidate(
+        &mut f.store,
+        &f.root,
+        f.project,
+        "shards-pending-recover",
+        "markdown-directory-v1",
+        shards,
+        revision.saturating_add(999),
+    )
+    .unwrap();
+    assert_eq!(pending.value["ok"], false, "{}", pending.value);
+    assert_eq!(pending.value["status"], "pending_recovery");
+    assert!(
+        fs::read_to_string(f.root.join("docs/a.md"))
+            .unwrap()
+            .contains("Draft A."),
+        "pending activation must not have written sources yet"
+    );
+
+    let recovered = recover_shard_candidate(
+        &mut f.store,
+        &f.root,
+        f.project,
+        "shards-pending-recover",
+        revision,
+    )
+    .unwrap();
+    assert_eq!(recovered.value["ok"], true, "{}", recovered.value);
+    assert_eq!(recovered.value["recovered"], true, "{}", recovered.value);
+    assert_ne!(
+        recovered.value.get("already_recorded"),
+        Some(&json!(true)),
+        "pending recovery must actually apply, not only report completed: {}",
+        recovered.value
+    );
+    assert!(
+        fs::read_to_string(f.root.join("docs/a.md"))
+            .unwrap()
+            .contains("Accepted A.")
+    );
+    assert!(
+        fs::read_to_string(f.root.join("docs/b.md"))
+            .unwrap()
+            .contains("Accepted B.")
+    );
+
+    // Idempotent re-entry after successful recovery.
+    let rev_after = f.store.project(f.project).unwrap().project_revision;
+    let again = recover_shard_candidate(
+        &mut f.store,
+        &f.root,
+        f.project,
+        "shards-pending-recover",
+        rev_after,
+    )
+    .unwrap();
+    assert_eq!(again.value["ok"], true, "{}", again.value);
+    assert_eq!(again.value["already_recorded"], true);
+}
+
