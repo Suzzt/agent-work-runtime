@@ -396,17 +396,11 @@ pub fn activate_shard_candidate(
             // Same reviewed candidate: resume durable receipt instead of wiping applied[].
             existing
         } else {
-            let receipt = ShardReceipt {
-                version: 1,
-                phase: "planned".into(),
-                project_id,
-                project_revision: expected_revision,
-                request_key: request_key.into(),
-                candidate: candidate.clone(),
-                applied: vec![],
-            };
-            save_json(&dir, "receipt.json", &receipt)?;
-            receipt
+            // Pending receipt for this request_key is bound to a different candidate.
+            // Refuse before any durable overwrite so recovery can still use the original.
+            return Err(Error::SourceConflict(
+                "request_key reused with a different shard candidate intent".into(),
+            ));
         }
     } else {
         let receipt = ShardReceipt {
