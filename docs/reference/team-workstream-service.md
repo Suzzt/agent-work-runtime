@@ -374,8 +374,10 @@ another external effect. A new request ID cannot restart an already running atte
 A same-workstream required predecessor needs a selected completion receipt for
 its current contract and completed runtime. A source status alone is insufficient.
 Cross-workstream dependencies remain blocked until explicit export/adoption is
-implemented, including when a client can read both workstreams. The admission
-check is a snapshot; ongoing selective invalidation is not yet implemented.
+implemented, including when a client can read both workstreams. Admission rechecks adoption/bindings at prepare, dispatch and complete (WS-032)
+so concurrent revoke cannot race past the boundary; mid-execution invalidation
+keeps real effects and recovery duty. Fixed-delivery consumers are not
+invalidated by unrelated upstream progress.
 
 The resource check covers cooperating AWR clients in this project's lexical path
 namespace. It does not inspect client filesystems, separate physical worktrees,
@@ -544,6 +546,12 @@ edge mutations atomically under the project lock (no cyclic union / dangling
 refs), requires all necessary deps for readiness, and treats shared outcomes as
 references consistent with adoption credentials above.
 
+Selective invalidation (WS-032) re-evaluates only affected consumers under
+`fixed_delivery` / `current_contract` policies, revalidates prepare/dispatch/
+complete under the project lock (revoke-race safe; mid-execution keeps effects
++ recovery duty), and persists scoped planning changes for newly discovered
+dependencies (block affected actions → authorized confirm of new graph +
+acceptance contract). Team PG schema 24.
 
 Artifact/contract changes invalidate prior open/approved rounds for other
 bundles; reject/return/rework keep historical rounds.

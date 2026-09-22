@@ -107,8 +107,9 @@ The Team source bundle can already represent and validate the acyclic
 source graph validation only. Delivery receipts and adoption credentials are persisted (WS-030). The runtime
 and Team graph APIs enforce acyclic cross-stream task DAGs with explainable hard
 cycle paths, atomic concurrent edge mutations, all-necessary-deps readiness, and
-shared outcome references (WS-031). Dispatch admission and selective invalidation
-remain separate integration work on the source path.
+shared outcome references (WS-031). Selective invalidation and prepare/dispatch/
+complete boundary revalidation are enforced with WS-030 adoption policies and
+scoped planning changes for newly discovered dependencies (WS-032).
 
 ## Accounting and compatibility
 

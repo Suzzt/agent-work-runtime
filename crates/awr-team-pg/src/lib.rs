@@ -17,6 +17,7 @@ mod responsibility;
 mod agent_authorization;
 mod team_handoff;
 mod delivery_adoption;
+mod selective_invalidation;
 mod path;
 mod pool;
 mod read;
@@ -50,6 +51,13 @@ pub use responsibility::ResponsibilityStore;
 pub use agent_authorization::AuthorizationStore;
 pub use team_handoff::HandoffStore;
 pub use delivery_adoption::DeliveryAdoptionStore;
+pub use selective_invalidation::{
+    AdoptedConsumerEdge, BoundaryDecision, BoundaryRevalidateRequest, BoundaryRevalidation,
+    BoundarySnapshot, CancelSplitRelation, DecidePlanningChangeRequest, ExecutionBoundary,
+    ProviderChangeKind, RecordPlanningChangeRequest, ScopedPlanningChange,
+    SelectiveInvalidateRequest, SelectiveInvalidationPlan, SelectiveInvalidationReceipt,
+    SelectiveInvalidationStore, revalidate_execution_boundary, select_downstream_reevaluation,
+};
 pub use path::{
     MAX_FILE_BYTES, MAX_PACKAGE_BYTES, MAX_SOURCE_FILES, validate_package, validate_source_path,
 };
@@ -89,6 +97,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 20);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 24);
     }
 }
