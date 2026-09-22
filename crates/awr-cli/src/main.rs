@@ -20,6 +20,7 @@ mod intake_plan;
 mod management;
 mod mutation;
 mod onboarding;
+mod nav;
 mod query;
 mod records;
 mod recovery;
@@ -108,6 +109,8 @@ enum Command {
         #[command(subcommand)]
         command: source::SourceCommand,
     },
+    /// Read-only mainline navigation across scope, dependencies, accounting and blockers (WS-042).
+    Nav(nav::NavArgs),
     /// Refresh source projections and summarize current project work.
     Status {
         /// Return one page of current queue items (does not include terminal history).
@@ -234,6 +237,7 @@ fn run(cli: &Cli) -> Result<()> {
         Some(Command::Execution { command }) => execution::run(&cli.project, command, cli.json),
         Some(Command::Recovery { command }) => recovery::run(&cli.project, command, cli.json),
         Some(Command::Source { command }) => source::run(&cli.project, command, cli.json),
+        Some(Command::Nav(args)) => nav::run(&cli.project, &args, cli.json),
         Some(Command::Status {
             queue,
             offset,
