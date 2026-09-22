@@ -25,3 +25,6 @@ cumulative-duration field as estimated remaining time.
    when intervals overlap.
 
 This note is a handoff contract, not a forecasting implementation.
+
+See also `eta-checkpoints.md` for the WS-043 forecasting surface that
+consumes this handoff.

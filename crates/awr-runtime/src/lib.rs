@@ -44,6 +44,7 @@ mod selective_invalidation;
 mod work_graph;
 mod workstream_accounting;
 mod workstream_usage;
+mod workstream_eta;
 pub use selective_invalidation::{
     AdoptedConsumerEdge, BoundaryDecision, BoundaryRevalidation, BoundarySnapshot,
     CancelSplitRelation, DiscoverDependencyRequest, ExecutionBoundary, PlanningChangeApplication,
@@ -67,6 +68,11 @@ pub use workstream_usage::{
     query_usage_occurrence_bindings, query_usage_time_totals, record_usage_allocation,
     record_usage_correction, record_usage_counter_snapshot, record_usage_execution_interval,
     refuse_eta_from_cumulative_duration, usage_observation_for_ws043,
+};
+pub use workstream_eta::{
+    AttestedEtaProject, EtaRuntimeError, attach_observation_handoff, estimate_and_persist,
+    observation_handoff_for_estimate, query_eta_forecast, query_eta_forecasts_for_target,
+    record_acceptance_datum, record_historical_sample, reestimate_and_persist,
 };
 mod response_view;
 mod workflow;
