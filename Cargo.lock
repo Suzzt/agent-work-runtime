@@ -205,6 +205,7 @@ name = "awr-server"
 version = "0.4.0"
 dependencies = [
  "awr-core",
+ "awr-runtime",
  "awr-team",
  "awr-team-pg",
  "axum",

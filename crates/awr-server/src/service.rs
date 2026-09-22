@@ -3,6 +3,9 @@
 mod action_auth;
 mod mcp;
 
+pub use crate::named_agent_host::{
+    named_agent_host_capabilities, negotiate_named_adapter, usable_named_clients,
+};
 pub use action_auth::{
     action_authorization_capabilities, command_action_name, query_action_name,
     reject_access_management_forgeries, reject_forged_authority_fields,
