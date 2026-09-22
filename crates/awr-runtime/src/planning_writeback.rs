@@ -203,9 +203,8 @@ pub fn analyze_activation_impact(
                 reasons,
                 recovery_actions: actions,
             });
-            refuse_reason = Some(
-                "affected live work blocks activation until stop/reconcile/replan".into(),
-            );
+            refuse_reason =
+                Some("affected live work blocks activation until stop/reconcile/replan".into());
         } else {
             decisions.push(AffectedWorkDecision {
                 work_id: work_id.clone(),
@@ -363,10 +362,12 @@ pub fn activate_ledger_writeback_precise(
 
 /// Idempotent publish/activation identity: same request_id yields one effective
 /// activation. Callers compare journals before starting a new attempt.
-pub fn same_request_already_completed(existing: Option<&WritebackJournal>, request_id: &str) -> bool {
-    existing.is_some_and(|j| {
-        j.request_id == request_id && matches!(j.phase, WritebackPhase::Completed)
-    })
+pub fn same_request_already_completed(
+    existing: Option<&WritebackJournal>,
+    request_id: &str,
+) -> bool {
+    existing
+        .is_some_and(|j| j.request_id == request_id && matches!(j.phase, WritebackPhase::Completed))
 }
 
 /// Downstream consumers of graph edges still use WS-032 selection — exposed so
@@ -439,17 +440,9 @@ mod tests {
         assert!(!report.allow_activation);
         assert!(!report.retained_project_claim_barrier);
         assert_eq!(report.unrelated_work_ids, vec!["b".to_string()]);
-        let b = report
-            .decisions
-            .iter()
-            .find(|d| d.work_id == "b")
-            .unwrap();
+        let b = report.decisions.iter().find(|d| d.work_id == "b").unwrap();
         assert_eq!(b.disposition, ActivationDisposition::ContinueUnrelated);
-        let a = report
-            .decisions
-            .iter()
-            .find(|d| d.work_id == "a")
-            .unwrap();
+        let a = report.decisions.iter().find(|d| d.work_id == "a").unwrap();
         assert_eq!(
             a.disposition,
             ActivationDisposition::RequireStopReconcileReplan

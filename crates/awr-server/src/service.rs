@@ -130,16 +130,43 @@ pub fn router(
     let mut router = Router::new()
         .route("/v1/projects/{project}/query", post(query))
         .route("/v1/projects/{project}/command", post(command))
-        .route("/v1/projects/{project}/access/inspect", post(access_inspect))
-        .route("/v1/projects/{project}/access/preview", post(access_preview))
+        .route(
+            "/v1/projects/{project}/access/inspect",
+            post(access_inspect),
+        )
+        .route(
+            "/v1/projects/{project}/access/preview",
+            post(access_preview),
+        )
         .route("/v1/projects/{project}/access/apply", post(access_apply))
-        .route("/v1/projects/{project}/access/outcome", post(access_outcome))
-        .route("/v1/projects/{project}/planning/suggest", post(planning_suggest))
-        .route("/v1/projects/{project}/planning/draft", post(planning_draft))
-        .route("/v1/projects/{project}/planning/preview", post(planning_preview))
-        .route("/v1/projects/{project}/planning/approve", post(planning_approve))
-        .route("/v1/projects/{project}/planning/publish", post(planning_publish))
-        .route("/v1/projects/{project}/planning/outcome", post(planning_outcome))
+        .route(
+            "/v1/projects/{project}/access/outcome",
+            post(access_outcome),
+        )
+        .route(
+            "/v1/projects/{project}/planning/suggest",
+            post(planning_suggest),
+        )
+        .route(
+            "/v1/projects/{project}/planning/draft",
+            post(planning_draft),
+        )
+        .route(
+            "/v1/projects/{project}/planning/preview",
+            post(planning_preview),
+        )
+        .route(
+            "/v1/projects/{project}/planning/approve",
+            post(planning_approve),
+        )
+        .route(
+            "/v1/projects/{project}/planning/publish",
+            post(planning_publish),
+        )
+        .route(
+            "/v1/projects/{project}/planning/outcome",
+            post(planning_outcome),
+        )
         .layer(DefaultBodyLimit::max(65536))
         .with_state(state.clone());
     for project in state.projects.values() {
@@ -251,7 +278,6 @@ async fn dispatch(
         Err(_) => unavailable(),
     }
 }
-
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -455,7 +481,6 @@ fn bearer(headers: &HeaderMap) -> Option<&str> {
         .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("Bearer"))
         .map(|(_, token)| token)
 }
-
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

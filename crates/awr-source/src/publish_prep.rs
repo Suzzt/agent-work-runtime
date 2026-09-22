@@ -8,7 +8,7 @@
 //! never invented from the ledger.
 use crate::locator::fingerprint;
 use awr_core::{
-    Error, Id, Result, Workstream, WorkstreamCatalog, WorkstreamState, WORKSTREAM_CATALOG_VERSION,
+    Error, Id, Result, WORKSTREAM_CATALOG_VERSION, Workstream, WorkstreamCatalog, WorkstreamState,
 };
 use awr_team::{WorkContract, WorkId, WorkstreamBundle, WorkstreamContract};
 use serde::{Deserialize, Serialize};
@@ -515,9 +515,8 @@ fn load_referenced_specs(root: &Path, bundle: &WorkstreamBundle) -> Result<Vec<R
             )));
         }
         let abs = root.join(&path);
-        let bytes = fs::read(&abs).map_err(|e| {
-            Error::InvalidInput(format!("missing referenced spec `{path}`: {e}"))
-        })?;
+        let bytes = fs::read(&abs)
+            .map_err(|e| Error::InvalidInput(format!("missing referenced spec `{path}`: {e}")))?;
         if ext == "json" {
             let _: Value = serde_json::from_slice(&bytes).map_err(|e| {
                 Error::InvalidInput(format!("referenced JSON spec `{path}` is invalid: {e}"))
@@ -715,8 +714,8 @@ pub fn source_status_notes_are_completion_receipts() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
     use super::*;
+    use std::path::PathBuf;
 
     fn fixture_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/team-mcp/publish-prep")
@@ -835,11 +834,13 @@ mod tests {
 
     #[test]
     fn private_repo_locator_requires_safe_scheme() {
-        assert!(SoleSourceLocation::private_management_repo(
-            "https://git.example/team/awr-ledger.git#rev",
-            "ledger/work-ledger.yaml"
-        )
-        .is_ok());
+        assert!(
+            SoleSourceLocation::private_management_repo(
+                "https://git.example/team/awr-ledger.git#rev",
+                "ledger/work-ledger.yaml"
+            )
+            .is_ok()
+        );
         assert!(
             SoleSourceLocation::private_management_repo("/tmp/not-a-repo", "ledger.yaml").is_err()
         );

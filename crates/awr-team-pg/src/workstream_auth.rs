@@ -278,14 +278,17 @@ pub fn command_business_action(op: &str) -> Option<awr_team::Action> {
     use awr_team::Action::*;
     Some(match op {
         "session.start" | "session.checkpoint" | "session.end" => SessionMaintainOwn,
-        "claim.acquire" | "claim.renew" | "claim.release"
-        | "handoff.propose" | "handoff.accept" | "handoff.reject" | "handoff.cancel"
-        | "handoff.timeout" | "handoff.inspect" => ClaimManageOwn,
+        "claim.acquire" | "claim.renew" | "claim.release" | "handoff.propose"
+        | "handoff.accept" | "handoff.reject" | "handoff.cancel" | "handoff.timeout"
+        | "handoff.inspect" => ClaimManageOwn,
         "execution.prepare" | "execution.start" | "execution.cancel" | "execution.report" => {
             ExecutionRequestAndReportOwn
         }
-        "evidence.submit" | "review.open" | "delivery.submit_and_request_review"
-        | "delivery.register_pr" | "delivery.observe_pr" => DeliverySubmitAndRequestReview,
+        "evidence.submit"
+        | "review.open"
+        | "delivery.submit_and_request_review"
+        | "delivery.register_pr"
+        | "delivery.observe_pr" => DeliverySubmitAndRequestReview,
         "review.accept" | "review.return" | "review.decide" => ReviewDecide,
         // Rework is author/executor acknowledgment of a return — not independent review.
         "work.rework" => DeliverySubmitAndRequestReview,
@@ -364,9 +367,7 @@ pub(crate) fn authority_scope(
         scope.allowed_actions = actions.clone();
         // Delegation alone never confers independent review.
         scope.independent_review_grant = false;
-    } else if auth.independent_review
-        && awr_team::independent_review_eligible(auth.role_template)
-    {
+    } else if auth.independent_review && awr_team::independent_review_eligible(auth.role_template) {
         // Explicit membership grant on an eligible template (TMCP-031).
         scope.independent_review_grant = true;
         scope.allowed_actions.insert(awr_team::Action::ReviewDecide);
@@ -440,11 +441,21 @@ pub(crate) fn command_authority(op: &str) -> Option<DomainAuthority> {
         "session.checkpoint" | "session.end" | "claim.release" | "execution.cancel"
         | "execution.report" | "handoff.reject" | "handoff.cancel" | "handoff.timeout"
         | "handoff.inspect" | "review.return" | "work.rework" => DomainAuthority::WritePreserve,
-        "session.start" | "claim.acquire" | "claim.renew" | "execution.prepare"
-        | "execution.start" | "handoff.propose" | "handoff.accept"
-        | "evidence.submit" | "review.open" | "review.accept" | "review.decide"
-        | "work.complete" | "delivery.finalize"
-        | "delivery.submit_and_request_review" | "delivery.register_pr"
+        "session.start"
+        | "claim.acquire"
+        | "claim.renew"
+        | "execution.prepare"
+        | "execution.start"
+        | "handoff.propose"
+        | "handoff.accept"
+        | "evidence.submit"
+        | "review.open"
+        | "review.accept"
+        | "review.decide"
+        | "work.complete"
+        | "delivery.finalize"
+        | "delivery.submit_and_request_review"
+        | "delivery.register_pr"
         | "delivery.observe_pr" => DomainAuthority::WriteActive,
         "execution.attest" => DomainAuthority::Attest,
         "execution.reconcile" => DomainAuthority::Reconcile,
@@ -503,7 +514,9 @@ pub(crate) fn authorize_command(
             Ok(())
         }
         DomainAuthority::Attest => {
-            if auth.actor_kind == "agent" || auth.actor_kind == "human" && auth.role_template != auth.role_template {
+            if auth.actor_kind == "agent"
+                || auth.actor_kind == "human" && auth.role_template != auth.role_template
+            {
                 // agents never attest; product-role humans also never auto-upgrade
                 // (attest bit requires actor_kind==system in authenticate).
             }
@@ -574,8 +587,7 @@ pub(crate) fn workstream_boundary_capabilities() -> serde_json::Value {
 mod tests {
     use super::*;
     use awr_core::{
-        WORKSTREAM_CATALOG_VERSION, Workstream, WorkstreamCatalog, WorkstreamGrant,
-        WorkstreamState,
+        WORKSTREAM_CATALOG_VERSION, Workstream, WorkstreamCatalog, WorkstreamGrant, WorkstreamState,
     };
 
     fn id(value: u128) -> Id {
@@ -704,27 +716,31 @@ mod tests {
             ),
             Err(PgError::Unsupported(_))
         ));
-        assert!(authorize_command(
-            &writer,
-            id(1),
-            "work-a",
-            "session.checkpoint",
-            CommandAuthPhase::Admission
-        )
-        .is_ok());
+        assert!(
+            authorize_command(
+                &writer,
+                id(1),
+                "work-a",
+                "session.checkpoint",
+                CommandAuthPhase::Admission
+            )
+            .is_ok()
+        );
     }
 
     #[test]
     fn effect_enforces_active_stream_and_special_grants_after_admission() {
         let paused_writer = authority(true, false, false, false, WorkstreamState::Paused);
-        assert!(authorize_command(
-            &paused_writer,
-            id(1),
-            "work-a",
-            "session.end",
-            CommandAuthPhase::Effect
-        )
-        .is_ok());
+        assert!(
+            authorize_command(
+                &paused_writer,
+                id(1),
+                "work-a",
+                "session.end",
+                CommandAuthPhase::Effect
+            )
+            .is_ok()
+        );
         assert!(matches!(
             authorize_command(
                 &paused_writer,
@@ -738,7 +754,13 @@ mod tests {
 
         let writer = authority(true, false, false, false, WorkstreamState::Active);
         assert!(matches!(
-            authorize_command(&writer, id(1), "work-a", "execution.attest", CommandAuthPhase::Effect),
+            authorize_command(
+                &writer,
+                id(1),
+                "work-a",
+                "execution.attest",
+                CommandAuthPhase::Effect
+            ),
             Err(PgError::Forbidden)
         ));
         assert!(matches!(
@@ -753,49 +775,76 @@ mod tests {
         ));
 
         let attester = authority(true, false, true, false, WorkstreamState::Active);
-        assert!(authorize_command(
-            &attester,
-            id(1),
-            "work-a",
-            "execution.attest",
-            CommandAuthPhase::Effect
-        )
-        .is_ok());
+        assert!(
+            authorize_command(
+                &attester,
+                id(1),
+                "work-a",
+                "execution.attest",
+                CommandAuthPhase::Effect
+            )
+            .is_ok()
+        );
 
         let reconciler = authority(true, true, false, true, WorkstreamState::Active);
-        assert!(authorize_command(
-            &reconciler,
-            id(1),
-            "work-a",
-            "execution.reconcile",
-            CommandAuthPhase::Effect
-        )
-        .is_ok());
+        assert!(
+            authorize_command(
+                &reconciler,
+                id(1),
+                "work-a",
+                "execution.reconcile",
+                CommandAuthPhase::Effect
+            )
+            .is_ok()
+        );
     }
 
     #[test]
     fn membership_roles_map_onto_tmcp_templates() {
-        assert_eq!(map_membership_role("reader"), Some(awr_team::RoleTemplate::Reader));
-        assert_eq!(map_membership_role("reviewer"), Some(awr_team::RoleTemplate::Reader));
-        assert_eq!(map_membership_role("worker"), Some(awr_team::RoleTemplate::Developer));
-        assert_eq!(map_membership_role("developer"), Some(awr_team::RoleTemplate::Developer));
-        assert_eq!(map_membership_role("maintainer"), Some(awr_team::RoleTemplate::Maintainer));
-        assert_eq!(map_membership_role("admin"), Some(awr_team::RoleTemplate::ProjectAdmin));
-        assert_eq!(map_membership_role("project_admin"), Some(awr_team::RoleTemplate::ProjectAdmin));
+        assert_eq!(
+            map_membership_role("reader"),
+            Some(awr_team::RoleTemplate::Reader)
+        );
+        assert_eq!(
+            map_membership_role("reviewer"),
+            Some(awr_team::RoleTemplate::Reader)
+        );
+        assert_eq!(
+            map_membership_role("worker"),
+            Some(awr_team::RoleTemplate::Developer)
+        );
+        assert_eq!(
+            map_membership_role("developer"),
+            Some(awr_team::RoleTemplate::Developer)
+        );
+        assert_eq!(
+            map_membership_role("maintainer"),
+            Some(awr_team::RoleTemplate::Maintainer)
+        );
+        assert_eq!(
+            map_membership_role("admin"),
+            Some(awr_team::RoleTemplate::ProjectAdmin)
+        );
+        assert_eq!(
+            map_membership_role("project_admin"),
+            Some(awr_team::RoleTemplate::ProjectAdmin)
+        );
         assert_eq!(map_membership_role("nope"), None);
     }
 
     #[test]
     fn command_ops_map_to_tmcp_actions_and_specials_stay_unmapped() {
-        for op in [
-            "session.start",
-            "session.checkpoint",
-            "session.end",
-        ] {
-            assert_eq!(command_business_action(op), Some(awr_team::Action::SessionMaintainOwn));
+        for op in ["session.start", "session.checkpoint", "session.end"] {
+            assert_eq!(
+                command_business_action(op),
+                Some(awr_team::Action::SessionMaintainOwn)
+            );
         }
         for op in ["claim.acquire", "claim.renew", "claim.release"] {
-            assert_eq!(command_business_action(op), Some(awr_team::Action::ClaimManageOwn));
+            assert_eq!(
+                command_business_action(op),
+                Some(awr_team::Action::ClaimManageOwn)
+            );
         }
         for op in [
             "execution.prepare",
@@ -814,8 +863,14 @@ mod tests {
             command_business_action("planning.publish"),
             Some(awr_team::Action::PlanningPublish)
         );
-        assert_eq!(query_business_action("work.search"), Some(awr_team::Action::WorkRead));
-        assert_eq!(query_business_action("events.list"), Some(awr_team::Action::WorkRead));
+        assert_eq!(
+            query_business_action("work.search"),
+            Some(awr_team::Action::WorkRead)
+        );
+        assert_eq!(
+            query_business_action("events.list"),
+            Some(awr_team::Action::WorkRead)
+        );
         assert_eq!(query_business_action("unknown"), None);
     }
 
@@ -853,30 +908,28 @@ mod tests {
             Err(PgError::Forbidden)
         ));
 
-        let developer = authority_with_role(
-            "worker",
-            true,
-            false,
-            false,
-            false,
-            WorkstreamState::Active,
+        let developer =
+            authority_with_role("worker", true, false, false, false, WorkstreamState::Active);
+        assert!(
+            authorize_command(
+                &developer,
+                id(1),
+                "w",
+                "session.start",
+                CommandAuthPhase::Admission
+            )
+            .is_ok()
         );
-        assert!(authorize_command(
-            &developer,
-            id(1),
-            "w",
-            "session.start",
-            CommandAuthPhase::Admission
-        )
-        .is_ok());
-        assert!(authorize_command(
-            &developer,
-            id(1),
-            "w",
-            "execution.prepare",
-            CommandAuthPhase::Admission
-        )
-        .is_ok());
+        assert!(
+            authorize_command(
+                &developer,
+                id(1),
+                "w",
+                "execution.prepare",
+                CommandAuthPhase::Admission
+            )
+            .is_ok()
+        );
         assert!(matches!(
             authorize_domain_action(
                 &developer,
@@ -913,13 +966,15 @@ mod tests {
             false,
             WorkstreamState::Active,
         );
-        assert!(authorize_domain_action(
-            &maintainer,
-            awr_team::Action::PlanningPublish,
-            Some(id(1)),
-            Some("w")
-        )
-        .is_ok());
+        assert!(
+            authorize_domain_action(
+                &maintainer,
+                awr_team::Action::PlanningPublish,
+                Some(id(1)),
+                Some("w")
+            )
+            .is_ok()
+        );
         assert!(matches!(
             authorize_domain_action(
                 &maintainer,
@@ -930,23 +985,23 @@ mod tests {
             Err(PgError::Forbidden)
         ));
 
-        let admin = authority_with_role(
-            "admin",
-            true,
-            true,
-            false,
-            false,
-            WorkstreamState::Active,
+        let admin = authority_with_role("admin", true, true, false, false, WorkstreamState::Active);
+        assert!(
+            authorize_domain_action(
+                &admin,
+                awr_team::Action::AccessManageProject,
+                Some(id(1)),
+                Some("w")
+            )
+            .is_ok()
         );
-        assert!(authorize_domain_action(
-            &admin,
-            awr_team::Action::AccessManageProject,
-            Some(id(1)),
-            Some("w")
-        )
-        .is_ok());
         assert!(matches!(
-            authorize_domain_action(&admin, awr_team::Action::ReviewDecide, Some(id(1)), Some("w")),
+            authorize_domain_action(
+                &admin,
+                awr_team::Action::ReviewDecide,
+                Some(id(1)),
+                Some("w")
+            ),
             Err(PgError::Forbidden)
         ));
     }
@@ -1026,6 +1081,9 @@ mod tests {
         assert_eq!(caps["domain_entry_authorization"], "shared_command_gate");
         assert_eq!(caps["action_authorization"], "tmcp_010_shared_decision");
         assert_eq!(caps["permission_policy_id"], awr_team::PERMISSION_POLICY_ID);
-        assert_eq!(caps["permission_policy_version"], awr_team::PERMISSION_POLICY_VERSION);
+        assert_eq!(
+            caps["permission_policy_version"],
+            awr_team::PERMISSION_POLICY_VERSION
+        );
     }
 }

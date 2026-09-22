@@ -308,7 +308,6 @@ pub fn work_graph(store: &Store, root: &Path, request: &WorkGraphRequest) -> Res
     )
 }
 
-
 /// Shared delivery outcome identity. Consumers hold the same ref; payload bytes
 /// are not copied into each stream (pair with WS-030 adoption credentials).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -370,10 +369,7 @@ pub fn validate_cross_stream_work_graph(
 ) -> Result<()> {
     validate_workstream_graph(catalog, work_ids, ownership, edges).map_err(|error| match error {
         WorkstreamGraphError::Dependency(DependencyDagError::Cycle(path)) => {
-            Error::DependencyBlocked(format!(
-                "required dependency cycle: {}",
-                path.join(" -> ")
-            ))
+            Error::DependencyBlocked(format!("required dependency cycle: {}", path.join(" -> ")))
         }
         WorkstreamGraphError::Dependency(DependencyDagError::MissingEndpoint)
         | WorkstreamGraphError::InvalidRequiredEndpoint => {
@@ -490,7 +486,10 @@ mod tests {
         let all = BTreeSet::from(["B1".into(), "C1".into()]);
         assert_eq!(necessary_dependencies_ready(["B1", "C1"], &all), Ok(()));
         let keys = unique_shared_work_keys(["A1", "B1", "A1", "A2"]);
-        assert_eq!(keys, vec!["A1".to_string(), "A2".to_string(), "B1".to_string()]);
+        assert_eq!(
+            keys,
+            vec!["A1".to_string(), "A2".to_string(), "B1".to_string()]
+        );
         let left = reference_shared_outcome("A1", "art", "contract");
         let right = reference_shared_outcome("A1", "art", "contract");
         assert_eq!(left, right);

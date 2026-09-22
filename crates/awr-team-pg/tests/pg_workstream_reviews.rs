@@ -113,7 +113,15 @@ async fn insert_succeeded_execution(admin: &Client, id: &str, contract_hash: &st
                 tenant_id,project_id,id,work_id,fence,contract_hash,input_digest,
                 executor_actor_id,state,result_digest,scope_id)
              VALUES($1,$2,$3,'a',$4,$5,$6,'runner','succeeded',$7,'main')",
-            &[&TENANT, &PROJECT, &id, &fence, &contract_hash, &INPUT, &RESULT],
+            &[
+                &TENANT,
+                &PROJECT,
+                &id,
+                &fence,
+                &contract_hash,
+                &INPUT,
+                &RESULT,
+            ],
         )
         .await
         .unwrap();
@@ -129,7 +137,12 @@ async fn run(
     let prepared = prepare(store, token, "a").await;
     store
         .commands()
-        .execute(TENANT, PROJECT, token, command(&prepared, request, op, args))
+        .execute(
+            TENANT,
+            PROJECT,
+            token,
+            command(&prepared, request, op, args),
+        )
         .await
         .unwrap()["receipt"]["data"]
         .clone()
@@ -145,7 +158,12 @@ async fn run_err(
     let prepared = prepare(store, token, "a").await;
     store
         .commands()
-        .execute(TENANT, PROJECT, token, command(&prepared, request, op, args))
+        .execute(
+            TENANT,
+            PROJECT,
+            token,
+            command(&prepared, request, op, args),
+        )
         .await
         .unwrap_err()
 }
@@ -193,7 +211,10 @@ async fn mainline_submit_open_accept_complete_is_team_independent() {
     let (_g, admin, _, store) = setup().await;
     seed_review_actors(&admin).await;
     let prepared = prepare(&store, A, "a").await;
-    let contract_hash = prepared["data"]["contract_hash"].as_str().unwrap().to_string();
+    let contract_hash = prepared["data"]["contract_hash"]
+        .as_str()
+        .unwrap()
+        .to_string();
     insert_succeeded_execution(&admin, "exec-main", &contract_hash, 1).await;
 
     let evidence = run(
@@ -201,7 +222,11 @@ async fn mainline_submit_open_accept_complete_is_team_independent() {
         RUNNER,
         "ev-1",
         "evidence.submit",
-        submit_args("session-runner", "exec-main", &hex_encode(b"ws018-artifact")),
+        submit_args(
+            "session-runner",
+            "exec-main",
+            &hex_encode(b"ws018-artifact"),
+        ),
     )
     .await;
     assert_eq!(evidence["trust_basis"], "trusted_executor");
@@ -223,7 +248,10 @@ async fn mainline_submit_open_accept_complete_is_team_independent() {
     .await;
     assert_eq!(opened["state"], "open");
     assert_eq!(opened["author_person_id"], "person-author");
-    assert_eq!(opened["binds_exact_contract_artifact_execution_round"], true);
+    assert_eq!(
+        opened["binds_exact_contract_artifact_execution_round"],
+        true
+    );
     let round_id = opened["round_id"].as_str().unwrap().to_string();
 
     let accepted = run(
@@ -291,7 +319,10 @@ async fn same_person_agent_cannot_fake_team_independence() {
         .await
         .unwrap();
     let prepared = prepare(&store, A, "a").await;
-    let contract_hash = prepared["data"]["contract_hash"].as_str().unwrap().to_string();
+    let contract_hash = prepared["data"]["contract_hash"]
+        .as_str()
+        .unwrap()
+        .to_string();
     insert_succeeded_execution(&admin, "exec-same", &contract_hash, 1).await;
     let evidence = run(
         &store,
@@ -341,7 +372,11 @@ async fn same_person_agent_cannot_fake_team_independence() {
         RUNNER,
         "ev-self",
         "evidence.submit",
-        submit_args("session-runner", "exec-self", &hex_encode(b"self-review-bytes")),
+        submit_args(
+            "session-runner",
+            "exec-self",
+            &hex_encode(b"self-review-bytes"),
+        ),
     )
     .await;
     let evidence_id = evidence["evidence_id"].as_str().unwrap().to_string();
@@ -380,7 +415,10 @@ async fn return_rework_keeps_history_and_contract_change_blocks_stale_approval()
     let (_g, admin, _, store) = setup().await;
     seed_review_actors(&admin).await;
     let prepared = prepare(&store, A, "a").await;
-    let contract_hash = prepared["data"]["contract_hash"].as_str().unwrap().to_string();
+    let contract_hash = prepared["data"]["contract_hash"]
+        .as_str()
+        .unwrap()
+        .to_string();
     insert_succeeded_execution(&admin, "exec-ret", &contract_hash, 1).await;
     let evidence = run(
         &store,

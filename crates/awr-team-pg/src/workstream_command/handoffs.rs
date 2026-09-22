@@ -1,11 +1,10 @@
 //! Confirmed Team handoff commands (WS-017) under the authenticated command TX.
 use super::*;
 use awr_core::{
-    AcceptHandoffRequest, CancelHandoffRequest, ExecutionInstance,
-    HandoffKind, HandoffPackage, HandoffStatus, InspectHandoffRequest, PersonId,
-    ProposeHandoffRequest, RejectHandoffRequest, TeamHandoff, TimeoutHandoffRequest,
-    apply_handoff_accept, apply_handoff_cancel, apply_handoff_inspect, apply_handoff_propose,
-    apply_handoff_reject, apply_handoff_timeout,
+    AcceptHandoffRequest, CancelHandoffRequest, ExecutionInstance, HandoffKind, HandoffPackage,
+    HandoffStatus, InspectHandoffRequest, PersonId, ProposeHandoffRequest, RejectHandoffRequest,
+    TeamHandoff, TimeoutHandoffRequest, apply_handoff_accept, apply_handoff_cancel,
+    apply_handoff_inspect, apply_handoff_propose, apply_handoff_reject, apply_handoff_timeout,
 };
 
 #[derive(Deserialize)]
@@ -275,11 +274,7 @@ pub(super) async fn apply(
             }
             ensure_person(tx, tenant, project, actor_person.as_str()).await?;
             ensure_person(tx, tenant, project, &a.to_person_id).await?;
-            let fence = a
-                .proposer_fence
-                .as_ref()
-                .map(|s| version(s))
-                .transpose()?;
+            let fence = a.proposer_fence.as_ref().map(|s| version(s)).transpose()?;
             let req = ProposeHandoffRequest {
                 request_key: command.request_id.clone(),
                 handoff_id: a.handoff_id,
@@ -450,7 +445,12 @@ pub(super) async fn apply(
     })
 }
 
-async fn ensure_person(tx: &Transaction<'_>, tenant: &str, project: &str, person_id: &str) -> PgResult<()> {
+async fn ensure_person(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    person_id: &str,
+) -> PgResult<()> {
     tx.execute(
         "INSERT INTO awr_team.persons(tenant_id,project_id,id,display_name,status)
          VALUES($1,$2,$3,$3,'active') ON CONFLICT(tenant_id,project_id,id) DO NOTHING",
@@ -484,7 +484,12 @@ async fn load_for_update(
     }
 }
 
-async fn persist(tx: &Transaction<'_>, tenant: &str, project: &str, h: &TeamHandoff) -> PgResult<()> {
+async fn persist(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    h: &TeamHandoff,
+) -> PgResult<()> {
     let body = serde_json::to_value(h).map_err(|e| PgError::Protocol(e.to_string()))?;
     let package = serde_json::to_value(&h.package).map_err(|e| PgError::Protocol(e.to_string()))?;
     let proposed = h

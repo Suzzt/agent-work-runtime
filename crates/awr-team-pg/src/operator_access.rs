@@ -302,7 +302,12 @@ impl OperatorAccess {
     }
 }
 
-pub(crate) async fn require_owner_project(tx: &Transaction<'_>, tenant: &str, project: &str, write: bool) -> PgResult<String> {
+pub(crate) async fn require_owner_project(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    write: bool,
+) -> PgResult<String> {
     let role = tx
         .query_one(
             "SELECT current_user::text,pg_has_role(current_user,n.nspowner,'USAGE')
@@ -636,10 +641,7 @@ impl ProjectAccessStore {
         subject_actor: &str,
         subject_client: &str,
     ) -> PgResult<Value> {
-        if ![subject_actor, subject_client]
-            .iter()
-            .all(|s| identity(s))
-        {
+        if ![subject_actor, subject_client].iter().all(|s| identity(s)) {
             return Err(invalid());
         }
         let mut client = self.pool.get().await?;
@@ -650,12 +652,7 @@ impl ProjectAccessStore {
             .start()
             .await?;
         let auth = authenticate(&tx, tenant, project, bearer).await?;
-        authorize_domain_action(
-            &auth,
-            awr_team::Action::AccessManageProject,
-            None,
-            None,
-        )?;
+        authorize_domain_action(&auth, awr_team::Action::AccessManageProject, None, None)?;
         let state = snapshot(&tx, tenant, project, subject_actor, subject_client).await?;
         let impact = impact_report(&tx, tenant, project, subject_actor, subject_client).await?;
         let result = json!({
@@ -685,12 +682,7 @@ impl ProjectAccessStore {
             .start()
             .await?;
         let auth = authenticate(&tx, tenant, project, bearer).await?;
-        authorize_domain_action(
-            &auth,
-            awr_team::Action::AccessManageProject,
-            None,
-            None,
-        )?;
+        authorize_domain_action(&auth, awr_team::Action::AccessManageProject, None, None)?;
         refuse_self_special_elevation(&auth, plan)?;
         let owner = plan.as_owner_plan(tenant, project);
         let state = snapshot(
@@ -748,12 +740,7 @@ impl ProjectAccessStore {
             .start()
             .await?;
         let auth = authenticate(&tx, tenant, project, bearer).await?;
-        authorize_domain_action(
-            &auth,
-            awr_team::Action::AccessManageProject,
-            None,
-            None,
-        )?;
+        authorize_domain_action(&auth, awr_team::Action::AccessManageProject, None, None)?;
         let row = tx
             .query_opt(
                 "SELECT result_json FROM awr_team.project_access_changes
@@ -762,7 +749,9 @@ impl ProjectAccessStore {
             )
             .await?;
         let result = match row {
-            Some(r) => json!({"outcome":"committed","receipt": redact_receipt(r.get::<_, Value>(0))}),
+            Some(r) => {
+                json!({"outcome":"committed","receipt": redact_receipt(r.get::<_, Value>(0))})
+            }
             None => json!({"outcome":"unknown"}),
         };
         tx.commit().await?;
@@ -794,12 +783,7 @@ impl ProjectAccessStore {
         crate::check_schema(&client).await?;
         let tx = client.transaction().await?;
         let auth = authenticate(&tx, tenant, project, bearer).await?;
-        authorize_domain_action(
-            &auth,
-            awr_team::Action::AccessManageProject,
-            None,
-            None,
-        )?;
+        authorize_domain_action(&auth, awr_team::Action::AccessManageProject, None, None)?;
         refuse_self_special_elevation(&auth, plan)?;
         if let Some(r) = tx
             .query_opt(
@@ -957,7 +941,10 @@ fn redacted_state(state: &Value) -> Value {
 fn redact_receipt(mut receipt: Value) -> Value {
     if let Some(obj) = receipt.as_object_mut() {
         if let Some(desired) = obj.get_mut("desired").and_then(|v| v.as_object_mut()) {
-            if let Some(c) = desired.get_mut("credential").and_then(|v| v.as_object_mut()) {
+            if let Some(c) = desired
+                .get_mut("credential")
+                .and_then(|v| v.as_object_mut())
+            {
                 c.remove("secret_hash");
             }
         }
@@ -971,7 +958,11 @@ fn refuse_self_special_elevation(
 ) -> PgResult<()> {
     // Body cannot forge caller identity; still refuse plans that try to attach
     // special authorities (already validated) or escalate beyond templates.
-    if plan.grants.iter().any(|g| g.attest_execution || g.reconcile_execution) {
+    if plan
+        .grants
+        .iter()
+        .any(|g| g.attest_execution || g.reconcile_execution)
+    {
         return Err(PgError::Forbidden);
     }
     // Non-admins never reach here (authorize_domain_action). An admin demoting

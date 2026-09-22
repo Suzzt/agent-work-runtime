@@ -22,7 +22,9 @@ fn planning_protocol_v1() -> u32 {
 
 fn require_protocol(v: u32) -> PgResult<()> {
     if v != 1 {
-        return Err(PgError::Protocol("planning protocol_version must be 1".into()));
+        return Err(PgError::Protocol(
+            "planning protocol_version must be 1".into(),
+        ));
     }
     Ok(())
 }
@@ -543,9 +545,10 @@ impl SourceStore {
                 )
             })?;
         let source_ref: Value = row.get(0);
-        let sole = source_ref.get("sole_source").cloned().ok_or_else(|| {
-            PgError::Protocol("active source lacks sole_source binding".into())
-        })?;
+        let sole = source_ref
+            .get("sole_source")
+            .cloned()
+            .ok_or_else(|| PgError::Protocol("active source lacks sole_source binding".into()))?;
         if sole.is_null() {
             return Err(PgError::Protocol(
                 "active source lacks sole_source binding".into(),

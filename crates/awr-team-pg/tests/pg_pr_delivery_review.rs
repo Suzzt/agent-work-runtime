@@ -94,7 +94,12 @@ async fn run(
     let prepared = prepare(store, token, "a").await;
     store
         .commands()
-        .execute(TENANT, PROJECT, token, command(&prepared, request, op, args))
+        .execute(
+            TENANT,
+            PROJECT,
+            token,
+            command(&prepared, request, op, args),
+        )
         .await
         .unwrap()["receipt"]["data"]
         .clone()
@@ -110,7 +115,12 @@ async fn run_err(
     let prepared = prepare(store, token, "a").await;
     store
         .commands()
-        .execute(TENANT, PROJECT, token, command(&prepared, request, op, args))
+        .execute(
+            TENANT,
+            PROJECT,
+            token,
+            command(&prepared, request, op, args),
+        )
         .await
         .unwrap_err()
 }

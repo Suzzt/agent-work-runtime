@@ -3,9 +3,7 @@ use super::*;
 use crate::review::{
     evidence_digest, required_dependencies_covered, resolve_person_id, self_review_permitted,
 };
-use awr_team::{
-    CompletionView, EvidenceBundle, EvidenceGrade, ReviewPolicy, current_completion,
-};
+use awr_team::{CompletionView, EvidenceBundle, EvidenceGrade, ReviewPolicy, current_completion};
 use sha2::{Digest, Sha256};
 
 #[derive(Deserialize)]
@@ -208,8 +206,32 @@ pub(super) async fn apply(
         Action::Open(a) | Action::SubmitAndRequest(a) => {
             open(tx, tenant, project, auth, command, a).await
         }
-        Action::Accept(a) => decide(tx, tenant, project, auth, command, &contract_hash, a, "approve").await,
-        Action::Return(a) => decide(tx, tenant, project, auth, command, &contract_hash, a, "reject").await,
+        Action::Accept(a) => {
+            decide(
+                tx,
+                tenant,
+                project,
+                auth,
+                command,
+                &contract_hash,
+                a,
+                "approve",
+            )
+            .await
+        }
+        Action::Return(a) => {
+            decide(
+                tx,
+                tenant,
+                project,
+                auth,
+                command,
+                &contract_hash,
+                a,
+                "reject",
+            )
+            .await
+        }
         Action::Decide(a) => {
             if !matches!(a.decision.as_str(), "approve" | "reject") {
                 return Err(invalid());
@@ -221,11 +243,35 @@ pub(super) async fn apply(
                 round_id: a.round_id,
                 reason: a.reason,
             };
-            decide(tx, tenant, project, auth, command, &contract_hash, mapped, &decision).await
+            decide(
+                tx,
+                tenant,
+                project,
+                auth,
+                command,
+                &contract_hash,
+                mapped,
+                &decision,
+            )
+            .await
         }
         Action::Rework(a) => rework(tx, tenant, project, auth, command, a).await,
-        Action::Complete(a) => complete(tx, tenant, project, auth, command, contract, &contract_hash, a).await,
-        Action::RegisterPr(a) => register_pr(tx, tenant, project, auth, command, &contract_hash, a).await,
+        Action::Complete(a) => {
+            complete(
+                tx,
+                tenant,
+                project,
+                auth,
+                command,
+                contract,
+                &contract_hash,
+                a,
+            )
+            .await
+        }
+        Action::RegisterPr(a) => {
+            register_pr(tx, tenant, project, auth, command, &contract_hash, a).await
+        }
         Action::ObservePr(a) => observe_pr(tx, tenant, project, auth, command, a).await,
     }
 }
@@ -251,7 +297,8 @@ async fn submit(
     let artifact_bytes = match a.artifact_hex.as_deref() {
         None => None,
         Some(s) => {
-            if s.len() > 2_097_152 || s.len() % 2 != 0 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+            if s.len() > 2_097_152 || s.len() % 2 != 0 || !s.bytes().all(|b| b.is_ascii_hexdigit())
+            {
                 return Err(invalid());
             }
             let mut out = Vec::with_capacity(s.len() / 2);
@@ -789,7 +836,9 @@ async fn complete(
         let state: String = row.get(1);
         let content: Option<Vec<u8>> = row.get(2);
         let content = content.ok_or(PgError::EvidenceInvalid)?;
-        if state != "finalized" || sha256_hex(&content) != sha || output_digest.as_deref() != Some(sha.as_str())
+        if state != "finalized"
+            || sha256_hex(&content) != sha
+            || output_digest.as_deref() != Some(sha.as_str())
         {
             return Err(PgError::EvidenceInvalid);
         }
@@ -1043,7 +1092,13 @@ async fn complete(
                 tenant_id, project_id, completion_id, predecessor_work_id,
                 predecessor_completion_id)
              VALUES ($1,$2,$3,$4,$5)",
-            &[&tenant, &project, &receipt_id, upstream_work, upstream_receipt],
+            &[
+                &tenant,
+                &project,
+                &receipt_id,
+                upstream_work,
+                upstream_receipt,
+            ],
         )
         .await?;
     }
@@ -1100,7 +1155,6 @@ async fn complete(
     })
 }
 
-
 async fn register_pr(
     tx: &Transaction<'_>,
     tenant: &str,
@@ -1116,9 +1170,15 @@ async fn register_pr(
         || a.pr_url.trim().is_empty()
         || a.pr_url.len() > 512
         || a.head_sha.len() != 40
-        || !a.head_sha.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        || !a
+            .head_sha
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
         || a.merge_sha.as_ref().is_some_and(|s| {
-            s.len() != 40 || !s.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            s.len() != 40
+                || !s
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
         })
         || !matches!(
             a.fact_source.as_str(),
@@ -1314,7 +1374,11 @@ async fn observe_pr(
         gh_merged = v;
     }
     if let Some(m) = &a.merge_sha {
-        if m.len() != 40 || !m.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()) {
+        if m.len() != 40
+            || !m
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        {
             return Err(invalid());
         }
         merge_sha = Some(m.clone());
@@ -1385,9 +1449,9 @@ pub(crate) async fn inspect_delivery(
             &[&tenant, &project, &work_id],
         )
         .await?;
-    let awr_complete = runtime
-        .as_ref()
-        .is_some_and(|r| r.get::<_, String>(0) == "completed" && r.get::<_, Option<String>>(1).is_some());
+    let awr_complete = runtime.as_ref().is_some_and(|r| {
+        r.get::<_, String>(0) == "completed" && r.get::<_, Option<String>>(1).is_some()
+    });
     Ok(json!({
         "delivery": {
             "work_id": work_id,

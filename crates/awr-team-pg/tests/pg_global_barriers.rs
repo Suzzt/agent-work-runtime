@@ -253,7 +253,7 @@ async fn concurrent_ordinary_write_vs_restore_old_epoch_cannot_produce_effects()
 async fn concurrent_ordinary_write_vs_permission_revoke_leaves_no_torn_state() {
     use awr_team_pg::PgError;
     use serde_json::json;
-    use ws_fixture::{enable_writes, prepare, command, setup, A, TENANT, PROJECT};
+    use ws_fixture::{A, PROJECT, TENANT, command, enable_writes, prepare, setup};
 
     let (_g, admin, db, store) = setup().await;
     enable_writes(&admin).await;

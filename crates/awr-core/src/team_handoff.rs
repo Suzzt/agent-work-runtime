@@ -182,9 +182,7 @@ impl HandoffPackage {
         }
         if let Some(dir) = &self.working_directory {
             if dir.is_empty() || dir.len() > 4096 || dir.contains('\0') {
-                return Err(Error::InvalidInput(
-                    "working_directory invalid".into(),
-                ));
+                return Err(Error::InvalidInput("working_directory invalid".into()));
             }
         }
         Ok(())
@@ -434,7 +432,10 @@ pub fn apply_handoff_propose(
     })
 }
 
-pub fn apply_handoff_inspect(current: &TeamHandoff, req: &InspectHandoffRequest) -> Result<TeamHandoff> {
+pub fn apply_handoff_inspect(
+    current: &TeamHandoff,
+    req: &InspectHandoffRequest,
+) -> Result<TeamHandoff> {
     validate_request_key(&req.request_key)?;
     require_version(current, req.expected_version)?;
     if current.id != req.handoff_id {
@@ -463,7 +464,10 @@ pub fn apply_handoff_inspect(current: &TeamHandoff, req: &InspectHandoffRequest)
     Ok(next)
 }
 
-pub fn apply_handoff_accept(current: &TeamHandoff, req: &AcceptHandoffRequest) -> Result<TeamHandoff> {
+pub fn apply_handoff_accept(
+    current: &TeamHandoff,
+    req: &AcceptHandoffRequest,
+) -> Result<TeamHandoff> {
     validate_request_key(&req.request_key)?;
     require_version(current, req.expected_version)?;
     if current.id != req.handoff_id {
@@ -490,7 +494,8 @@ pub fn apply_handoff_accept(current: &TeamHandoff, req: &AcceptHandoffRequest) -
     }
     if !req.context_reprepared {
         return Err(Error::RuleViolation(
-            "receiver must re-prepare current context before accept; chat summary is insufficient".into(),
+            "receiver must re-prepare current context before accept; chat summary is insufficient"
+                .into(),
         ));
     }
     if req.unknown_executions_open {
@@ -507,7 +512,8 @@ pub fn apply_handoff_accept(current: &TeamHandoff, req: &AcceptHandoffRequest) -
     match (req.expected_current_fence, req.live_fence) {
         (Some(expected), Some(live)) if expected != live => {
             return Err(Error::ClaimConflict(
-                "stale fence: late write under old fence cannot become current handoff result".into(),
+                "stale fence: late write under old fence cannot become current handoff result"
+                    .into(),
             ));
         }
         (Some(_), None) | (None, Some(_)) => {
@@ -534,7 +540,8 @@ pub fn apply_handoff_accept(current: &TeamHandoff, req: &AcceptHandoffRequest) -
     if let Some(exp) = current.expires_at_ms {
         if req.now_ms >= exp {
             return Err(Error::RuleViolation(
-                "handoff proposal expired; use timeout path — original retains responsibility".into(),
+                "handoff proposal expired; use timeout path — original retains responsibility"
+                    .into(),
             ));
         }
     }
@@ -549,7 +556,10 @@ pub fn apply_handoff_accept(current: &TeamHandoff, req: &AcceptHandoffRequest) -
     Ok(next)
 }
 
-pub fn apply_handoff_reject(current: &TeamHandoff, req: &RejectHandoffRequest) -> Result<TeamHandoff> {
+pub fn apply_handoff_reject(
+    current: &TeamHandoff,
+    req: &RejectHandoffRequest,
+) -> Result<TeamHandoff> {
     validate_request_key(&req.request_key)?;
     require_version(current, req.expected_version)?;
     if !current.status.is_open() {
@@ -566,16 +576,17 @@ pub fn apply_handoff_reject(current: &TeamHandoff, req: &RejectHandoffRequest) -
     terminal(current, HandoffStatus::Rejected, &req.reason, req.now_ms)
 }
 
-pub fn apply_handoff_cancel(current: &TeamHandoff, req: &CancelHandoffRequest) -> Result<TeamHandoff> {
+pub fn apply_handoff_cancel(
+    current: &TeamHandoff,
+    req: &CancelHandoffRequest,
+) -> Result<TeamHandoff> {
     validate_request_key(&req.request_key)?;
     require_version(current, req.expected_version)?;
     if !current.status.is_open() {
         return Err(Error::RuleViolation("handoff is not open".into()));
     }
     if req.by_person_id != current.from_person_id {
-        return Err(Error::RuleViolation(
-            "only the proposer may cancel".into(),
-        ));
+        return Err(Error::RuleViolation("only the proposer may cancel".into()));
     }
     if req.reason.trim().is_empty() || req.reason.len() > 2048 {
         return Err(Error::InvalidInput("cancel reason required".into()));
@@ -584,7 +595,10 @@ pub fn apply_handoff_cancel(current: &TeamHandoff, req: &CancelHandoffRequest) -
 }
 
 /// Timeout closes the proposal only. It does **not** stop execution.
-pub fn apply_handoff_timeout(current: &TeamHandoff, req: &TimeoutHandoffRequest) -> Result<TeamHandoff> {
+pub fn apply_handoff_timeout(
+    current: &TeamHandoff,
+    req: &TimeoutHandoffRequest,
+) -> Result<TeamHandoff> {
     validate_request_key(&req.request_key)?;
     require_version(current, req.expected_version)?;
     if !current.status.is_open() {
@@ -640,10 +654,7 @@ fn bump(version: u64) -> Result<u64> {
 }
 
 /// Resolve concurrent accept races: only one effective result.
-pub fn resolve_concurrent_accept(
-    first: &TeamHandoff,
-    contender_request_key: &str,
-) -> Result<()> {
+pub fn resolve_concurrent_accept(first: &TeamHandoff, contender_request_key: &str) -> Result<()> {
     if first.status != HandoffStatus::Accepted {
         return Err(Error::RuleViolation(
             "resolve_concurrent_accept requires an accepted handoff".into(),

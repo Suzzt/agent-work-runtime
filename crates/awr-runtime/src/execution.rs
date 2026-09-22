@@ -228,9 +228,7 @@ pub fn isolation_basis(evidence: Option<&HostIsolationEvidence>) -> &'static str
 
 /// Refuse advertising physical strong isolation when host capabilities are
 /// missing or unverified. Callers may still proceed with metadata fencing.
-pub fn refuse_unverified_strong_isolation(
-    evidence: Option<&HostIsolationEvidence>,
-) -> Result<()> {
+pub fn refuse_unverified_strong_isolation(evidence: Option<&HostIsolationEvidence>) -> Result<()> {
     if classify_isolation(evidence) != IsolationClass::VerifiedHostBoundary {
         return Err(Error::InvalidInput(
             "physical strong isolation requires verified host sandbox or OS boundary; AWR metadata fencing is not sufficient".into(),
