@@ -12,10 +12,12 @@ mod execution;
 mod management;
 mod model;
 pub use management::*;
+mod content_review;
 mod mutation;
 mod query;
 mod runtime;
 mod secrets;
+pub use content_review::*;
 mod work_action;
 mod workstream;
 mod workstream_accounting;
@@ -57,3 +59,7 @@ pub use ordinary::*;
 pub mod workstream_usage;
 
 pub mod workstream_adoption;
+
+pub use secrets::sensitive_field_category;
+
+pub use secrets::content_text_ranges;
