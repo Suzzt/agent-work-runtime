@@ -27,8 +27,7 @@ fn draft(id: &str, deps: &[&str], state: DraftDefinitionState) -> TaskDraft {
     }
 }
 
-async fn store_and_roles(
-) -> (
+async fn store_and_roles() -> (
     std::sync::MutexGuard<'static, ()>,
     tokio_postgres::Client,
     String,
@@ -199,7 +198,13 @@ async fn maintainer_draft_diff_approve_publish_and_edit_invalidates_approval() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, PgError::CandidateNotApproved | PgError::Protocol(_) | PgError::StaleApproval | PgError::Forbidden),
+        matches!(
+            err,
+            PgError::CandidateNotApproved
+                | PgError::Protocol(_)
+                | PgError::StaleApproval
+                | PgError::Forbidden
+        ),
         "old digest after edit => {err:?}"
     );
 

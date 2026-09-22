@@ -168,9 +168,7 @@ impl TaskDraft {
             ));
         }
         if self.acceptance.is_empty() {
-            return Err(TeamError::InvalidInput(
-                "draft acceptance required".into(),
-            ));
+            return Err(TeamError::InvalidInput("draft acceptance required".into()));
         }
         if self.completion_policy.trim().is_empty() {
             return Err(TeamError::InvalidInput(
@@ -411,7 +409,10 @@ pub struct BaselineView<'a> {
 
 /// Refuse cycles, dangling deps, cross-project goals, out-of-bound spec paths,
 /// and expired baselines for a planning candidate.
-pub fn validate_candidate(candidate: &PlanningCandidate, baseline: &BaselineView<'_>) -> TeamResult<()> {
+pub fn validate_candidate(
+    candidate: &PlanningCandidate,
+    baseline: &BaselineView<'_>,
+) -> TeamResult<()> {
     candidate.validate_structure()?;
     if !baseline.current
         || baseline.digest != candidate.baseline_digest
@@ -435,7 +436,9 @@ pub fn validate_candidate(candidate: &PlanningCandidate, baseline: &BaselineView
         // that already maps elsewhere.
         if matches!(change.op, DraftOpKind::CreateTask) {
             if baseline.known_work_ids.contains(draft.work_id.as_str())
-                || baseline.known_external_keys.contains(draft.external_key.as_str())
+                || baseline
+                    .known_external_keys
+                    .contains(draft.external_key.as_str())
             {
                 return Err(TeamError::InvalidInput(
                     "create_task cannot reuse existing work identity".into(),
@@ -484,10 +487,7 @@ pub fn validate_candidate(candidate: &PlanningCandidate, baseline: &BaselineView
         }
     }
 
-    detect_cycle(
-        &nodes.iter().cloned().collect::<Vec<_>>(),
-        &edges,
-    )?;
+    detect_cycle(&nodes.iter().cloned().collect::<Vec<_>>(), &edges)?;
     Ok(())
 }
 
@@ -501,7 +501,10 @@ fn validate_spec_path_in_bounds(path: &str, roots: &[String]) -> TeamResult<()> 
             "out-of-bound spec path: {path}"
         )));
     }
-    if path.split('/').any(|s| s.is_empty() || s == "." || s == "..") {
+    if path
+        .split('/')
+        .any(|s| s.is_empty() || s == "." || s == "..")
+    {
         return Err(TeamError::InvalidInput(format!(
             "out-of-bound spec path: {path}"
         )));
@@ -510,9 +513,9 @@ fn validate_spec_path_in_bounds(path: &str, roots: &[String]) -> TeamResult<()> 
         // No declared roots ⇒ only refuse absolute/traversal forms above.
         return Ok(());
     }
-    let ok = roots.iter().any(|root| {
-        path == root.as_str() || path.starts_with(&format!("{root}/")) || root == "."
-    });
+    let ok = roots
+        .iter()
+        .any(|root| path == root.as_str() || path.starts_with(&format!("{root}/")) || root == ".");
     if !ok {
         return Err(TeamError::InvalidInput(format!(
             "out-of-bound spec path: {path}"
@@ -609,10 +612,7 @@ pub fn build_candidate_diff(
             ),
             (
                 "completion_policy",
-                change
-                    .before
-                    .as_ref()
-                    .map(|b| json!(b.completion_policy)),
+                change.before.as_ref().map(|b| json!(b.completion_policy)),
                 Some(json!(change.after.completion_policy)),
             ),
         ];
@@ -656,9 +656,7 @@ pub fn ensure_independent_review_not_downgraded(
 ) -> TeamResult<()> {
     let prior = prior_policy.trim().to_ascii_lowercase();
     let next = next_policy.trim().to_ascii_lowercase();
-    if prior == "independent_review"
-        && next != "independent_review"
-        && next != "independent-review"
+    if prior == "independent_review" && next != "independent_review" && next != "independent-review"
     {
         return Err(TeamError::PermissionDenied(
             "independent delivery-review policy must not be downgraded by planning self-approve"
@@ -868,21 +866,9 @@ mod tests {
 
     #[test]
     fn reader_cannot_write_suggestions() {
-        let reader = authority_from_template(
-            RoleTemplate::Reader,
-            "t",
-            "p",
-            "reader",
-            "cli",
-        );
+        let reader = authority_from_template(RoleTemplate::Reader, "t", "p", "reader", "cli");
         assert!(refuse_reader_suggestion_write(&reader).is_err());
-        let developer = authority_from_template(
-            RoleTemplate::Developer,
-            "t",
-            "p",
-            "dev",
-            "cli",
-        );
+        let developer = authority_from_template(RoleTemplate::Developer, "t", "p", "dev", "cli");
         refuse_reader_suggestion_write(&developer).unwrap();
     }
 
@@ -922,10 +908,12 @@ mod tests {
                 after: draft("B", &["A"]),
             },
         ]);
-        assert!(validate_candidate(&cycle, &base)
-            .unwrap_err()
-            .to_string()
-            .contains("cycle"));
+        assert!(
+            validate_candidate(&cycle, &base)
+                .unwrap_err()
+                .to_string()
+                .contains("cycle")
+        );
 
         // Dangling
         let dangling = candidate(vec![DraftChange {
@@ -933,10 +921,12 @@ mod tests {
             before: Some(draft("A", &[])),
             after: draft("A", &["MISSING"]),
         }]);
-        assert!(validate_candidate(&dangling, &base)
-            .unwrap_err()
-            .to_string()
-            .contains("dangling"));
+        assert!(
+            validate_candidate(&dangling, &base)
+                .unwrap_err()
+                .to_string()
+                .contains("dangling")
+        );
 
         // Cross-project goal
         let mut cross = draft("A", &[]);
@@ -946,10 +936,12 @@ mod tests {
             before: Some(draft("A", &[])),
             after: cross,
         }]);
-        assert!(validate_candidate(&cross_c, &base)
-            .unwrap_err()
-            .to_string()
-            .contains("goal"));
+        assert!(
+            validate_candidate(&cross_c, &base)
+                .unwrap_err()
+                .to_string()
+                .contains("goal")
+        );
 
         // Out-of-bound path
         let mut oob = draft("A", &[]);
@@ -959,10 +951,12 @@ mod tests {
             before: Some(draft("A", &[])),
             after: oob,
         }]);
-        assert!(validate_candidate(&oob_c, &base)
-            .unwrap_err()
-            .to_string()
-            .contains("out-of-bound"));
+        assert!(
+            validate_candidate(&oob_c, &base)
+                .unwrap_err()
+                .to_string()
+                .contains("out-of-bound")
+        );
 
         // Expired baseline
         let mut expired = baseline(&["A"]);
@@ -976,10 +970,12 @@ mod tests {
                 d
             },
         }]);
-        assert!(validate_candidate(&ok_edit, &expired)
-            .unwrap_err()
-            .to_string()
-            .contains("baseline"));
+        assert!(
+            validate_candidate(&ok_edit, &expired)
+                .unwrap_err()
+                .to_string()
+                .contains("baseline")
+        );
     }
 
     #[test]
@@ -1058,9 +1054,11 @@ mod tests {
             allow_self_approve_ordinary: true,
             delivery_completion_policy: "author_may_complete".into(),
         };
-        assert!(policy
-            .validate_no_delivery_downgrade("independent_review")
-            .is_err());
+        assert!(
+            policy
+                .validate_no_delivery_downgrade("independent_review")
+                .is_err()
+        );
         ensure_independent_review_not_downgraded("independent_review", "independent_review")
             .unwrap();
     }
@@ -1110,13 +1108,7 @@ mod tests {
 
     #[test]
     fn developer_may_propose_but_not_edit_or_publish() {
-        let developer = authority_from_template(
-            RoleTemplate::Developer,
-            "t",
-            "p",
-            "dev",
-            "cli",
-        );
+        let developer = authority_from_template(RoleTemplate::Developer, "t", "p", "dev", "cli");
         let resource = ResourceRef {
             tenant_id: "t".into(),
             project_id: "p".into(),

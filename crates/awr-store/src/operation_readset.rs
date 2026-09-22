@@ -119,7 +119,6 @@ fn load_required_readset(
     Ok(RequiredOperationReadSet(required))
 }
 
-
 fn bind_mutation_to_readset(
     project_id: Id,
     supplied: &OperationReadSet,
@@ -154,9 +153,8 @@ fn bind_mutation_to_readset(
 }
 
 fn draft_intent_digest(draft: &EventDraft) -> Result<String> {
-    let payload_bytes = serde_json::to_vec(&draft.payload).map_err(|e| {
-        Error::InvalidInput(format!("cannot canonicalize event payload: {e}"))
-    })?;
+    let payload_bytes = serde_json::to_vec(&draft.payload)
+        .map_err(|e| Error::InvalidInput(format!("cannot canonicalize event payload: {e}")))?;
     use sha2::{Digest, Sha256};
     let payload_sha256 = format!("{:x}", Sha256::digest(&payload_bytes));
     let intent = serde_json::json!({
@@ -165,9 +163,8 @@ fn draft_intent_digest(draft: &EventDraft) -> Result<String> {
         "importance": draft.importance,
         "payload_sha256": payload_sha256,
     });
-    let bytes = serde_json::to_vec(&intent).map_err(|e| {
-        Error::InvalidInput(format!("cannot canonicalize draft intent: {e}"))
-    })?;
+    let bytes = serde_json::to_vec(&intent)
+        .map_err(|e| Error::InvalidInput(format!("cannot canonicalize draft intent: {e}")))?;
     Ok(format!("{:x}", Sha256::digest(bytes)))
 }
 
@@ -194,16 +191,21 @@ fn load_exact_replay(
             "SELECT identity_hash, readset_json, event_id FROM operation_readset_receipts
              WHERE project_id=?1 AND request_id=?2",
             params![project_id.to_string(), supplied.identity.request_id],
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            },
         )
         .optional()
         .map_err(db_error)?;
     let Some((stored_hash, readset_json, event_id)) = row else {
         return Ok(None);
     };
-    let recorded: OperationReadSet = serde_json::from_str(&readset_json).map_err(|_| {
-        Error::Storage("invalid stored operation readset receipt".into())
-    })?;
+    let recorded: OperationReadSet = serde_json::from_str(&readset_json)
+        .map_err(|_| Error::Storage("invalid stored operation readset receipt".into()))?;
     classify_operation_replay(supplied, Some(&recorded)).map_err(map_readset)?;
     let expected = receipt_intent_hash(supplied, draft)?;
     if stored_hash != expected {
@@ -233,9 +235,8 @@ fn persist_operation_receipt(
     event: &Event,
 ) -> Result<()> {
     let hash = receipt_intent_hash(supplied, draft)?;
-    let readset_json = serde_json::to_string(supplied).map_err(|e| {
-        Error::InvalidInput(format!("cannot persist operation readset: {e}"))
-    })?;
+    let readset_json = serde_json::to_string(supplied)
+        .map_err(|e| Error::InvalidInput(format!("cannot persist operation readset: {e}")))?;
     conn.execute(
         "INSERT INTO operation_readset_receipts(
             project_id, request_id, identity_hash, readset_json, event_id, created_at)

@@ -121,7 +121,11 @@ fn exact_replay_returns_original_event_without_cursor_bump() {
         .unwrap();
     assert_eq!(second.id, first.id);
     assert_eq!(second.project_revision, first.project_revision);
-    assert_eq!(f.rev(), rev_after, "exact replay must not advance audit cursor");
+    assert_eq!(
+        f.rev(),
+        rev_after,
+        "exact replay must not advance audit cursor"
+    );
 }
 
 #[test]
@@ -163,7 +167,6 @@ fn mutation_target_must_match_validated_readset_identity() {
     );
 }
 
-
 #[test]
 fn changed_draft_same_request_conflicts_even_with_same_payload_sha() {
     let mut f = Fixture::new();
@@ -192,15 +195,11 @@ fn changed_draft_same_request_conflicts_even_with_same_payload_sha() {
     );
     let replay = f
         .store
-        .append_event_with_readset(
-            f.project,
-            &supplied,
-            {
-                let mut d = draft(work, "same summary");
-                d.payload = serde_json::json!({"status":"success"});
-                d
-            },
-        )
+        .append_event_with_readset(f.project, &supplied, {
+            let mut d = draft(work, "same summary");
+            d.payload = serde_json::json!({"status":"success"});
+            d
+        })
         .unwrap();
     assert_eq!(replay.id, first.id);
 }

@@ -8,8 +8,14 @@ use serde_json::json;
 
 #[test]
 fn service_action_map_matches_role_matrix_expectations() {
-    assert_eq!(command_action_name("session.start"), Some("session.maintain_own"));
-    assert_eq!(command_action_name("claim.release"), Some("claim.manage_own"));
+    assert_eq!(
+        command_action_name("session.start"),
+        Some("session.maintain_own")
+    );
+    assert_eq!(
+        command_action_name("claim.release"),
+        Some("claim.manage_own")
+    );
     assert_eq!(
         command_action_name("execution.start"),
         Some("execution.request_and_report_own")
@@ -44,13 +50,15 @@ fn service_action_map_matches_role_matrix_expectations() {
 
 #[test]
 fn http_body_cannot_smuggle_authority_claims() {
-    assert!(reject_forged_authority_fields(&json!({
-        "protocol_version": 1,
-        "op": "session.start",
-        "work_id": "a",
-        "args": {"conversation_id": "c"}
-    }))
-    .is_ok());
+    assert!(
+        reject_forged_authority_fields(&json!({
+            "protocol_version": 1,
+            "op": "session.start",
+            "work_id": "a",
+            "args": {"conversation_id": "c"}
+        }))
+        .is_ok()
+    );
     for key in ["actor_id", "role", "grants", "tenant_id", "permissions"] {
         let mut body = json!({
             "protocol_version": 1,
