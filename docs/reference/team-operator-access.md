@@ -9,8 +9,8 @@ Database operations require the schema owner's PostgreSQL privileges through
 `AWR_TEAM_DATABASE_URL`. Ordinary service application credentials and HTTP/MCP
 bearers cannot use this operator interface. The running service continues to use
 its separate application connection. Upgrade explicitly with
-`awr-server migrate --app-role <service-role>` as owner; schema 16 adds operator access,
-history-migration, and backup-operation receipts; bootstrap denies the application role all access to those tables.
+`awr-server migrate --app-role <service-role>` as owner; schema 17 adds operator access,
+history-migration, backup-operation, and claim/execution quarantine receipts; bootstrap denies the application role all access to those tables.
 
 ## Register a client
 
@@ -67,6 +67,29 @@ awr-server access history-apply --tenant-id tenant-a --project-id project-a \
 awr-server access history-outcome --tenant-id tenant-a --project-id project-a \
   --request-id migrate-1
 ```
+
+
+Active claims and unattributed executions are out of scope for history-migration.
+Owner-only recovery preview/apply can release or quarantine active claims (and
+attribute-and-release when current ownership uniquely binds the work), and can
+quarantine-cancel nonterminal unattributed executions. It never invents
+`executor_client_id`, never forges actors/completion receipts, and refuses
+terminal unattributed executions (explicit attribution remains a later slice):
+
+```sh
+awr-server access quarantine-preview --tenant-id tenant-a --project-id project-a \
+  --claim-disposition release
+awr-server access quarantine-apply --tenant-id tenant-a --project-id project-a \
+  --request-id quarantine-1 --expected-state <state_digest> --expected-plan <plan_digest> \
+  --claim-disposition release
+awr-server access quarantine-outcome --tenant-id tenant-a --project-id project-a \
+  --request-id quarantine-1
+```
+
+Use `--claim-disposition quarantine` to revoke active claims that cannot be
+attributed. Real PostgreSQL E2E for this protocol was not exercised when
+`AWR_TEAM_DATABASE_URL` / disposable PG was unavailable.
+
 
 Enabled-project logical backup metadata and guarded fencing restore are owner-only.
 Legacy `ImportStore` backup/restore already refuse enabled workstreams. This CLI

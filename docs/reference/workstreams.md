@@ -190,8 +190,10 @@ inactive claims and work-bound events from current ownership; it refuses
 executions and active claims and does not forge identity or completion receipts.
 Owner-only enabled-project logical backup manifests and verified fencing restore
 are available via `awr-server access backup-*` (physical basebackup remains
-external; completion receipts are never rewritten). Remaining gaps include
-full logical row rebuild from manifests, active-claim/execution attribution,
+external; completion receipts are never rewritten). Owner-only active-claim release/quarantine/attribute-and-release and unattributed
+nonterminal execution quarantine-cancel are available via `awr-server access quarantine-*`
+(never forges `executor_client_id`). Remaining gaps include full logical row rebuild
+from manifests, explicit execution attribution with a reviewed executor_client_id,
 and real-client acceptance. Legacy import/restore APIs continue to refuse
 enabled projects. The shared personal MCP read boundary described elsewhere does not
 provide Team access.

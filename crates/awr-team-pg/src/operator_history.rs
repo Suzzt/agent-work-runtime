@@ -559,7 +559,7 @@ async fn build_plan(
         "safe_subset": plan_body["safe_subset"],
         "unsafe_excluded": plan_body["unsafe_excluded"],
         "attribution_basis": "current_workstream_ownership",
-        "next_action": "Review attributable/refused lists; apply with exact state_digest and plan_digest. Executions and active claims stay refused."
+        "next_action": "Review attributable/refused lists; apply with exact state_digest and plan_digest. Executions and active claims stay refused; use access quarantine-* for those."
     }))
 }
 

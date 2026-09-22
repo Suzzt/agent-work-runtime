@@ -18,7 +18,7 @@ not a server ACL or confidentiality sandbox.
 ## Start an operator-bound service
 
 Build `awr-server` from this source branch. Migrate the intended database to
-schema 16 explicitly as its owner, and apply application-role grants using the
+schema 17 explicitly as its owner, and apply application-role grants using the
 [PostgreSQL setup](team-postgres.md). `serve` checks the schema without migrating
 it. Run the listener using the application connection, not an owner or superuser
 connection.
@@ -557,7 +557,8 @@ explicit old-epoch review over PostgreSQL, HTTP and MCP. A local runner test als
 installs a new generation barrier and rejects a delayed old-generation write;
 the database boundary in that test is synthetic, not a physical backup/restore.
 Generic agent dispatch remains unavailable through this surface. Bounded
-owner-only history migration and enabled-project logical backup/fencing restore
-are separate schema-owner CLI flows (`awr-server access history-*` /
-`backup-*`), not HTTP/MCP client capabilities. Physical database basebackup
+owner-only history migration, active-claim/execution quarantine recovery, and
+enabled-project logical backup/fencing restore are separate schema-owner CLI flows
+(`awr-server access history-*` / `quarantine-*` / `backup-*`), not HTTP/MCP client
+capabilities. Physical database basebackup
 stays an external operator responsibility.

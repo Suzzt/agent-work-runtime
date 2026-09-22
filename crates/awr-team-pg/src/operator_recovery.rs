@@ -46,7 +46,7 @@ pub(crate) fn recovery_report(
         "operator_role": operator_role,
         "project": project_facts,
         "findings": findings,
-        "next_action": "Review findings; use authorized execution.reconcile or an explicit history-migration protocol. This inspection never mutates."
+        "next_action": "Review findings; use authorized execution.reconcile, history-migration for inactive unattributed rows, or quarantine-* for active claims / unattributed nonterminal executions. This inspection never mutates."
     })
 }
 
@@ -263,6 +263,7 @@ mod tests {
         assert_eq!(report["authorization"], "schema_owner_postgresql_role");
         assert_eq!(report["workstreams_required"], true);
         assert!(report["next_action"].as_str().unwrap().contains("never mutates"));
+        assert!(report["next_action"].as_str().unwrap().contains("quarantine-*"));
     }
 
     #[test]

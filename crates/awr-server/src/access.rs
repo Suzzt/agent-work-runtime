@@ -1,4 +1,4 @@
-use awr_team_pg::{AccessPlan, OperatorAccess, OperatorBackup, OperatorHistory, OperatorRecovery, PgError};
+use awr_team_pg::{AccessPlan, OperatorAccess, OperatorBackup, OperatorHistory, OperatorQuarantine, OperatorRecovery, PgError};
 use clap::Subcommand;
 use serde_json::{Value, json};
 use std::io::{Read, Write};
@@ -79,6 +79,40 @@ pub enum AccessCommand {
     },
     /// Inspect a history-migration request outcome before retrying it exactly.
     HistoryOutcome {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        request_id: String,
+    },
+    /// Preview active-claim / unattributed-execution recovery (owner only; no writes).
+    QuarantinePreview {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        /// `release` (default) or `quarantine` when ownership cannot attribute.
+        #[arg(long, default_value = "release")]
+        claim_disposition: String,
+    },
+    /// Apply the exact reviewed claim/execution recovery plan digests.
+    QuarantineApply {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        request_id: String,
+        #[arg(long)]
+        expected_state: String,
+        #[arg(long)]
+        expected_plan: String,
+        #[arg(long, default_value = "release")]
+        claim_disposition: String,
+    },
+    /// Inspect a claim/execution recovery request outcome before retrying.
+    QuarantineOutcome {
         #[arg(long)]
         tenant_id: String,
         #[arg(long)]
@@ -302,6 +336,35 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
             project_id,
             request_id,
         } => OperatorHistory::outcome(&mut client, &tenant_id, &project_id, &request_id).await,
+        AccessCommand::QuarantinePreview {
+            tenant_id,
+            project_id,
+            claim_disposition,
+        } => OperatorQuarantine::preview(&mut client, &tenant_id, &project_id, &claim_disposition).await,
+        AccessCommand::QuarantineApply {
+            tenant_id,
+            project_id,
+            request_id,
+            expected_state,
+            expected_plan,
+            claim_disposition,
+        } => {
+            OperatorQuarantine::apply(
+                &mut client,
+                &tenant_id,
+                &project_id,
+                &request_id,
+                &expected_state,
+                &expected_plan,
+                &claim_disposition,
+            )
+            .await
+        }
+        AccessCommand::QuarantineOutcome {
+            tenant_id,
+            project_id,
+            request_id,
+        } => OperatorQuarantine::outcome(&mut client, &tenant_id, &project_id, &request_id).await,
         AccessCommand::BackupCreate {
             tenant_id,
             project_id,
