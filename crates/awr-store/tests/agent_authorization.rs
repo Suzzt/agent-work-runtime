@@ -94,6 +94,7 @@ fn issue_revoke_list_and_explain_separate_start_work() {
         .explain_claim(&ClaimEvaluationInput {
             project_id: "proj",
             work_item_id: "work-1",
+            task_workstream_id: None,
             candidate_person: &alice,
             authorization: Some(&auth),
             now_ms: 2_000,

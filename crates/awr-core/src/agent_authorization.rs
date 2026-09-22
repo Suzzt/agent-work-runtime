@@ -371,19 +371,32 @@ impl AgentAuthorization {
         self.actions.contains(&action)
     }
 
-    pub fn covers_task(&self, project_id: &str, work_item_id: &str) -> bool {
-        let task_scope = AuthorizationScope::Task {
-            project_id: project_id.into(),
-            work_item_id: work_item_id.into(),
-        };
-        task_scope.is_within(&self.scope)
-            || matches!(
-                &self.scope,
-                AuthorizationScope::Task {
-                    project_id: p,
-                    work_item_id: w,
-                } if p == project_id && w == work_item_id
-            )
+    /// Whether this grant covers `work_item_id` given verified task ownership.
+    ///
+    /// `task_workstream_id` must be the authoritative owning workstream when the
+    /// task is stream-owned; pass `None` for project-local / unscoped tasks.
+    /// Workstream-scoped grants admit only tasks owned by that stream.
+    pub fn covers_task(
+        &self,
+        project_id: &str,
+        work_item_id: &str,
+        task_workstream_id: Option<&str>,
+    ) -> bool {
+        if self.scope.project_id() != project_id {
+            return false;
+        }
+        match &self.scope {
+            AuthorizationScope::Project { .. } => true,
+            AuthorizationScope::Workstream { workstream_id, .. } => {
+                task_workstream_id == Some(workstream_id.as_str())
+            }
+            AuthorizationScope::Task {
+                work_item_id: scoped, ..
+            } => scoped == work_item_id,
+            AuthorizationScope::TaskPool { pool_id, .. } => {
+                work_item_id == pool_id || work_item_id.starts_with(&format!("{pool_id}/"))
+            }
+        }
     }
 }
 
@@ -670,6 +683,8 @@ pub struct ClaimEligibilityExplanation {
 pub struct ClaimEvaluationInput<'a> {
     pub project_id: &'a str,
     pub work_item_id: &'a str,
+    /// Verified owning workstream for `work_item_id`, when the task is stream-owned.
+    pub task_workstream_id: Option<&'a str>,
     pub candidate_person: &'a PersonId,
     pub authorization: Option<&'a AgentAuthorization>,
     pub now_ms: i64,
@@ -730,7 +745,7 @@ pub fn explain_claim_eligibility(
                     authorization_id: auth.id.clone(),
                     detail: "authorization responsible person does not match candidate".into(),
                 });
-            } else if !auth.covers_task(input.project_id, input.work_item_id) {
+            } else if !auth.covers_task(input.project_id, input.work_item_id, input.task_workstream_id) {
                 shared.push(ClaimEligibilityFactor::DelegationInactive {
                     authorization_id: auth.id.clone(),
                     detail: "authorization scope does not cover this task".into(),
@@ -1040,6 +1055,7 @@ mod tests {
         let explanation = explain_claim_eligibility(&ClaimEvaluationInput {
             project_id: "proj",
             work_item_id: "work-1",
+            task_workstream_id: None,
             candidate_person: &bob,
             authorization: Some(&auth),
             now_ms: 2_000,
@@ -1089,6 +1105,7 @@ mod tests {
         let explanation = explain_claim_eligibility(&ClaimEvaluationInput {
             project_id: "proj",
             work_item_id: "work-1",
+            task_workstream_id: None,
             candidate_person: &bob,
             authorization: Some(&auth),
             now_ms: 2_000,
@@ -1126,5 +1143,96 @@ mod tests {
         .unwrap();
         assert!(matches!(revoked.status, AuthorizationStatus::Revoked));
         assert!(!revoked.is_effective_at(4_000));
+    }
+
+    #[test]
+    fn workstream_scoped_grant_covers_owned_task_only() {
+        let mut auth = base_auth();
+        auth.scope = AuthorizationScope::Workstream {
+            project_id: "proj".into(),
+            workstream_id: "stream-a".into(),
+        };
+        assert!(auth.covers_task("proj", "work-1", Some("stream-a")));
+        assert!(!auth.covers_task("proj", "work-1", Some("stream-b")));
+        assert!(!auth.covers_task("proj", "work-1", None));
+        assert!(!auth.covers_task("other", "work-1", Some("stream-a")));
+
+        // Project / task positive controls still pass.
+        auth.scope = AuthorizationScope::Project {
+            project_id: "proj".into(),
+        };
+        assert!(auth.covers_task("proj", "work-1", Some("stream-a")));
+        assert!(auth.covers_task("proj", "work-1", None));
+        auth.scope = AuthorizationScope::Task {
+            project_id: "proj".into(),
+            work_item_id: "work-1".into(),
+        };
+        assert!(auth.covers_task("proj", "work-1", Some("stream-a")));
+        assert!(!auth.covers_task("proj", "work-2", Some("stream-a")));
+
+        // Eligibility reports DelegationInactive for foreign-stream ownership.
+        auth.scope = AuthorizationScope::Workstream {
+            project_id: "proj".into(),
+            workstream_id: "stream-a".into(),
+        };
+        let task = TaskResponsibility::unassigned("proj", "work-1");
+        let resources = BTreeSet::new();
+        let caps = BTreeSet::new();
+        let bob = person("bob");
+        let executor = ExecutionInstance::AgentRun {
+            person_id: bob.clone(),
+            agent_id: "agent-bob".into(),
+            binding_id: "bind-1".into(),
+        };
+        let explanation = explain_claim_eligibility(&ClaimEvaluationInput {
+            project_id: "proj",
+            work_item_id: "work-1",
+            task_workstream_id: Some("stream-b"),
+            candidate_person: &bob,
+            authorization: Some(&auth),
+            now_ms: 2_000,
+            is_project_member: true,
+            membership_version: 1,
+            assignment_policy: "open",
+            assignment_policy_allows: true,
+            required_resources: &[],
+            available_resource_ids: &resources,
+            required_host_capabilities: &[],
+            verified_host_capabilities: &caps,
+            host_id: "host-1",
+            dependencies_satisfied: true,
+            task: &task,
+            requested_executor: &executor,
+        })
+        .unwrap();
+        assert!(explanation.responsibility_accept.reasons.iter().any(|r| {
+            matches!(
+                r,
+                ClaimEligibilityFactor::DelegationInactive { detail, .. }
+                    if detail.contains("scope does not cover")
+            )
+        }));
+        let ok = explain_claim_eligibility(&ClaimEvaluationInput {
+            project_id: "proj",
+            work_item_id: "work-1",
+            task_workstream_id: Some("stream-a"),
+            candidate_person: &bob,
+            authorization: Some(&auth),
+            now_ms: 2_000,
+            is_project_member: true,
+            membership_version: 1,
+            assignment_policy: "open",
+            assignment_policy_allows: true,
+            required_resources: &[],
+            available_resource_ids: &resources,
+            required_host_capabilities: &[],
+            verified_host_capabilities: &caps,
+            host_id: "host-1",
+            dependencies_satisfied: true,
+            task: &task,
+            requested_executor: &executor,
+        })
+        .unwrap();
+        assert!(ok.responsibility_accept.allowed);
     }
 }
