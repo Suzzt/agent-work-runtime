@@ -61,6 +61,7 @@ pub use source::{
     CandidateRecord, CurrentSource, CurrentWorkstreamSource, IngestRequest, SOURCE_BINDING_FILE,
     SoleSourceBinding, SoleSourceKind, SourceFile, SourceStore, WORKSTREAMS_FILE,
 };
+pub use source::planning::{DraftCandidateCreate, SuggestionSubmit};
 pub use tx::{CommandOutcome, CommandRequest, TeamStore};
 pub use workstream_auth::{
     command_business_action, map_membership_role, query_business_action, workstream_credential_hash,
@@ -83,6 +84,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 19);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 20);
     }
 }

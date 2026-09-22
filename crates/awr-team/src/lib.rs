@@ -9,6 +9,7 @@ mod contract;
 mod error;
 mod ids;
 mod permission;
+mod planning;
 mod snapshot;
 mod version;
 mod workstreams;
@@ -35,6 +36,16 @@ pub use permission::{
     deny_model_self_report_only, deny_role_name_only, deny_tool_visibility_only,
     independent_review_eligible, preview_legacy_migration, template_actions,
     template_grants_special, with_independent_review,
+};
+pub use planning::{
+    AffectedTaskImpact, BaselineView, CandidateDiff, CandidateState, DraftChange, DraftDefinitionState,
+    DraftOpKind, FieldDiff, FORGE_COMPLETION_VIA_STATUS_ALLOWED, HARD_DELETE_HISTORY_ALLOWED,
+    OrdinaryPlanningSelfApprovePolicy, PLANNING_CODEC, PlanningApproval, PlanningCandidate,
+    PlanningSuggestion, SUGGESTION_ADDS_FORMAL_WORK, SUGGESTION_API_WRITABLE_BY_READER,
+    SUGGESTION_CLAIMABLE, SUGGESTION_MUTATES_LIVE_ACCEPTANCE, SUGGESTION_MUTATES_LIVE_DEPS,
+    SuggestionState, TaskDraft, authorize_planning_action, authorize_planning_approve,
+    authorize_planning_publish, build_candidate_diff, edit_candidate,
+    ensure_independent_review_not_downgraded, refuse_reader_suggestion_write, validate_candidate,
 };
 pub use snapshot::{
     ClaimPreconditions, LeaseProof, ProjectReadSnapshot, RequiredDependencyProof,
