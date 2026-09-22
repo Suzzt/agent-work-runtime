@@ -8,6 +8,8 @@ use std::sync::MutexGuard;
 use std::time::Duration;
 use tokio_postgres::Client;
 mod common;
+#[path = "fixtures/workstream_access.rs"]
+mod ws_fixture;
 use common::{fresh_team_schema, test_config, with_app_role};
 
 const TENANT: &str = "tenant-a";
@@ -245,77 +247,196 @@ async fn concurrent_ordinary_write_vs_restore_old_epoch_cannot_produce_effects()
         .unwrap();
 }
 
-/// Permission revoke held across auth rows: in-flight ordinary write cannot commit
-/// with the revoked credential and leaves no torn runtime bump.
+/// Permission revoke races an authenticated business write: revoke barrier wins,
+/// the old credential cannot commit a new command effect, and runtime stays consistent.
 #[tokio::test]
 async fn concurrent_ordinary_write_vs_permission_revoke_leaves_no_torn_state() {
-    let (_lock, admin, db, _store) = setup().await;
-    // Seed an enabled-workstream shape is heavy; revoke the credential row the
-    // same way restore/operator paths do and race a TeamStore write that only
-    // needs the project barrier (credentials are not consulted there).
-    // Instead race grant-style revoke against a held project writer to prove
-    // the barrier linearizes: revoke waits, then subsequent admission sees it.
-    let before_version = work_version(&admin, "work-a").await;
-    let mut writer = common::connect_config(&with_app_role(&test_config(), &db)).await;
-    let write_tx = writer.transaction().await.unwrap();
-    write_tx
-        .batch_execute(
-            "SELECT set_config('awr.tenant_id','tenant-a',true);
-             SELECT set_config('awr.project_id','project-a',true);
-             SELECT status FROM awr_team.projects
-               WHERE tenant_id='tenant-a' AND id='project-a' FOR UPDATE;",
+    use awr_team_pg::PgError;
+    use serde_json::json;
+    use ws_fixture::{enable_writes, prepare, command, setup, A, TENANT, PROJECT};
+
+    let (_g, admin, db, store) = setup().await;
+    enable_writes(&admin).await;
+    let commands = store.commands();
+    let prepared = prepare(&store, A, "a").await;
+    let sessions_before: i64 = admin
+        .query_one(
+            "SELECT count(*)::bigint FROM awr_team.sessions WHERE project_id=$1",
+            &[&PROJECT],
         )
         .await
-        .unwrap();
+        .unwrap()
+        .get(0);
+
+    // Hold the project exclusive lock (operator revoke / restore shape) so the
+    // authenticated write queues behind the barrier, then revoke before release.
+    let mut holder = common::connect_config(&with_app_role(&test_config(), &db)).await;
+    let hold = holder.transaction().await.unwrap();
+    hold.batch_execute(
+        "SELECT set_config('awr.tenant_id','reader-tenant',true);
+         SELECT set_config('awr.project_id','reader-project',true);
+         SELECT id FROM awr_team.projects
+           WHERE tenant_id='reader-tenant' AND id='reader-project' FOR UPDATE;",
+    )
+    .await
+    .unwrap();
 
     let observer = common::connect_config(&common::with_db(&test_config(), &db)).await;
-    let revoker = common::connect_config(&common::with_db(&test_config(), &db)).await;
-    let revoke = tokio::spawn(async move {
-        revoker
-            .batch_execute(
-                "UPDATE awr_team.credentials SET revoked_at=clock_timestamp()
-                 WHERE id='cred-1' AND revoked_at IS NULL;
-                 -- also take project lock as operator revoke / restore would
-                 SELECT id FROM awr_team.projects
-                   WHERE tenant_id='tenant-a' AND id='project-a' FOR UPDATE;",
-            )
-            .await
-    });
+    let write = {
+        let commands = store.commands();
+        let prepared = prepared.clone();
+        tokio::spawn(async move {
+            commands
+                .execute(
+                    TENANT,
+                    PROJECT,
+                    A,
+                    command(
+                        &prepared,
+                        "race-revoke-write",
+                        "session.start",
+                        json!({"conversation_id": "conv-race-revoke"}),
+                    ),
+                )
+                .await
+        })
+    };
     wait_for_lock(&observer, "FOR UPDATE").await;
-    // Writer finishes without bumping work_version, then revoke proceeds.
-    write_tx.rollback().await.unwrap();
-    revoke.await.unwrap().unwrap();
+
+    hold.batch_execute(
+        "UPDATE awr_team.credentials SET revoked_at=clock_timestamp()
+         WHERE id='reader-a' AND revoked_at IS NULL;",
+    )
+    .await
+    .unwrap();
+    hold.commit().await.unwrap();
+
+    let write_result = write.await.unwrap();
+    assert!(
+        matches!(write_result, Err(PgError::Forbidden)),
+        "revoked credential must not commit an authenticated write: {write_result:?}"
+    );
+
     let revoked: i64 = admin
         .query_one(
-            "SELECT count(*) FROM awr_team.credentials WHERE id='cred-1' AND revoked_at IS NOT NULL",
+            "SELECT count(*)::bigint FROM awr_team.credentials
+             WHERE id='reader-a' AND revoked_at IS NOT NULL",
             &[],
         )
         .await
         .unwrap()
         .get(0);
     assert_eq!(revoked, 1);
-    assert_eq!(work_version(&admin, "work-a").await, before_version);
+    let sessions_after: i64 = admin
+        .query_one(
+            "SELECT count(*)::bigint FROM awr_team.sessions WHERE project_id=$1",
+            &[&PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        sessions_after, sessions_before,
+        "failed revoke-race write must not create session side effects"
+    );
+
+    let again = commands
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            command(
+                &prepared,
+                "after-revoke-retry",
+                "session.start",
+                json!({"conversation_id": "conv-after-revoke"}),
+            ),
+        )
+        .await;
+    assert!(
+        matches!(again, Err(PgError::Forbidden)),
+        "same bearer must stay refused after revoke"
+    );
 }
 
 /// Two concurrent lock shapes that would deadlock if tasks/resources were taken
-/// in presentation order instead of the fixed sorted order.
+/// in presentation order instead of the fixed sorted order. Project lock is NOT
+/// held exclusively across the opposite-order section — sorted task/resource order
+/// is what prevents deadlock (unsorted opposite orders fail under lock_timeout).
 #[tokio::test]
 async fn fixed_lock_order_prevents_cross_line_deadlock() {
     let (_lock, _admin, db, _store) = setup().await;
+    // Counterexample: unsorted opposite work orders with only FOR SHARE on the
+    // project interleave and hit lock_timeout — proving sorts are load-bearing.
+    let app_counter_a = with_app_role(&test_config(), &db);
+    let app_counter_b = with_app_role(&test_config(), &db);
+    let counter_left = tokio::spawn(async move {
+        let mut client = common::connect_config(&app_counter_a).await;
+        let tx = client.transaction().await.unwrap();
+        tx.batch_execute(
+            "SELECT set_config('awr.tenant_id','tenant-a',true);
+             SELECT set_config('awr.project_id','project-a',true);
+             SELECT id FROM awr_team.projects WHERE id='project-a' FOR SHARE;
+             SET LOCAL lock_timeout = '800ms';
+             SELECT work_id FROM awr_team.work_runtime
+               WHERE project_id='project-a' AND scope_id='main' AND work_id='work-b' FOR UPDATE;",
+        )
+        .await
+        .unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let err = tx
+            .batch_execute(
+                "SELECT work_id FROM awr_team.work_runtime
+                   WHERE project_id='project-a' AND scope_id='main' AND work_id='work-a' FOR UPDATE;",
+            )
+            .await;
+        let _ = tx.rollback().await;
+        err
+    });
+    let counter_right = tokio::spawn(async move {
+        let mut client = common::connect_config(&app_counter_b).await;
+        let tx = client.transaction().await.unwrap();
+        tx.batch_execute(
+            "SELECT set_config('awr.tenant_id','tenant-a',true);
+             SELECT set_config('awr.project_id','project-a',true);
+             SELECT id FROM awr_team.projects WHERE id='project-a' FOR SHARE;
+             SET LOCAL lock_timeout = '800ms';
+             SELECT work_id FROM awr_team.work_runtime
+               WHERE project_id='project-a' AND scope_id='main' AND work_id='work-a' FOR UPDATE;",
+        )
+        .await
+        .unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let err = tx
+            .batch_execute(
+                "SELECT work_id FROM awr_team.work_runtime
+                   WHERE project_id='project-a' AND scope_id='main' AND work_id='work-b' FOR UPDATE;",
+            )
+            .await;
+        let _ = tx.rollback().await;
+        err
+    });
+    let (left_res, right_res) = tokio::join!(counter_left, counter_right);
+    let left_err = left_res.unwrap();
+    let right_err = right_res.unwrap();
+    assert!(
+        left_err.is_err() || right_err.is_err(),
+        "unsorted opposite work lock orders must time out / fail without sorted helpers"
+    );
+
+    // Production path: shared project admission + sorted helpers succeed.
     let app_a = with_app_role(&test_config(), &db);
     let app_b = with_app_role(&test_config(), &db);
-
     let left = tokio::spawn(async move {
         let mut client = common::connect_config(&app_a).await;
         let tx = client.transaction().await.unwrap();
         tx.batch_execute(
             "SELECT set_config('awr.tenant_id','tenant-a',true);
              SELECT set_config('awr.project_id','project-a',true);
-             SELECT id FROM awr_team.projects WHERE id='project-a' FOR UPDATE;",
+             SELECT id FROM awr_team.projects WHERE id='project-a' FOR SHARE;",
         )
         .await
         .unwrap();
-        // Presentation order: work-b then work-a; resources b then a.
         lock_works_sorted(
             &tx,
             TENANT,
@@ -346,11 +467,10 @@ async fn fixed_lock_order_prevents_cross_line_deadlock() {
         tx.batch_execute(
             "SELECT set_config('awr.tenant_id','tenant-a',true);
              SELECT set_config('awr.project_id','project-a',true);
-             SELECT id FROM awr_team.projects WHERE id='project-a' FOR UPDATE;",
+             SELECT id FROM awr_team.projects WHERE id='project-a' FOR SHARE;",
         )
         .await
         .unwrap();
-        // Opposite presentation order.
         lock_works_sorted(
             &tx,
             TENANT,
