@@ -473,3 +473,72 @@ async fn admin_membership_without_manage_grant_cannot_escalate_on_preview_or_app
     let preview = access.preview(TENANT, PROJECT, A, &plan).await.unwrap();
     assert_eq!(preview["applied"], false);
 }
+
+#[tokio::test]
+async fn empty_grants_cannot_wipe_unmanaged_private_stream_via_full_delta() {
+    let (_g, owner, db, _) = setup().await;
+    enable_admin_manage(&owner).await;
+    let access = ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
+
+    // Token A manages only alpha (stream 1). cli-b holds private-beta (stream 2).
+    // Inspect of cli-b must already fail the ceiling.
+    assert!(
+        matches!(
+            access
+                .inspect(TENANT, PROJECT, A, "agent", "cli-b")
+                .await,
+            Err(PgError::Forbidden)
+        ),
+        "alpha-only manager must not inspect cli-b private-beta grants"
+    );
+
+    // Replacing cli-b's grant set with [] would deactivate private-beta. Refuse.
+    let wipe: AdminAccessPlan = serde_json::from_value(json!({
+        "protocol_version":1,
+        "subject":{"id":"agent","kind":"agent","display_name":"Worker"},
+        "subject_client_id":"cli-b",
+        "role":"admin",
+        "grants":[],
+        "credential":null,
+        "remove_membership":false,
+        "revoke_tenant_credentials":[]
+    }))
+    .unwrap();
+    assert!(
+        matches!(
+            access.preview(TENANT, PROJECT, A, &wipe).await,
+            Err(PgError::Forbidden)
+        ),
+        "empty grants must authorize full delta including current private-beta"
+    );
+    assert!(
+        matches!(
+            access
+                .apply(
+                    TENANT,
+                    PROJECT,
+                    A,
+                    &wipe,
+                    "wipe-cli-b",
+                    "a".repeat(64).as_str(),
+                    "b".repeat(64).as_str(),
+                )
+                .await,
+            Err(PgError::Forbidden)
+        ),
+        "apply with grants=[] must not wipe unmanaged streams"
+    );
+
+    // private-beta grant remains active for cli-b.
+    let active: i64 = owner
+        .query_one(
+            "SELECT count(*)::bigint FROM awr_team.workstream_grants
+             WHERE client_id='cli-b' AND active
+               AND workstream_id=$1",
+            &[&awr_core::Id::from(2).to_string()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(active, 1, "private-beta grant must survive refused wipe");
+}
