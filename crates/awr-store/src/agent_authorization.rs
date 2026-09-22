@@ -206,9 +206,10 @@ impl Store {
             if active_only && status != "active" {
                 continue;
             }
-            out.push(serde_json::from_str(&json).map_err(|e| {
-                Error::Storage(format!("corrupt agent authorization: {e}"))
-            })?);
+            out.push(
+                serde_json::from_str(&json)
+                    .map_err(|e| Error::Storage(format!("corrupt agent authorization: {e}")))?,
+            );
         }
         Ok(out)
     }

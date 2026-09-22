@@ -122,9 +122,10 @@ impl AuthorizationStore {
                 continue;
             }
             let body: Value = row.get(0);
-            out.push(serde_json::from_value(body).map_err(|e| {
-                PgError::Protocol(format!("corrupt agent authorization: {e}"))
-            })?);
+            out.push(
+                serde_json::from_value(body)
+                    .map_err(|e| PgError::Protocol(format!("corrupt agent authorization: {e}")))?,
+            );
         }
         Ok(out)
     }
@@ -260,7 +261,10 @@ impl AuthorizationStore {
             .await?
             .ok_or_else(|| PgError::Protocol("parent authorization not found".into()))?;
         let child = apply_delegate(&parent, req, now_ms).map_err(map_core)?;
-        if load_auth_tx(&tx, tenant, project, &child.id).await?.is_some() {
+        if load_auth_tx(&tx, tenant, project, &child.id)
+            .await?
+            .is_some()
+        {
             return Err(PgError::Protocol(
                 "child authorization id already exists".into(),
             ));

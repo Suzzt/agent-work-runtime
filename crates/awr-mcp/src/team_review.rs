@@ -54,8 +54,14 @@ pub(crate) fn handle(args: Value) -> Result<CallToolResult, awr_core::Error> {
             }
         }))),
         "explain_independence" => {
-            let author = args.get("author_person_id").and_then(|v| v.as_str()).unwrap_or("");
-            let reviewer = args.get("reviewer_person_id").and_then(|v| v.as_str()).unwrap_or("");
+            let author = args
+                .get("author_person_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let reviewer = args
+                .get("reviewer_person_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let policy = args
                 .get("completion_policy")
                 .and_then(|v| v.as_str())
@@ -63,7 +69,11 @@ pub(crate) fn handle(args: Value) -> Result<CallToolResult, awr_core::Error> {
             let same = !author.is_empty() && author == reviewer;
             let personal_allowed = policy == "trusted_execution_and_author_self_review";
             let kind = if same {
-                if personal_allowed { "personal_self_review" } else { "forbidden" }
+                if personal_allowed {
+                    "personal_self_review"
+                } else {
+                    "forbidden"
+                }
             } else {
                 "team_independent"
             };
