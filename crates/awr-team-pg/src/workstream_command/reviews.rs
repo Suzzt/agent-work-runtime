@@ -944,11 +944,46 @@ async fn complete(
     let submitter_person = resolve_person_id(tx, tenant, project, &auth.actor_id)
         .await
         .ok();
+    // Active PR delivery attribution (TMCP-031); merge never substitutes for acceptance.
+    let pr = tx
+        .query_opt(
+            "SELECT id, contract_hash, author_actor_id, owner_person_id, executor_actor_id, gh_merged
+             FROM awr_team.pr_deliveries
+             WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3 AND state='active'
+             ORDER BY created_at DESC LIMIT 1",
+            &[&tenant, &project, &command.work_id],
+        )
+        .await?;
+    let mut pr_delivery_id: Option<String> = None;
+    let mut author_actor: Option<String> = None;
+    let mut owner_person: Option<String> = None;
+    let mut executor_actor: Option<String> = None;
+    if let Some(row) = &pr {
+        let pr_contract: String = row.get(1);
+        if pr_contract != ev_contract {
+            return Err(PgError::PreconditionsChanged);
+        }
+        pr_delivery_id = Some(row.get(0));
+        author_actor = row.get(2);
+        owner_person = row.get(3);
+        executor_actor = row.get(4);
+        let _gh_merged: bool = row.get(5);
+        let _ = _gh_merged;
+    }
+    let author_actor = author_actor.or_else(|| Some(auth.actor_id.clone()));
+    let executor_actor = executor_actor.or(execution_id.clone());
     let approved_by = json!({
         "approved_by": approver_actor,
         "approved_by_person_id": approver_person,
         "submitted_by": auth.actor_id,
         "submitted_by_person_id": submitter_person,
+        "author_actor_id": author_actor,
+        "owner_person_id": owner_person,
+        "executor_actor_id": executor_actor,
+        "reviewer_actor_id": approver_actor,
+        "final_submitter_actor_id": auth.actor_id,
+        "pr_delivery_id": pr_delivery_id,
+        "github_merged_does_not_complete": true,
         "independence_kind": independence_kind,
         "team_independent_acceptance": team_independent_acceptance,
         "execution_success": execution_success,
@@ -967,8 +1002,10 @@ async fn complete(
             tenant_id, project_id, id, work_id, scope_id, contract_hash,
             result_digest, dependency_binding_hash, evidence_bundle_hash,
             policy, approved_by_json, independence_kind, evidence_id, execution_id,
-            approved_by_person_id, submitted_by_person_id)
-         VALUES ($1,$2,$3,$4,'main',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
+            approved_by_person_id, submitted_by_person_id,
+            author_actor_id, owner_person_id, executor_actor_id,
+            final_submitter_actor_id, pr_delivery_id)
+         VALUES ($1,$2,$3,$4,'main',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)",
         &[
             &tenant,
             &project,
@@ -985,6 +1022,11 @@ async fn complete(
             &execution_id,
             &approver_person,
             &submitter_person,
+            &author_actor,
+            &owner_person,
+            &executor_actor,
+            &auth.actor_id,
+            &pr_delivery_id,
         ],
     )
     .await?;
