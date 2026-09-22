@@ -15,8 +15,10 @@ explicitly enable workstreams. The shared personal MCP service has an explicit
 authenticated read boundary; unsupported shared operations are rejected for
 enabled workstreams. Team PostgreSQL has authenticated HTTP/MCP queries,
 session journaling, claims, execution admission and authorized recovery, with a
-bounded local reference runner. Versioned cross-stream adoption and full
-workspace/external-resource enforcement remain separate integration work.
+bounded local reference runner. Versioned cross-stream adoption remains separate integration work.
+File/dir/workspace versus shared external/integration resource bounds are enforced
+at reservation and admission; physical strong isolation still requires a verified
+host sandbox or OS boundary, not AWR metadata alone.
 These paths do not establish complete isolation for every CLI, MCP or Team operation.
 
 The Team source coordinator also accepts an explicit multi-work source bundle

@@ -19,13 +19,111 @@ pub struct SplitProposal {
     pub child_work_ids: Vec<String>,
 }
 
+/// Verifiable execution resource bound (WS-021).
+///
+/// Path kinds (`file`/`dir`/`prefix`) and `workspace` are worktree-local: the
+/// same relative path in different worktrees does not conflict. `external` and
+/// `integration` are shared across worktrees (database, deployment destination,
+/// integration ref). `named` remains an opaque exact-match lock. `dir` and
+/// `prefix` are directory bounds with identical conflict rules.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResourceBound {
+    pub kind: String,
+    pub key: String,
+    /// Empty means the project-default / legacy domain. Shared kinds require "".
+    #[serde(default)]
+    pub worktree_id: String,
+}
+
+/// Lease generation + fence captured when the reservation is admitted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ResourceLeaseBind {
+    pub lease_generation: i64,
+    pub fence: i64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResourceDomain {
+    /// Local edits inside one worktree (file/dir/prefix/workspace).
+    WorktreeLocal,
+    /// Shared outside worktrees (external/integration).
+    Shared,
+    /// Opaque exact-match lock.
+    Named,
+}
+
+pub fn resource_domain(kind: &str) -> Option<ResourceDomain> {
+    match kind {
+        "file" | "dir" | "prefix" | "workspace" => Some(ResourceDomain::WorktreeLocal),
+        "external" | "integration" => Some(ResourceDomain::Shared),
+        "named" => Some(ResourceDomain::Named),
+        _ => None,
+    }
+}
+
+pub fn validate_resource_kind(kind: &str) -> PgResult<()> {
+    if resource_domain(kind).is_some() {
+        Ok(())
+    } else {
+        Err(PgError::Protocol(format!("unsupported resource kind: {kind}")))
+    }
+}
+
+/// Legacy path conflict helper: same-domain (empty worktree) comparison.
 pub fn paths_conflict(kind_a: &str, key_a: &str, kind_b: &str, key_b: &str) -> bool {
-    if kind_a == "named" || kind_b == "named" {
-        return kind_a == kind_b && key_a == key_b;
+    resources_conflict(
+        &ResourceBound {
+            kind: kind_a.into(),
+            key: key_a.into(),
+            worktree_id: String::new(),
+        },
+        &ResourceBound {
+            kind: kind_b.into(),
+            key: key_b.into(),
+            worktree_id: String::new(),
+        },
+    )
+}
+
+/// Distinct worktrees do not contend over local path/workspace resources;
+/// shared external/integration identities always contend by key.
+pub fn resources_conflict(a: &ResourceBound, b: &ResourceBound) -> bool {
+    let (Some(da), Some(db)) = (resource_domain(&a.kind), resource_domain(&b.kind)) else {
+        return false;
+    };
+    match (da, db) {
+        (ResourceDomain::Named, ResourceDomain::Named) => a.key == b.key,
+        (ResourceDomain::Named, _) | (_, ResourceDomain::Named) => false,
+        (ResourceDomain::Shared, ResourceDomain::Shared) => {
+            a.kind == b.kind && shared_keys_conflict(&a.kind, &a.key, &b.key)
+        }
+        (ResourceDomain::Shared, _) | (_, ResourceDomain::Shared) => false,
+        (ResourceDomain::WorktreeLocal, ResourceDomain::WorktreeLocal) => {
+            if a.worktree_id != b.worktree_id {
+                return false;
+            }
+            path_like_conflict(&a.kind, &a.key, &b.kind, &b.key)
+        }
+    }
+}
+
+fn shared_keys_conflict(kind: &str, key_a: &str, key_b: &str) -> bool {
+    match kind {
+        // External/integration identities are opaque URIs/refs, not path trees.
+        "external" | "integration" => key_a == key_b,
+        _ => key_a == key_b,
+    }
+}
+
+fn path_like_conflict(kind_a: &str, key_a: &str, kind_b: &str, key_b: &str) -> bool {
+    if kind_a == "workspace" || kind_b == "workspace" {
+        // A workspace claim is exclusive for that worktree identity.
+        return kind_a == "workspace" && kind_b == "workspace";
     }
     if kind_a == "file" && kind_b == "file" {
         return canonicalize(key_a) == canonicalize(key_b);
     }
+    // dir and prefix are directory bounds; overlap with files/dirs segment-wise.
     segment_prefix_overlap(&canonicalize(key_a), &canonicalize(key_b))
 }
 
@@ -40,29 +138,58 @@ fn canonicalize(path: &str) -> String {
         .join("/")
 }
 
-/// Entry-level resource key validation/normalization. file/prefix resources
-/// are normalized to their canonical workspace-relative form; named
-/// resources keep their own identity rules and are not path-processed
-/// (CR #40 P2-2).
+/// Entry-level resource key validation/normalization (WS-021).
 fn normalize_resource_key(kind: &str, key: &str) -> PgResult<String> {
-    if kind == "named" {
-        if key.is_empty() {
-            return Err(PgError::UnsafeSourcePath("empty named resource".into()));
+    validate_resource_kind(kind)?;
+    match resource_domain(kind).expect("validated") {
+        ResourceDomain::Named | ResourceDomain::Shared => {
+            if key.is_empty() || key.len() > 4096 || key.chars().any(char::is_control) {
+                return Err(PgError::UnsafeSourcePath(format!(
+                    "invalid {kind} resource key"
+                )));
+            }
+            Ok(key.to_string())
         }
-        return Ok(key.to_string());
+        ResourceDomain::WorktreeLocal if kind == "workspace" => {
+            if key.is_empty() || key.len() > 512 || key.chars().any(char::is_control) {
+                return Err(PgError::UnsafeSourcePath("invalid workspace resource".into()));
+            }
+            Ok(key.to_string())
+        }
+        ResourceDomain::WorktreeLocal => {
+            // Unify separators BEFORE any segment check: a backslash '..' must not
+            // become a parent segment only after validation (CR #57 P2-1).
+            let normalized = key.replace('\\', "/");
+            if normalized.split('/').any(|segment| segment == "..") {
+                return Err(PgError::UnsafeSourcePath(key.into()));
+            }
+            let canonical = canonicalize(&normalized);
+            if canonical.is_empty() {
+                return Err(PgError::UnsafeSourcePath(key.into()));
+            }
+            Ok(canonical)
+        }
     }
-    // Unify separators BEFORE any segment check: a backslash '..' must not
-    // become a parent segment only after validation (CR #57 P2-1). The same
-    // normalized form is then checked, compared and stored.
-    let normalized = key.replace('\\', "/");
-    if normalized.split('/').any(|segment| segment == "..") {
-        return Err(PgError::UnsafeSourcePath(key.into()));
+}
+
+fn normalize_worktree_id(kind: &str, worktree_id: &str) -> PgResult<String> {
+    validate_resource_kind(kind)?;
+    match resource_domain(kind).expect("validated") {
+        ResourceDomain::Shared | ResourceDomain::Named => {
+            if !worktree_id.is_empty() {
+                return Err(PgError::Protocol(format!(
+                    "{kind} resources are shared and cannot carry a worktree_id"
+                )));
+            }
+            Ok(String::new())
+        }
+        ResourceDomain::WorktreeLocal => {
+            if worktree_id.len() > 512 || worktree_id.chars().any(char::is_control) {
+                return Err(PgError::Protocol("invalid worktree_id".into()));
+            }
+            Ok(worktree_id.to_string())
+        }
     }
-    let canonical = canonicalize(&normalized);
-    if canonical.is_empty() {
-        return Err(PgError::UnsafeSourcePath(key.into()));
-    }
-    Ok(canonical)
 }
 
 fn segment_prefix_overlap(a: &str, b: &str) -> bool {
@@ -217,7 +344,43 @@ impl GraphStore {
         kind: &str,
         key: &str,
     ) -> PgResult<String> {
-        let key = normalize_resource_key(kind, key)?;
+        self.reserve_bound(
+            tenant_id,
+            project_id,
+            work_id,
+            &ResourceBound {
+                kind: kind.into(),
+                key: key.into(),
+                worktree_id: String::new(),
+            },
+            ResourceLeaseBind::default(),
+            None,
+        )
+        .await
+    }
+
+    /// Reserve a typed resource bound under the current lease generation/fence.
+    /// Worktree-local bounds do not contend across different worktree_ids;
+    /// shared external/integration bounds always contend by identity.
+    pub async fn reserve_bound(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        work_id: &str,
+        bound: &ResourceBound,
+        lease: ResourceLeaseBind,
+        execution_id: Option<&str>,
+    ) -> PgResult<String> {
+        if lease.lease_generation < 0 || lease.fence < 0 {
+            return Err(PgError::Protocol("lease generation and fence must be >= 0".into()));
+        }
+        let key = normalize_resource_key(&bound.kind, &bound.key)?;
+        let worktree_id = normalize_worktree_id(&bound.kind, &bound.worktree_id)?;
+        let bound = ResourceBound {
+            kind: bound.kind.clone(),
+            key,
+            worktree_id,
+        };
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
         bind_scope(&tx, tenant_id, project_id).await?;
@@ -227,24 +390,40 @@ impl GraphStore {
         lock_project(&tx, tenant_id, project_id).await?;
         let rows = tx
             .query(
-                "SELECT resource_kind, canonical_key FROM awr_team.resource_reservations
+                "SELECT resource_kind, canonical_key, worktree_id
+                 FROM awr_team.resource_reservations
                  WHERE tenant_id=$1 AND project_id=$2 AND state IN ('reserved', 'unknown')",
                 &[&tenant_id, &project_id],
             )
             .await?;
         for row in rows {
-            let existing_kind: String = row.get(0);
-            let existing_key: String = row.get(1);
-            if paths_conflict(kind, &key, &existing_kind, &existing_key) {
+            let existing = ResourceBound {
+                kind: row.get(0),
+                key: row.get(1),
+                worktree_id: row.get(2),
+            };
+            if resources_conflict(&bound, &existing) {
                 return Err(PgError::ResourceConflict);
             }
         }
         let id = new_id();
         tx.execute(
             "INSERT INTO awr_team.resource_reservations(
-                tenant_id, project_id, id, work_id, resource_kind, canonical_key, state)
-             VALUES ($1,$2,$3,$4,$5,$6,'reserved')",
-            &[&tenant_id, &project_id, &id, &work_id, &kind, &key],
+                tenant_id, project_id, id, work_id, resource_kind, canonical_key, state,
+                worktree_id, lease_generation, fence, execution_id)
+             VALUES ($1,$2,$3,$4,$5,$6,'reserved',$7,$8,$9,$10)",
+            &[
+                &tenant_id,
+                &project_id,
+                &id,
+                &work_id,
+                &bound.kind,
+                &bound.key,
+                &bound.worktree_id,
+                &lease.lease_generation,
+                &lease.fence,
+                &execution_id,
+            ],
         )
         .await?;
         tx.commit().await?;
@@ -625,6 +804,98 @@ mod tests {
         assert!(!paths_conflict("prefix", "src/a", "file", "src/abc"));
         assert!(paths_conflict("file", "src/a.rs", "file", "src/a.rs"));
         assert!(!paths_conflict("named", "lock-a", "named", "lock-b"));
+        assert!(paths_conflict("dir", "src/foo", "file", "src/foo/a.rs"));
+    }
+
+    #[test]
+    fn worktree_local_paths_do_not_conflict_across_worktrees() {
+        let a = ResourceBound {
+            kind: "file".into(),
+            key: "src/a.rs".into(),
+            worktree_id: "wt-1".into(),
+        };
+        let b = ResourceBound {
+            kind: "file".into(),
+            key: "src/a.rs".into(),
+            worktree_id: "wt-2".into(),
+        };
+        let same = ResourceBound {
+            kind: "dir".into(),
+            key: "src".into(),
+            worktree_id: "wt-1".into(),
+        };
+        assert!(!resources_conflict(&a, &b));
+        assert!(resources_conflict(&a, &same));
+    }
+
+    #[test]
+    fn shared_external_and_integration_conflict_across_worktrees() {
+        let db = ResourceBound {
+            kind: "external".into(),
+            key: "postgres://shared/db".into(),
+            worktree_id: String::new(),
+        };
+        let db2 = ResourceBound {
+            kind: "external".into(),
+            key: "postgres://shared/db".into(),
+            worktree_id: String::new(),
+        };
+        let other = ResourceBound {
+            kind: "external".into(),
+            key: "postgres://other/db".into(),
+            worktree_id: String::new(),
+        };
+        let integ = ResourceBound {
+            kind: "integration".into(),
+            key: "deploy/prod".into(),
+            worktree_id: String::new(),
+        };
+        let local = ResourceBound {
+            kind: "file".into(),
+            key: "src/a.rs".into(),
+            worktree_id: "wt-1".into(),
+        };
+        assert!(resources_conflict(&db, &db2));
+        assert!(!resources_conflict(&db, &other));
+        assert!(!resources_conflict(&db, &integ));
+        assert!(!resources_conflict(&db, &local));
+        assert!(resources_conflict(
+            &integ,
+            &ResourceBound {
+                kind: "integration".into(),
+                key: "deploy/prod".into(),
+                worktree_id: String::new(),
+            }
+        ));
+    }
+
+    #[test]
+    fn workspace_claims_are_exclusive_per_worktree() {
+        let w1 = ResourceBound {
+            kind: "workspace".into(),
+            key: "wt-1".into(),
+            worktree_id: "wt-1".into(),
+        };
+        let w1b = ResourceBound {
+            kind: "workspace".into(),
+            key: "wt-1".into(),
+            worktree_id: "wt-1".into(),
+        };
+        let w2 = ResourceBound {
+            kind: "workspace".into(),
+            key: "wt-2".into(),
+            worktree_id: "wt-2".into(),
+        };
+        assert!(resources_conflict(&w1, &w1b));
+        assert!(!resources_conflict(&w1, &w2));
+    }
+
+    #[test]
+    fn shared_kinds_reject_worktree_ids() {
+        assert!(normalize_worktree_id("external", "wt-1").is_err());
+        assert!(normalize_worktree_id("integration", "wt-1").is_err());
+        assert!(normalize_worktree_id("named", "wt-1").is_err());
+        assert_eq!(normalize_worktree_id("file", "wt-1").unwrap(), "wt-1");
     }
 
     #[test]
