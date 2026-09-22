@@ -31,6 +31,7 @@ mod organization;
 mod read;
 mod resume;
 mod responsibility;
+mod agent_authorization;
 mod work_action;
 mod work_create;
 mod work_edit;

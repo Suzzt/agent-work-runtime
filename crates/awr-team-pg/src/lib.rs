@@ -14,6 +14,7 @@ mod operator_backup;
 mod operator_quarantine;
 mod operator_execution_attribution;
 mod responsibility;
+mod agent_authorization;
 mod path;
 mod pool;
 mod read;
@@ -43,6 +44,7 @@ pub use operator_backup::OperatorBackup;
 pub use operator_quarantine::OperatorQuarantine;
 pub use operator_execution_attribution::{ExecutionAttributionEntry, ExecutionAttributionPlan, OperatorExecutionAttribution};
 pub use responsibility::ResponsibilityStore;
+pub use agent_authorization::AuthorizationStore;
 pub use path::{
     MAX_FILE_BYTES, MAX_PACKAGE_BYTES, MAX_SOURCE_FILES, validate_package, validate_source_path,
 };
@@ -82,6 +84,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 19);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 20);
     }
 }

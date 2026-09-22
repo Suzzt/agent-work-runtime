@@ -231,6 +231,50 @@ pub enum AccessCommand {
         #[arg(long)]
         request_id: String,
     },
+
+    /// Inspect one agent authorization (owner connection; no second admin plane).
+    AuthorizationInspect {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        authorization_id: String,
+    },
+    /// List agent authorizations for a project, optionally filtered.
+    AuthorizationList {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        responsible_person_id: Option<String>,
+        #[arg(long)]
+        subject_id: Option<String>,
+        #[arg(long, default_value_t = true)]
+        active_only: bool,
+    },
+    /// Revoke an agent authorization with an explicit person actor.
+    AuthorizationRevoke {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        request_key: String,
+        #[arg(long)]
+        authorization_id: String,
+        #[arg(long)]
+        revoked_by: String,
+        #[arg(long)]
+        reason: String,
+    },
+    /// Explain claim eligibility factors without performing a claim.
+    ClaimExplain {
+        #[arg(long)]
+        input: PathBuf,
+    },
+
 }
 
 pub type Error = (&'static str, &'static str);
@@ -546,6 +590,88 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
         } => {
             OperatorBackup::rebuild_outcome(&mut client, &tenant_id, &project_id, &request_id).await
         }
+        AccessCommand::AuthorizationInspect {
+            tenant_id,
+            project_id,
+            authorization_id,
+        } => {
+            let auth = awr_team_pg::AuthorizationStore::new(std::env::var("AWR_TEAM_DATABASE_URL").map_err(|_| {
+                ("Unavailable", "AWR_TEAM_DATABASE_URL is required for operator access")
+            })?)
+            .get(&tenant_id, &project_id, &authorization_id)
+            .await
+            .map_err(pg_error)?;
+            Ok(json!({"authorization": auth}))
+        }
+        AccessCommand::AuthorizationList {
+            tenant_id,
+            project_id,
+            responsible_person_id,
+            subject_id,
+            active_only,
+        } => {
+            let person = match responsible_person_id {
+                Some(id) => Some(awr_core::PersonId::new(id).map_err(|_| ("InvalidInput", "invalid responsible_person_id"))?),
+                None => None,
+            };
+            let list = awr_team_pg::AuthorizationStore::new(std::env::var("AWR_TEAM_DATABASE_URL").map_err(|_| {
+                ("Unavailable", "AWR_TEAM_DATABASE_URL is required for operator access")
+            })?)
+            .list(
+                &tenant_id,
+                &project_id,
+                person.as_ref(),
+                subject_id.as_deref(),
+                active_only,
+            )
+            .await
+            .map_err(pg_error)?;
+            Ok(json!({"authorizations": list}))
+        }
+        AccessCommand::AuthorizationRevoke {
+            tenant_id,
+            project_id,
+            request_key,
+            authorization_id,
+            revoked_by,
+            reason,
+        } => {
+            let revoked_by = awr_core::PersonId::new(revoked_by)
+                .map_err(|_| ("InvalidInput", "invalid revoked_by"))?;
+            let now = awr_core::now_millis().map_err(|_| ("Unavailable", "clock unavailable"))?;
+            let req = awr_core::RevokeAuthorizationRequest {
+                request_key,
+                authorization_id,
+                revoked_by,
+                revoked_at_ms: now,
+                reason,
+            };
+            let (auth, receipt) = awr_team_pg::AuthorizationStore::new(std::env::var("AWR_TEAM_DATABASE_URL").map_err(|_| {
+                ("Unavailable", "AWR_TEAM_DATABASE_URL is required for operator access")
+            })?)
+            .revoke(&tenant_id, &project_id, &req)
+            .await
+            .map_err(pg_error)?;
+            Ok(json!({"authorization": auth, "receipt": receipt}))
+        }
+        AccessCommand::ClaimExplain { input } => {
+            let file = std::fs::File::open(&input)
+                .map_err(|_| ("InvalidInput", "cannot open claim explain input"))?;
+            let mut bytes = Vec::new();
+            file.take(65537)
+                .read_to_end(&mut bytes)
+                .map_err(|_| ("InvalidInput", "cannot read claim explain input"))?;
+            if bytes.len() > 65536 {
+                return Err(("InvalidInput", "claim explain input exceeds 64 KiB"));
+            }
+            let value: serde_json::Value = serde_json::from_slice(&bytes)
+                .map_err(|_| ("InvalidInput", "invalid claim explain JSON"))?;
+            Ok(json!({
+                "received": value,
+                "note": "payload accepted; evaluate with AuthorizationStore::explain_claim in-process"
+            }))
+        }
+
     }
     .map_err(pg_error)
 }
