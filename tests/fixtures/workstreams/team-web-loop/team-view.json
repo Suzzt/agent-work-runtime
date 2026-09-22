@@ -1,0 +1,147 @@
+{
+  "schema": "awr-team-web-loop-fixture/v1",
+  "view": "team",
+  "locale_keys": [
+    "en",
+    "zh-CN"
+  ],
+  "projects": [
+    {
+      "key": "demo",
+      "title": "Team mainline",
+      "role": "project_admin"
+    },
+    {
+      "key": "docs",
+      "title": "Docs stream",
+      "role": "reviewer"
+    }
+  ],
+  "works": [
+    {
+      "key": "TW-201",
+      "title": "Mainline parallel overview",
+      "owner_person": "lin",
+      "agent": {
+        "id": "coding-agent",
+        "state": "running"
+      },
+      "outcome": "list/card shells merged",
+      "status": "in_progress",
+      "blocker": null,
+      "next_step": "Submit review package",
+      "depends_on": [
+        {
+          "key": "TW-200",
+          "visible": true,
+          "status": "accepted",
+          "prerequisite_outcome": "Web login + logout/revoke proved",
+          "release_condition": "Upstream acceptance recorded",
+          "check_basis": "completion.inspect receipt"
+        }
+      ],
+      "hidden_deps": [
+        {
+          "visible": false,
+          "hint": "A restricted upstream dependency is not visible in this scope. Ask a project admin to grant read or clear the gate.",
+          "leaks": false
+        }
+      ],
+      "capabilities": {
+        "run": true,
+        "pause": true
+      }
+    },
+    {
+      "key": "TW-202",
+      "title": "Blocker response drill-down",
+      "owner_person": "mei",
+      "agent": null,
+      "outcome": null,
+      "status": "blocked",
+      "blocker": {
+        "summary": "Waiting on TW-201 review acceptance",
+        "prerequisite_outcome": "Review round accepted with independent decide",
+        "release_condition": "review.accept on TW-201 current round",
+        "check_basis": "review.inspect + dependency edge outcome",
+        "backend_code": "dependency_not_completed",
+        "raw_receipt_ref": "receipt:demo:tw-201:review"
+      },
+      "next_step": "Respond to blocker after upstream accept",
+      "depends_on": [
+        {
+          "key": "TW-201",
+          "visible": true,
+          "status": "in_progress",
+          "prerequisite_outcome": "Review submitted",
+          "release_condition": "Independent review.accept",
+          "check_basis": "visible dependency edge"
+        }
+      ],
+      "hidden_deps": [],
+      "capabilities": {
+        "run": false,
+        "pause": false
+      }
+    },
+    {
+      "key": "TW-200",
+      "title": "Web entry auth",
+      "owner_person": "lin",
+      "agent": {
+        "id": "coding-agent",
+        "state": "idle"
+      },
+      "outcome": "HttpOnly session cookie login/logout/revoke",
+      "status": "accepted",
+      "blocker": null,
+      "next_step": null,
+      "depends_on": [],
+      "hidden_deps": [],
+      "capabilities": {
+        "run": false,
+        "pause": false
+      }
+    }
+  ],
+  "members": [
+    {
+      "person_id": "lin",
+      "role": "project_admin",
+      "agents": [
+        "coding-agent",
+        "docs-agent"
+      ]
+    },
+    {
+      "person_id": "mei",
+      "role": "reviewer",
+      "agents": [
+        "review-agent"
+      ]
+    },
+    {
+      "person_id": "you",
+      "role": "worker",
+      "agents": [
+        "coding-agent"
+      ]
+    }
+  ],
+  "handoffs": [
+    {
+      "handoff_id": "ho_1",
+      "kind": "responsibility",
+      "status": "proposed",
+      "to_person_id": "you",
+      "work_key": "TW-202"
+    }
+  ],
+  "reviews": [
+    {
+      "round_id": "rr_1",
+      "work_key": "TW-201",
+      "status": "open"
+    }
+  ]
+}

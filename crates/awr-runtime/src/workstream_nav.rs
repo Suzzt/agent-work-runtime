@@ -5,7 +5,7 @@
 //! review/blockers and WS-030/031/032 dependency graphs. This module does not
 //! invent completion rates, mutate team state, or bypass authorization — callers
 //! must authenticate the project / workstream before invoking it. Full Team Web
-//! write operations remain WS-044.
+//! collaboration writes are delivered by the Team Web entry (WS-044).
 use awr_core::{
     ActionGuidance, Edge, EtaComponents, Project, Projected, Result, TaskResponsibility,
     WorkItem, Workstream, WorkstreamAccounting, WorkstreamCatalog, ACTION_GUIDANCE_MAX_BYTES,
@@ -500,7 +500,8 @@ pub fn assemble_mainline_nav(
         "schema_version": MAINLINE_NAV_SCHEMA_VERSION,
         "read_only": true,
         "writes": [],
-        "ws044_writes_deferred": true,
+        "ws044_writes_deferred": false,
+        "ws044_team_web": true,
         "authorization_note": "Navigation and reads only; mutations must re-check authorization on their own paths",
         "project": {
             "id": project.id,
@@ -738,7 +739,8 @@ mod tests {
         .unwrap();
         assert_eq!(snap["protocol"], MAINLINE_NAV_PROTOCOL);
         assert_eq!(snap["read_only"], true);
-        assert_eq!(snap["ws044_writes_deferred"], true);
+        assert_eq!(snap["ws044_writes_deferred"], false);
+        assert_eq!(snap["ws044_team_web"], true);
         assert_eq!(snap["accounting"]["available"], true);
         assert_eq!(snap["accounting"]["is_not_goal_query_completion_rate"], true);
         assert_eq!(snap["accounting"]["implemented"]["recorded"], 1);

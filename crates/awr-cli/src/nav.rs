@@ -141,7 +141,7 @@ fn print_human(value: &Value) {
         println!("  Recheck: {}", g["recheck"].as_str().unwrap_or(""));
     }
     println!(
-        "Read-only entry; Team Web writes are deferred to WS-044 ({})",
+        "Read-only nav entry; Team Web collaboration writes use the WS-044 web entry ({})",
         value["authorization_note"].as_str().unwrap_or("")
     );
     let _ = json!({});

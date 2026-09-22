@@ -54,8 +54,10 @@ The loopback listener accepts its actual host/port and `localhost` at that port.
 Non-loopback listeners require explicit `allowed_hosts` entries. Hosts are exact
 authorities, including a port when clients send one. This server has no built-in
 TLS: remote use requires operator-provided HTTPS termination and a protected
-connection to the backend. All browser `Origin` headers are rejected. There is
-no browser login, CORS or cookie authentication.
+connection to the backend. Classic `/v1/projects/*` and MCP reject all browser `Origin` headers and have
+no cookie login. WS-044 adds an explicit `/v1/web/*` entry gated by
+`allowed_web_origins` with HttpOnly session cookies; see
+[Team Web entry](../integrations/team-web-entry.md).
 
 The project must have an explicitly approved and activated
 [`workstreams.json` source bundle](workstreams.md#team-source-projection-in-the-development-branch).
