@@ -486,6 +486,11 @@ impl Store {
                 "adoption export authorization snapshot does not match store".into(),
             ));
         }
+        // Residual trust boundary: SQLite has no WS-018 completion_receipts /
+        // work_runtime selection tables. Team PG (DeliveryAdoptionStore::adopt)
+        // loads the trusted completion proof from storage before issuing a
+        // credential; this local path still passes request-supplied proof
+        // through core consistency checks only.
         let cred = core_adopt_delivery_credential(req).map_err(map_delivery)?;
         persist_credential(&self.conn, &project_s, &cred)?;
         let receipt = record_receipt(&self.conn, &project_s, &req.request_key, &cred.id, "adopt")?;
