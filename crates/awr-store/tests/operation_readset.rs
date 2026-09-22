@@ -100,3 +100,65 @@ fn legacy_project_revision_protocol_still_conflicts() {
         Err(Error::RevisionConflict { .. })
     ));
 }
+
+#[test]
+fn exact_replay_returns_original_event_without_cursor_bump() {
+    let mut f = Fixture::new();
+    let work = f.works[0];
+    let mut supplied = f
+        .store
+        .prepare_operation_readset(identity(f.project, f.scopes[0], work, "idem-1"))
+        .unwrap();
+    supplied.identity.payload_sha256 = "f".repeat(64);
+    let first = f
+        .store
+        .append_event_with_readset(f.project, &supplied, draft(work, "first write"))
+        .unwrap();
+    let rev_after = f.rev();
+    let second = f
+        .store
+        .append_event_with_readset(f.project, &supplied, draft(work, "first write"))
+        .unwrap();
+    assert_eq!(second.id, first.id);
+    assert_eq!(second.project_revision, first.project_revision);
+    assert_eq!(f.rev(), rev_after, "exact replay must not advance audit cursor");
+}
+
+#[test]
+fn changed_intent_same_request_id_conflicts() {
+    let mut f = Fixture::new();
+    let work = f.works[0];
+    let mut supplied = f
+        .store
+        .prepare_operation_readset(identity(f.project, f.scopes[0], work, "idem-2"))
+        .unwrap();
+    supplied.identity.payload_sha256 = "1".repeat(64);
+    f.store
+        .append_event_with_readset(f.project, &supplied, draft(work, "original"))
+        .unwrap();
+    let mut changed = supplied.clone();
+    changed.identity.payload_sha256 = "2".repeat(64);
+    assert!(
+        f.store
+            .append_event_with_readset(f.project, &changed, draft(work, "changed"))
+            .is_err()
+    );
+}
+
+#[test]
+fn mutation_target_must_match_validated_readset_identity() {
+    let mut f = Fixture::new();
+    let work_a = f.works[0];
+    let work_b = f.works[1];
+    let mut supplied = f
+        .store
+        .prepare_operation_readset(identity(f.project, f.scopes[0], work_a, "bind-1"))
+        .unwrap();
+    supplied.identity.payload_sha256 = "3".repeat(64);
+    // Readset for work A must not append an event onto work B.
+    assert!(
+        f.store
+            .append_event_with_readset(f.project, &supplied, draft(work_b, "cross-work"))
+            .is_err()
+    );
+}

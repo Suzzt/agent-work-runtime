@@ -119,6 +119,116 @@ fn load_required_readset(
     Ok(RequiredOperationReadSet(required))
 }
 
+
+fn bind_mutation_to_readset(
+    project_id: Id,
+    supplied: &OperationReadSet,
+    draft: &EventDraft,
+) -> Result<()> {
+    let identity_project: Id = supplied
+        .identity
+        .work
+        .project_id
+        .parse()
+        .map_err(|_| Error::InvalidInput("invalid project id in operation identity".into()))?;
+    if identity_project != project_id {
+        return Err(Error::InvalidInput(
+            "mutation project does not match operation readset identity".into(),
+        ));
+    }
+    let identity_work: Id = supplied
+        .identity
+        .work
+        .work_item_id
+        .parse()
+        .map_err(|_| Error::InvalidInput("invalid work id in operation identity".into()))?;
+    match draft.work_item_id {
+        Some(work) if work == identity_work => Ok(()),
+        Some(_) => Err(Error::InvalidInput(
+            "mutation work does not match operation readset identity".into(),
+        )),
+        None => Err(Error::InvalidInput(
+            "mutation requires work bound to operation readset identity".into(),
+        )),
+    }
+}
+
+fn identity_hash(supplied: &OperationReadSet) -> Result<String> {
+    let bytes = serde_json::to_vec(&supplied.identity).map_err(|e| {
+        Error::InvalidInput(format!("cannot canonicalize operation identity: {e}"))
+    })?;
+    use sha2::{Digest, Sha256};
+    Ok(format!("{:x}", Sha256::digest(bytes)))
+}
+
+fn load_exact_replay(
+    conn: &Connection,
+    project_id: Id,
+    supplied: &OperationReadSet,
+) -> Result<Option<Event>> {
+    let row = conn
+        .query_row(
+            "SELECT identity_hash, readset_json, event_id FROM operation_readset_receipts
+             WHERE project_id=?1 AND request_id=?2",
+            params![project_id.to_string(), supplied.identity.request_id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+        )
+        .optional()
+        .map_err(db_error)?;
+    let Some((stored_hash, readset_json, event_id)) = row else {
+        return Ok(None);
+    };
+    let recorded: OperationReadSet = serde_json::from_str(&readset_json).map_err(|_| {
+        Error::Storage("invalid stored operation readset receipt".into())
+    })?;
+    classify_operation_replay(supplied, Some(&recorded)).map_err(map_readset)?;
+    let expected = identity_hash(supplied)?;
+    if stored_hash != expected {
+        return Err(map_readset(OperationReadSetError::IdempotencyConflict));
+    }
+    let event_id: Id = event_id
+        .parse()
+        .map_err(|_| Error::Storage("invalid event id in operation receipt".into()))?;
+    let event = conn
+        .query_row(
+            "SELECT id,project_id,work_item_id,session_id,branch_id,event_type,importance,summary,payload_json,project_revision,created_at
+             FROM events WHERE project_id=?1 AND id=?2",
+            params![project_id.to_string(), event_id.to_string()],
+            crate::events::event_row,
+        )
+        .optional()
+        .map_err(db_error)?
+        .ok_or_else(|| Error::Storage("operation receipt missing event".into()))?;
+    Ok(Some(event))
+}
+
+fn persist_operation_receipt(
+    conn: &Connection,
+    project_id: Id,
+    supplied: &OperationReadSet,
+    event: &Event,
+) -> Result<()> {
+    let hash = identity_hash(supplied)?;
+    let readset_json = serde_json::to_string(supplied).map_err(|e| {
+        Error::InvalidInput(format!("cannot persist operation readset: {e}"))
+    })?;
+    conn.execute(
+        "INSERT INTO operation_readset_receipts(
+            project_id, request_id, identity_hash, readset_json, event_id, created_at)
+         VALUES(?1,?2,?3,?4,?5,?6)",
+        params![
+            project_id.to_string(),
+            supplied.identity.request_id,
+            hash,
+            readset_json,
+            event.id.to_string(),
+            event.created_at
+        ],
+    )
+    .map_err(db_error)?;
+    Ok(())
+}
+
 impl Store {
     /// Load the trusted required read-set for a work-scoped write from the
     /// current SQLite snapshot. Project audit cursors are intentionally absent.
@@ -136,13 +246,16 @@ impl Store {
 
     /// Apply a work-scoped mutation under an operation read-set. Unrelated audit
     /// cursor advances do not conflict; legacy callers keep `runtime_transaction`.
-    pub(crate) fn runtime_transaction_with_readset<T>(
+    /// Exact request identity replay returns the original event without advancing
+    /// the audit cursor; changed intent with the same request_id conflicts.
+    pub(crate) fn runtime_transaction_with_readset(
         &mut self,
         project_id: Id,
         supplied: &OperationReadSet,
         mut draft: EventDraft,
-        apply: impl FnOnce(&Transaction<'_>, Revision, &mut EventDraft) -> Result<T>,
-    ) -> Result<(T, Event)> {
+        apply: impl FnOnce(&Transaction<'_>, Revision, &mut EventDraft) -> Result<()>,
+    ) -> Result<Event> {
+        bind_mutation_to_readset(project_id, supplied, &draft)?;
         let preliminary = load_required_readset(&self.conn, supplied)?;
         validate_operation_readset(supplied, &preliminary).map_err(map_readset)?;
         if draft.event_type.trim().is_empty()
@@ -157,6 +270,11 @@ impl Store {
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(db_error)?;
+        bind_mutation_to_readset(project_id, supplied, &draft)?;
+        if let Some(event) = load_exact_replay(&tx, project_id, supplied)? {
+            tx.commit().map_err(db_error)?;
+            return Ok(event);
+        }
         let live = load_required_readset(&tx, supplied)?;
         validate_operation_readset(supplied, &live).map_err(map_readset)?;
         let actual = tx
@@ -173,8 +291,10 @@ impl Store {
             .ok_or_else(|| Error::InvalidInput("revision overflow".into()))?;
         let next_sql = sqlite_revision(next)?;
         let expected_sql = sqlite_revision(actual)?;
-        let result = apply(&tx, next, &mut draft)?;
+        apply(&tx, next, &mut draft)?;
         crate::events::bind_event(&tx, project_id, &mut draft, false)?;
+        // Re-check after bind_event may fill work_item_id from a session.
+        bind_mutation_to_readset(project_id, supplied, &draft)?;
         let updated = tx
             .execute(
                 "UPDATE projects SET project_revision=?1 WHERE id=?2 AND project_revision=?3",
@@ -201,8 +321,9 @@ impl Store {
             created_at: now_millis()?,
         };
         insert_event(&tx, &event)?;
+        persist_operation_receipt(&tx, project_id, supplied, &event)?;
         tx.commit().map_err(db_error)?;
-        Ok((result, event))
+        Ok(event)
     }
 
     /// Append a work-scoped observation under an operation read-set. Compatible
@@ -215,7 +336,6 @@ impl Store {
         draft: EventDraft,
     ) -> Result<Event> {
         self.runtime_transaction_with_readset(project_id, supplied, draft, |_, _, _| Ok(()))
-            .map(|(_, event)| event)
     }
 
     /// Build a supplied read-set template from the current trusted snapshot for

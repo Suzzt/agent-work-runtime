@@ -61,8 +61,9 @@ pub use work::{ScopedDependencyGraph, UnavailableDependency};
 
 const APPLICATION_ID: i64 = 0x41575231;
 /// Schema written by this build. Exposed for offline host compatibility negotiation.
-pub const SCHEMA_VERSION: i64 = 7;
+pub const SCHEMA_VERSION: i64 = 8;
 const CONTENT_REVIEWS_SQL: &str = include_str!("../migrations/007_content_reviews.sql");
+const OPERATION_READSET_RECEIPTS_SQL: &str = include_str!("../migrations/008_operation_readset_receipts.sql");
 const CATALOG_SQL: &str = include_str!("../migrations/001_catalog.sql");
 const DOMAIN_SQL: &str = include_str!("../migrations/002_domain.sql");
 const SEARCH_SQL: &str = include_str!("../migrations/003_search.sql");
@@ -428,6 +429,15 @@ impl Store {
             if version < 7 {
                 tx.execute_batch(CONTENT_REVIEWS_SQL).map_err(db_error)?;
                 tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(7,'content_reviews',?1)",[now_millis()?]).map_err(db_error)?;
+            }
+            if version < 8 {
+                tx.execute_batch(OPERATION_READSET_RECEIPTS_SQL)
+                    .map_err(db_error)?;
+                tx.execute(
+                    "INSERT INTO schema_migrations(version,name,applied_at) VALUES(8,'operation_readset_receipts',?1)",
+                    [now_millis()?],
+                )
+                .map_err(db_error)?;
             }
             tx.pragma_update(None, "user_version", SCHEMA_VERSION)
                 .map_err(db_error)?;
