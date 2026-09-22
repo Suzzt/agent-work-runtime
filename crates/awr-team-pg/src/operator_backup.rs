@@ -365,7 +365,7 @@ impl OperatorBackup {
             &[&tenant, &project, &new_epoch],
         )
         .await?;
-        let fencing: Vec<Value> = tx
+        let mut fencing: Vec<Value> = tx
             .query(
                 "SELECT scope_id,work_id,last_fence FROM awr_team.work_runtime
             WHERE tenant_id=$1 AND project_id=$2 ORDER BY scope_id,work_id",
@@ -378,10 +378,19 @@ impl OperatorBackup {
                     "coordinator_epoch": new_epoch,
                     "scope_id": r.get::<_, String>(0),
                     "work_id": r.get::<_, String>(1),
-                    "fence": r.get::<_, i64>(2)
+                    "fence": r.get::<_, i64>(2).to_string()
                 })
             })
             .collect();
+        // Empty projects still need a project-level barrier for post-backup effects.
+        if fencing.is_empty() {
+            fencing.push(json!({
+                "coordinator_epoch": new_epoch,
+                "scope_id": "",
+                "work_id": "",
+                "fence": "0"
+            }));
+        }
         let restore_id = crate::tx::new_id();
         let report = json!({
             "old_epoch": old_epoch,

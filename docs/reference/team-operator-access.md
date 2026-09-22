@@ -86,7 +86,14 @@ awr-server access backup-restore-preview --tenant-id tenant-a --project-id proje
 awr-server access backup-restore-apply --tenant-id tenant-a --project-id project-a \
   --backup-id <id> --request-id restore-1 \
   --expected-state <state_digest> --expected-plan <plan_digest>
+awr-server access backup-restore-outcome --tenant-id tenant-a --project-id project-a \
+  --request-id restore-1
 ```
+
+Physical `pg_basebackup` and post-restore resource fencing remain operator
+responsibilities outside this CLI. This development branch has unit coverage for
+restore planning; real PostgreSQL E2E for enabled-project backup/restore was not
+exercised when `AWR_TEAM_DATABASE_URL` / disposable PG was unavailable.
 
 Save an access plan as local JSON. Use an actual workstream ID and current authority
 version from inspection, and replace the hash placeholder with `access token`'s
