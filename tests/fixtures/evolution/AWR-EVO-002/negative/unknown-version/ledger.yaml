@@ -1,0 +1,14 @@
+schema_version: 1
+contract_bindings:
+  - contract_id: awr-team-v1
+    version: "9.9.9"
+    path: contracts/awr-team-v1.json
+    section: team_work
+team_work:
+  work_definitions:
+    - work_id: TW-001
+      external_key: team-work-1
+      acceptance: ["x"]
+      completion_policy: receipt_required
+      scope_paths: ["x/"]
+      status: planned
