@@ -156,8 +156,9 @@ commit atomically. Rollback preserves the prior projection.
 
 This stage permits enablement only without existing session history or live
 claims/nonterminal executions. Bounded owner-only session/inactive-claim/event attribution is available via
-the schema-owner history-migration CLI; reviewed ownership movement and
-execution attribution remain unimplemented for Team. Updates retain scope IDs, keys and
+the schema-owner history-migration CLI; reviewed ownership movement remains
+unimplemented for Team. Bounded CHECK-safe execution attribution is available via
+the schema-owner execution-attribution CLI. Updates retain scope IDs, keys and
 ownership; authority changes require increased versions, and retained scopes
 must be archived instead of removed. Existing work keys cannot change through
 the new codec. A source update also refuses live claims and nonterminal
@@ -192,9 +193,11 @@ Owner-only enabled-project logical backup manifests and verified fencing restore
 are available via `awr-server access backup-*` (physical basebackup remains
 external; completion receipts are never rewritten). Owner-only active-claim release/quarantine/attribute-and-release and unattributed
 nonterminal execution quarantine-cancel are available via `awr-server access quarantine-*`
-(never forges `executor_client_id`). Remaining gaps include full logical row rebuild
-from manifests, explicit execution attribution with a reviewed executor_client_id,
-and real-client acceptance. Legacy import/restore APIs continue to refuse
+(never forges `executor_client_id`). Owner-only explicit execution attribution with a
+reviewed `executor_client_id` (CHECK-safe: session+claim present; must match session
+client) is available via `awr-server access execution-attribution-*`. Remaining gaps
+include full logical row rebuild from manifests, attribution of executions lacking
+session/claim (would require inventing CHECK fields), and real-client acceptance. Legacy import/restore APIs continue to refuse
 enabled projects. The shared personal MCP read boundary described elsewhere does not
 provide Team access.
 

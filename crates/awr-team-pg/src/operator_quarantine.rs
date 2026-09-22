@@ -122,7 +122,7 @@ pub(crate) fn classify_execution(
     }
     if has_explicit_executor_client_id {
         return ExecutionDecision::Refuse {
-            reason: "explicit_execution_attribution_not_in_this_slice",
+            reason: "use_execution_attribution_protocol",
         };
     }
     if matches!(state, "succeeded" | "failed" | "cancelled") {
@@ -612,6 +612,7 @@ async fn build_plan(
         "unsafe_excluded": [
             "silent_execution_attribution",
             "executor_client_id_invention",
+            "use_execution_attribution_for_reviewed_client_id",
             "completion_receipt_rewrite",
             "automatic_resume"
         ],
@@ -639,7 +640,7 @@ async fn build_plan(
         "refused": refused,
         "safe_subset": plan_body["safe_subset"],
         "unsafe_excluded": plan_body["unsafe_excluded"],
-        "next_action": "Review actionable/refused; apply with exact state_digest, plan_digest, and the same claim_disposition. Executions never receive a forged executor_client_id in this protocol."
+        "next_action": "Review actionable/refused; apply with exact state_digest, plan_digest, and the same claim_disposition. Executions never receive a forged executor_client_id here; use execution-attribution-* for reviewed client ids."
     }))
 }
 
@@ -784,11 +785,11 @@ mod tests {
     }
 
     #[test]
-    fn explicit_executor_client_still_refused_in_this_slice() {
+    fn explicit_executor_client_deferred_to_attribution_protocol() {
         assert_eq!(
             classify_execution(None, "running", Some("s"), Some("c"), true),
             ExecutionDecision::Refuse {
-                reason: "explicit_execution_attribution_not_in_this_slice"
+                reason: "use_execution_attribution_protocol"
             }
         );
     }

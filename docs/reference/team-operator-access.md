@@ -9,8 +9,8 @@ Database operations require the schema owner's PostgreSQL privileges through
 `AWR_TEAM_DATABASE_URL`. Ordinary service application credentials and HTTP/MCP
 bearers cannot use this operator interface. The running service continues to use
 its separate application connection. Upgrade explicitly with
-`awr-server migrate --app-role <service-role>` as owner; schema 17 adds operator access,
-history-migration, backup-operation, and claim/execution quarantine receipts; bootstrap denies the application role all access to those tables.
+`awr-server migrate --app-role <service-role>` as owner; schema 18 adds operator access,
+history-migration, backup-operation, claim/execution quarantine, and explicit execution-attribution receipts; bootstrap denies the application role all access to those tables.
 
 ## Register a client
 
@@ -56,7 +56,8 @@ Unattributed history (sessions/claims/events/executions lacking `workstream_id`)
 is never adopted automatically. Preview a bounded migration plan, then apply only
 with exact digests. This slice attributes sessions, inactive claims, and events
 that have a unique current `workstream_ownership` binding. It refuses active
-claims, all executions (attribution would forge `executor_client_id`), rows whose
+claims, all executions (use execution-attribution with a reviewed
+`executor_client_id`), rows whose
 `work_id` is absent from ownership, and never modifies completion receipts,
 evidence, actors, or trust grades:
 
@@ -74,7 +75,7 @@ Owner-only recovery preview/apply can release or quarantine active claims (and
 attribute-and-release when current ownership uniquely binds the work), and can
 quarantine-cancel nonterminal unattributed executions. It never invents
 `executor_client_id`, never forges actors/completion receipts, and refuses
-terminal unattributed executions (explicit attribution remains a later slice):
+terminal unattributed executions (use execution-attribution instead):
 
 ```sh
 awr-server access quarantine-preview --tenant-id tenant-a --project-id project-a \
@@ -88,6 +89,36 @@ awr-server access quarantine-outcome --tenant-id tenant-a --project-id project-a
 
 Use `--claim-disposition quarantine` to revoke active claims that cannot be
 attributed. Real PostgreSQL E2E for this protocol was not exercised when
+`AWR_TEAM_DATABASE_URL` / disposable PG was unavailable.
+
+Explicit execution attribution binds CHECK-safe unattributed executions
+(`session_id` and `claim_id` present) using a reviewed `executor_client_id` that
+must match the recorded session client. It never invents client ids, never
+rewrites completion receipts, and refuses already-attributed rows, missing
+session/claim, missing ownership, session/client mismatch, and missing executions
+clearly. Terminal executions are attributable when CHECK-safe; unsafe terminals
+are refused with an explicit reason:
+
+```json
+{
+  "protocol_version": 1,
+  "tenant_id": "tenant-a",
+  "project_id": "project-a",
+  "attributions": [
+    {"execution_id": "<id>", "executor_client_id": "coding-client"}
+  ]
+}
+```
+
+```sh
+awr-server access execution-attribution-preview --input /secure/exec-attribution.json
+awr-server access execution-attribution-apply --input /secure/exec-attribution.json \
+  --request-id attrib-1 --expected-state <state_digest> --expected-plan <plan_digest>
+awr-server access execution-attribution-outcome --tenant-id tenant-a --project-id project-a \
+  --request-id attrib-1
+```
+
+Real PostgreSQL E2E for execution attribution was not exercised when
 `AWR_TEAM_DATABASE_URL` / disposable PG was unavailable.
 
 

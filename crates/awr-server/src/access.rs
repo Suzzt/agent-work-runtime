@@ -1,6 +1,9 @@
-use awr_team_pg::{AccessPlan, OperatorAccess, OperatorBackup, OperatorHistory, OperatorQuarantine, OperatorRecovery, PgError};
+use awr_team_pg::{
+    AccessPlan, ExecutionAttributionPlan, OperatorAccess, OperatorBackup,
+    OperatorExecutionAttribution, OperatorHistory, OperatorQuarantine, OperatorRecovery, PgError,
+};
 use clap::Subcommand;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
@@ -120,6 +123,32 @@ pub enum AccessCommand {
         #[arg(long)]
         request_id: String,
     },
+
+    /// Preview explicit execution attribution with reviewed executor_client_id (owner only; no writes).
+    ExecutionAttributionPreview {
+        #[arg(long)]
+        input: PathBuf,
+    },
+    /// Apply the exact reviewed execution-attribution plan digests.
+    ExecutionAttributionApply {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        request_id: String,
+        #[arg(long)]
+        expected_state: String,
+        #[arg(long)]
+        expected_plan: String,
+    },
+    /// Inspect an execution-attribution request outcome before retrying.
+    ExecutionAttributionOutcome {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        request_id: String,
+    },
     /// Record a versioned enabled-project logical backup manifest (owner only).
     BackupCreate {
         #[arg(long)]
@@ -202,6 +231,20 @@ fn pg_error(e: PgError) -> Error {
         ),
     }
 }
+
+fn attribution_plan(path: &PathBuf) -> Result<ExecutionAttributionPlan, Error> {
+    let file =
+        std::fs::File::open(path).map_err(|_| ("InvalidInput", "cannot open attribution plan"))?;
+    let mut bytes = Vec::new();
+    file.take(65537)
+        .read_to_end(&mut bytes)
+        .map_err(|_| ("InvalidInput", "cannot read attribution plan"))?;
+    if bytes.len() > 65536 {
+        return Err(("InvalidInput", "attribution plan exceeds 64 KiB"));
+    }
+    serde_json::from_slice(&bytes).map_err(|_| ("InvalidInput", "invalid attribution plan JSON"))
+}
+
 fn plan(path: &PathBuf) -> Result<AccessPlan, Error> {
     let file =
         std::fs::File::open(path).map_err(|_| ("InvalidInput", "cannot open access plan"))?;
@@ -340,7 +383,10 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
             tenant_id,
             project_id,
             claim_disposition,
-        } => OperatorQuarantine::preview(&mut client, &tenant_id, &project_id, &claim_disposition).await,
+        } => {
+            OperatorQuarantine::preview(&mut client, &tenant_id, &project_id, &claim_disposition)
+                .await
+        }
         AccessCommand::QuarantineApply {
             tenant_id,
             project_id,
@@ -365,6 +411,33 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
             project_id,
             request_id,
         } => OperatorQuarantine::outcome(&mut client, &tenant_id, &project_id, &request_id).await,
+
+        AccessCommand::ExecutionAttributionPreview { input } => {
+            OperatorExecutionAttribution::preview(&mut client, &attribution_plan(&input)?).await
+        }
+        AccessCommand::ExecutionAttributionApply {
+            input,
+            request_id,
+            expected_state,
+            expected_plan,
+        } => {
+            OperatorExecutionAttribution::apply(
+                &mut client,
+                &attribution_plan(&input)?,
+                &request_id,
+                &expected_state,
+                &expected_plan,
+            )
+            .await
+        }
+        AccessCommand::ExecutionAttributionOutcome {
+            tenant_id,
+            project_id,
+            request_id,
+        } => {
+            OperatorExecutionAttribution::outcome(&mut client, &tenant_id, &project_id, &request_id)
+                .await
+        }
         AccessCommand::BackupCreate {
             tenant_id,
             project_id,
@@ -378,7 +451,9 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
             tenant_id,
             project_id,
             backup_id,
-        } => OperatorBackup::restore_preview(&mut client, &tenant_id, &project_id, &backup_id).await,
+        } => {
+            OperatorBackup::restore_preview(&mut client, &tenant_id, &project_id, &backup_id).await
+        }
         AccessCommand::BackupRestoreApply {
             tenant_id,
             project_id,
@@ -402,8 +477,9 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
             tenant_id,
             project_id,
             request_id,
-        } => OperatorBackup::restore_outcome(&mut client, &tenant_id, &project_id, &request_id)
-            .await,
+        } => {
+            OperatorBackup::restore_outcome(&mut client, &tenant_id, &project_id, &request_id).await
+        }
     }
     .map_err(pg_error)
 }

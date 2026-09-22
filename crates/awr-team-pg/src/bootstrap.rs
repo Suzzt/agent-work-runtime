@@ -22,6 +22,7 @@ impl Bootstrap {
                  REVOKE ALL ON awr_team.history_migrations FROM {ident};
                  REVOKE ALL ON awr_team.backup_operations FROM {ident};
                  REVOKE ALL ON awr_team.operator_quarantines FROM {ident};
+                 REVOKE ALL ON awr_team.execution_attributions FROM {ident};
                  REVOKE ALL ON awr_team.schema_state FROM {ident};
                  -- The app role must read the schema version (check_schema at
                  -- the command entry) but must never modify it (CR #36 P2-1).

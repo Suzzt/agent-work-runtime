@@ -127,8 +127,9 @@ pub(crate) fn classify_event(
 
 pub(crate) fn classify_execution() -> HistoryDecision {
     // CHECK requires executor_client_id when attributed; inventing it would forge identity.
+    // Use owner-only execution-attribution-* with a reviewed executor_client_id instead.
     HistoryDecision::Refuse {
-        reason: "execution_attribution_would_forge_executor_client_id",
+        reason: "use_execution_attribution_protocol_for_reviewed_executor_client_id",
     }
 }
 
@@ -622,7 +623,7 @@ mod tests {
         assert_eq!(
             classify_execution(),
             HistoryDecision::Refuse {
-                reason: "execution_attribution_would_forge_executor_client_id"
+                reason: "use_execution_attribution_protocol_for_reviewed_executor_client_id"
             }
         );
     }
