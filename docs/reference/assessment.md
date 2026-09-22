@@ -59,10 +59,13 @@ First batch (through the DEC-2 explain loop) **only**:
    produced for prepare `response_view=action` (and the matching status action
    card shape).
 
-Out of first batch (later DEC cards; keep layers as `not_evaluated` or field
-`state=unsupported` until implemented):
+Out of first batch for the DEC-010 envelope itself (later DEC cards; keep layers
+as `not_evaluated` or field `state=unsupported` until implemented):
 
-- Bounded fact-snapshot collector (DEC-011)
+- Bounded fact-snapshot + source-quality labeling (DEC-011) — types and pure
+  construction land in `awr_core::fact_snapshot` / `awr_runtime::fact_snapshot`;
+  fixtures under `tests/fixtures/assessment/signals/`. WorkspaceFacts only via
+  host supply or explicit collection; prepare does not run Git/AST/network.
 - Full typed envelope runtime object beyond the frozen schema (DEC-012)
 - Counterexample corpus (DEC-013)
 - Composition pipeline (DEC-020) and CLI/MCP field injection (DEC-021)
@@ -350,7 +353,22 @@ or as a layer/assessment with `status` / `support` = `not_evaluated` /
 - `no_second_decision_authority`
 - `decision_show_not_occupied`
 
-## 12. Related pages
+## 12. DEC-011 fact snapshot (bound inputs)
+
+Schema id: `awr-fact-snapshot-v1`. Pure `build_fact_snapshot` accepts fixed
+identity (project/work/branch, contract + source versions), `as_of`, scope,
+truncation/limits, and labeled `FactSignal` values. Same-snapshot entity
+version conflicts are rejected. Signal `state` /
+`basis` / classification distinguish missing, stale, conflicting, unsupported,
+host-asserted observations, and verified facts. Without a bound git diff,
+`changed_lines` and low-risk labels stay unset (never `0` / `low`). Runtime
+mapping reuses one prepared/assess read view (`scan_ops=1`) and does not
+recurse the repository.
+
+Machine fixtures: `tests/fixtures/assessment/signals/`.
+
+## 13. Related pages
+
 
 - [Management intensity](management.md) — classification rules hosts still follow
 - [Workflow prepare](workflow.md) — prepare / completion preflight

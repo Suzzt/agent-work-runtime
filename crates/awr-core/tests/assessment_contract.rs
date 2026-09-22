@@ -10,8 +10,10 @@ fn contracts_dir() -> PathBuf {
 
 fn load(name: &str) -> Value {
     let path = contracts_dir().join(name);
-    serde_json::from_slice(&fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display())))
-        .unwrap_or_else(|e| panic!("json {}: {e}", path.display()))
+    serde_json::from_slice(
+        &fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display())),
+    )
+    .unwrap_or_else(|e| panic!("json {}: {e}", path.display()))
 }
 
 fn small() -> ManagementObservation {
@@ -153,7 +155,10 @@ fn envelope_example_and_guidance_budget_align_with_tip() {
     }
 
     assert_eq!(consumers["count"], 2);
-    assert_eq!(layers["first_batch_explanations"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        layers["first_batch_explanations"].as_array().unwrap().len(),
+        2
+    );
     assert_eq!(legacy["no_new_command_names"], true);
     assert!(
         legacy["do_not_occupy"]

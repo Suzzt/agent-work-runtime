@@ -23,6 +23,7 @@ pub use host_save::{
     HostChange, HostSaveReport, HostSaveRequest, host_preview, host_recover, host_save, host_status,
 };
 mod execution;
+mod fact_snapshot;
 mod fs_sync;
 mod management;
 mod mutation;
@@ -46,6 +47,10 @@ pub use branch_close::{CloseBranchRequest, close_branch};
 pub use completion::{CompleteWorkRequest, complete_work};
 pub use doctor::{ProjectDoctorReport, diagnose_project};
 pub use execution::{inspect_execution, inspect_work_executions, render_execution_observations};
+pub use fact_snapshot::{
+    PREPARE_FACT_MAX_BYTES, PREPARE_FACT_MAX_CANDIDATES, PREPARE_FACT_MAX_SCAN_OPS,
+    PreparedFactView, fact_snapshot_from_prepared_view, prepared_view_from_prepare_json,
+};
 pub use management::{AssessManagementRequest, ManageWorkRequest, assess_management, manage_work};
 pub use mutation::{
     CreateProposalRequest, ProposalReport, ReviewProposalAction, ReviewProposalRequest,

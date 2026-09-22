@@ -1,0 +1,42 @@
+{
+  "case": "partial_readiness_and_context",
+  "description": "Partial prepare results leave readiness known and context issues listed; missing host fields stay missing.",
+  "prepared_view": {
+    "project_id": "01M1YJBR5PW6QXYGABADJVAJPC",
+    "work_key": "AWR-DEC-011",
+    "work_id": "01M2YQ3B5M9PB6AJ16PW043BT3",
+    "branch_id": "main",
+    "work_revision": "1",
+    "source_revision": "src-a",
+    "work_contract_hash": "contract-a",
+    "as_of": 100,
+    "ready": false,
+    "diagnostics": [{"code": "dependency_blocked"}],
+    "active_claim_ids": [],
+    "management": null,
+    "context_complete": false,
+    "context_issues": ["missing_required_source"],
+    "source_refs": [],
+    "runtime_observation_refs": [],
+    "host_observation": {
+      "observed_at": 90,
+      "note": "partial host note for partial fixture",
+      "single_outcome": true,
+      "bounded_scope": null,
+      "single_executor": null,
+      "no_deferred_wait": null,
+      "independently_schedulable_units": null,
+      "plan_valid": null,
+      "outcome_known": null,
+      "active_elapsed_ms": null,
+      "completed_rework_cycles": null
+    },
+    "workspace_facts": null,
+    "limits": null
+  },
+  "expect": {
+    "missing_contains": ["management.bounded_scope", "workspace.changed_lines"],
+    "host_asserted_only_contains": ["management.single_outcome"],
+    "known_contains": ["work.ready", "context.complete"]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "case": "missing_git_diff",
+  "description": "Without a git diff, changed_lines stays missing and change_risk unsupported — never 0 or low-risk.",
+  "workspace_facts": {
+    "supply": "host_supplied",
+    "base": null,
+    "head": null,
+    "tree": null,
+    "collected_at": 50,
+    "coverage": "absent",
+    "changed_lines": null,
+    "change_risk": null,
+    "notes": ["git_diff_absent"]
+  },
+  "forbidden": {
+    "changed_lines_equals_zero": false,
+    "change_risk_low": false
+  },
+  "expect": {
+    "workspace.changed_lines": "missing",
+    "workspace.change_risk": "unsupported"
+  }
+}

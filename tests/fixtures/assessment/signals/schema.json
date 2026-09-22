@@ -1,0 +1,32 @@
+{
+  "schema_id": "awr-fact-snapshot-v1",
+  "schema_version": 1,
+  "required_snapshot_fields": [
+    "schema_id",
+    "schema_version",
+    "collector_version",
+    "identity",
+    "as_of",
+    "scope",
+    "coverage",
+    "limits",
+    "signals",
+    "content_hash"
+  ],
+  "identity_fields": [
+    "project_id",
+    "work_key",
+    "work_id",
+    "branch_id",
+    "work_contract_hash"
+  ],
+  "scope_fields": ["read_scope", "included", "truncated", "truncation_reason"],
+  "workspace_diff_coverage": ["diff_bound", "partial", "absent"],
+  "forbidden_coercions": [
+    {"from": "missing_git_diff", "not_to": "changed_lines=0"},
+    {"from": "missing_git_diff", "not_to": "change_risk=low"},
+    {"from": "partial_scan", "not_to": "changed_lines=0"},
+    {"from": "inference", "not_to": "verified_fact"},
+    {"from": "host_asserted", "not_to": "verified_fact"}
+  ]
+}
