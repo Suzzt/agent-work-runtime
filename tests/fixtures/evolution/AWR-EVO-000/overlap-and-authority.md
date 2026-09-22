@@ -5,6 +5,7 @@ Worktree: `/workspace/awr-evo000-wt`
 Branch: `codex/awr-evo-000-execution-baseline`
 Construction HEAD: `41d2b97446b70c1b589289980853283b9f0a3674`
 Construction tree: `2664e63847196371d315e7dacf3d4c021322d7dd`
+Note: HEAD/tree above are the inventoried DEC-060 tip (stacked base). PR/`evidence.json` head_sha is the commit that adds this mirror.
 Baseline JSON: `.local/awr-evolution-20260919/execution-baseline.json`
 Checked-in mirror: `tests/fixtures/evolution/AWR-EVO-000/`
 

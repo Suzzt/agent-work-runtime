@@ -2,7 +2,7 @@
   "schema": "awr-evolution-execution-baseline/v1",
   "work": "AWR-EVO-000",
   "title": "核对执行基线、现有任务与唯一工作权威",
-  "recorded_at": "2026-09-23T06:53:08+08:00",
+  "recorded_at": "2026-09-23T06:54:13+08:00",
   "timezone": "Asia/Taipei",
   "recorder": {
     "agent_id": "grok-bot-evo-000",
@@ -21,7 +21,10 @@
     "base_pr": 153,
     "base_sha_expected": "41d2b97446b70c1b589289980853283b9f0a3674",
     "base_sha_matches_head": true,
-    "note": "Old SHAs in historical docs are not current construction facts; this block is the actual tip at recording time."
+    "note": "Actual HEAD/tree inventoried for this gate (DEC-060 tip / stacked base). The commit that adds these baseline files is recorded in evidence.json as pr head_sha; old historical SHAs elsewhere are not current construction facts.",
+    "inventory_base_head_sha": "41d2b97446b70c1b589289980853283b9f0a3674",
+    "inventory_base_tree_sha": "2664e63847196371d315e7dacf3d4c021322d7dd",
+    "working_tree_at_inventory": "clean"
   },
   "program_identity": {
     "name": "agent-work-runtime / AWR",
