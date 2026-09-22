@@ -5,12 +5,14 @@ mod document;
 mod freshness;
 mod indexer;
 mod ledger_mapping;
+mod publish_prep;
 mod limits;
 mod locator;
 mod manifest;
 mod markdown;
 mod markdown_ledger;
 mod mutation;
+mod source_concurrency;
 mod query_snapshot;
 pub use query_snapshot::{
     QuerySnapshot, recorded_snapshot, refresh_snapshot, source_state_fingerprint,
@@ -33,6 +35,13 @@ pub use indexer::{
     preview_index_project, scan_project, source_adapter, source_configuration,
 };
 pub use ledger_mapping::LedgerMapping;
+pub use publish_prep::{
+    DEFAULT_COMPLETION_POLICY, PARSER_VERSION, SOURCE_BINDING_FILE, SUPPORTED_LEDGER_ADAPTER,
+    WORKSTREAMS_FILE, FieldDiff, PublishPackageFile, PublishPrepOptions, PublishPreview,
+    ReferencedSpec, SoleSourceKind, SoleSourceLocation, SourceStatusNote, TeamPublishPackage,
+    prepare_publish_from_ledger_bytes, prepare_publish_from_server_directory,
+    source_status_notes_are_completion_receipts,
+};
 pub use limits::{MARKDOWN_READ_CAP, YAML_READ_CAP, source_read_cap};
 pub use locator::{Locator, SourceSnapshot, fingerprint, read_capped, read_source_capped};
 mod safe_fs;
@@ -45,6 +54,11 @@ pub use markdown::{
 pub use markdown_ledger::MarkdownLedgerAdapter;
 pub use mutation::{
     MutationSourceCheck, inspect_mutation_source, inspect_registered_source, verify_mutation_source,
+};
+pub use source_concurrency::{
+    ShardCandidate, ShardObservation, ShardWrite, SourceWriteMode, form_shard_candidate,
+    observe_candidate, observe_shard, refuse_stale_proposal_base, refuse_stale_whole_file,
+    require_write_mode, source_write_mode,
 };
 pub use safe_fs::{open_dir_exact, open_file_exact};
 pub use yaml_create::{

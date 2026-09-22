@@ -1,4 +1,5 @@
 //! Stateless MCP transport over the same transactional Team operations as HTTP.
+//! TMCP-012 adds project-admin access preview/apply/outcome tools (no raw secrets).
 use super::*;
 use axum::{
     body::{Body, to_bytes},
@@ -129,15 +130,91 @@ fn catalog() -> Vec<Tool> {
         "expected_contract_hash":{"type":"string"},
         "args":{"type":"object","description":"session.start: conversation_id. session.checkpoint: session_id, expected_session_version, context_hash, next_action, open_loops. session.end: session_id, expected_session_version. All claim/execution actions: session_id, expected_session_version. claim.acquire adds expected_work_version (0 when runtime absent), ttl_seconds (1..3600). claim.renew/release add claim_id, expected_fence, expected_lease_version; renew also ttl_seconds. execution.prepare adds claim_id, expected_fence, expected_lease_version, expected_work_version, input_digest (64 lowercase hex), declared_scope (canonical relative paths). execution.cancel adds execution_id, expected_execution_version. execution.start adds execution_id, expected_execution_version, claim_id, expected_fence, expected_lease_version, expected_work_version, execution_mode (caller_managed or reference_write_v1), optional expected_input_digest. reference_write_v1 requires the prepared input digest and system attestation authority; the service does not dispatch the local runner. execution.report adds execution_id, expected_execution_version, outcome (succeeded/failed/cancelled/unknown), optional output_digest (required for success), observed_paths, note. execution.attest adds execution_id, expected_execution_version, facts. execution.reconcile also adds expected_work_version, reviewed_receipt_id (latest inspected ID or null), clear_recovery_block, optional previous_epoch_recovery. Old-epoch recovery requires {execution_epoch (exact inspected epoch), executor_stopped (true to settle), review_reference (nonempty, <=2048 bytes, no controls)}; this is an authorized operator assertion, not independently verified fencing. facts: outcome, input_digest, optional output_digest (required for success), environment_digest, observed_paths, note. Digests are 64 lowercase hex. Versions are decimal strings; unknown fields fail. handoff.propose: session_id, expected_session_version, handoff_id, kind (execution|responsibility), to_person_id, package (task_id, contract_version, contract_hash, current_person_id, current_execution, consumed_context_digest, checkpoint_ids, artifact_versions, branch_id, working_directory, dependency_ids, todos, awaiting_replies, unknown_side_effects), optional proposed_successor/proposer_execution_id/proposer_fence/expires_at_ms, now_ms. handoff.inspect/accept/reject/cancel/timeout: session_id, expected_session_version, handoff_id, expected_handoff_version, now_ms; accept adds acceptor_person_id, successor_execution, prior_execution_stopped, prior_reconciled, context_reprepared, optional expected_current_fence; reject/cancel add by_person_id+reason; inspect adds inspector_person_id.  Timeout closes the proposal only and does not stop execution. evidence.submit: session_id, expected_session_version, payload, optional claimed_trust/artifact_hex/input_digest/dirty_tree/execution_id. review.open: session_id, expected_session_version, evidence_id. review.accept/return: session_id, expected_session_version, round_id, reason. work.rework: session_id, expected_session_version, round_id, note. work.complete: session_id, expected_session_version, evidence_id, context_complete, optional requested_policy."}
     }});
+    let access_plan = json!({
+        "type":"object","additionalProperties":false,
+        "required":["protocol_version","subject","subject_client_id","role","grants"],
+        "properties":{
+            "protocol_version":{"type":"integer","const":1},
+            "subject":{"type":"object","additionalProperties":false,
+                "required":["id","kind","display_name"],
+                "properties":{
+                    "id":{"type":"string","maxLength":128},
+                    "kind":{"type":"string","enum":["human","agent","system"]},
+                    "display_name":{"type":"string","maxLength":512}
+                }},
+            "subject_client_id":{"type":"string","maxLength":128},
+            "role":{"type":"string","enum":["reader","reviewer","worker","admin","developer","maintainer","project_admin"]},
+            "grants":{"type":"array","maxItems":256,"items":{"type":"object","additionalProperties":false,
+                "required":["workstream_id","authority_version","read","write","manage","attest_execution","reconcile_execution"],
+                "properties":{
+                    "workstream_id":{"type":"string"},
+                    "authority_version":{"type":"string","pattern":"^[1-9][0-9]*$"},
+                    "read":{"type":"boolean"},"write":{"type":"boolean"},"manage":{"type":"boolean"},
+                    "attest_execution":{"type":"boolean","const":false},
+                    "reconcile_execution":{"type":"boolean","const":false}
+                }}},
+            "credential":{"type":["object","null"],"additionalProperties":false,
+                "required":["id","secret_hash"],
+                "properties":{
+                    "id":{"type":"string","maxLength":128},
+                    "secret_hash":{"type":"string","pattern":"^sha256:[0-9a-f]{64}$"},
+                    "expires_at_unix_ms":{"type":["integer","null"]}
+                }},
+            "remove_membership":{"type":"boolean","default":false},
+            "revoke_tenant_credentials":{"type":"array","maxItems":256,"items":{"type":"string"},
+                "description":"Must be empty for project-admin MCP; tenant credential revoke is owner-only."}
+        }
+    });
+    let access_preview = json!({"type":"object","additionalProperties":false,
+        "required":["protocol_version","plan"],
+        "properties":{"protocol_version":{"type":"integer","const":1},"plan":access_plan}});
+    let access_apply = json!({"type":"object","additionalProperties":false,
+        "required":["protocol_version","request_id","expected_state","expected_plan","plan"],
+        "properties":{
+            "protocol_version":{"type":"integer","const":1},
+            "request_id":{"type":"string","maxLength":128},
+            "expected_state":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+            "expected_plan":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+            "plan":access_plan
+        }});
+    let access_outcome = json!({"type":"object","additionalProperties":false,
+        "required":["protocol_version","request_id"],
+        "properties":{
+            "protocol_version":{"type":"integer","const":1},
+            "request_id":{"type":"string","maxLength":128}
+        }});
+    let access_inspect = json!({"type":"object","additionalProperties":false,
+        "required":["protocol_version","subject_actor_id","subject_client_id"],
+        "properties":{
+            "protocol_version":{"type":"integer","const":1},
+            "subject_actor_id":{"type":"string","maxLength":128},
+            "subject_client_id":{"type":"string","maxLength":128}
+        }});
     vec![
         Tool::new("awr_team_query",
-            "Scoped Team reads. Begin with capabilities, then workstreams.list or work.prepare. The endpoint binds the project; bearer grants bind the client. Re-prepare after relevant changes. No execution admission.",
+            "Scoped Team reads. Begin with capabilities, then workstreams.list or work.prepare. The endpoint binds the project; bearer grants bind the client. Tool discovery is navigation-only; each query rechecks work.read. Re-prepare after relevant changes. No execution admission.",
             query.as_object().unwrap().clone())
             .with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(false)),
         Tool::new("awr_team_command",
-            "Durable sessions, claims, confirmed handoffs and caller-managed execution. Use work.prepare preconditions and a stable request_id. Only a fresh execution.start response with execution_authorized=true permits one run under the live lease. Preparation, inspection and replay grant no execution rights. On unknown outcome inspect command.inspect before an exact retry; never repeat effects from a receipt. Refresh after conflicts or lease/contract changes. Cancellation is a request after start. Reports remain caller_asserted. Attestation requires operator-issued system authority at admission and now. For unknown effects, execution.inspect then operator execution.reconcile; confirm current versions and latest receipt. Recheck on permission, receipt or work changes. Settlement is not work completion. Evidence/review/rework/complete: evidence.submit, review.open, review.accept, review.return, work.rework, work.complete under the same authenticated command path. Independence is by person; a second agent of the same person is not team-independent. Completion receipts are for WS-030 adoption and omit provider-private sessions.",
+            "Durable sessions, claims, confirmed handoffs and caller-managed execution under the shared TMCP action gate. Use work.prepare preconditions and a stable request_id. Readers cannot claim or write. Developers may maintain own session/execution on authorized work but cannot edit/publish plans or grant permissions. Only a fresh execution.start response with execution_authorized=true permits one run under the live lease. Exact replay reuses the original receipt; changed intent or expired/revoked authority is refused. Body fields cannot forge identity. Preparation, inspection and replay grant no execution rights. On unknown outcome inspect command.inspect before an exact retry; never repeat effects from a receipt. Refresh after conflicts or lease/contract changes. Cancellation is a request after start. Reports remain caller_asserted. Attestation requires operator-issued system authority at admission and now. For unknown effects, execution.inspect then operator execution.reconcile; confirm current versions and latest receipt. Recheck on permission, receipt or work changes. Settlement is not work completion. Evidence/review/rework/complete: evidence.submit, review.open, review.accept, review.return, work.rework, work.complete under the same authenticated command path. Independence is by person; a second agent of the same person is not team-independent. Completion receipts are for WS-030 adoption and omit provider-private sessions.",
             command.as_object().unwrap().clone())
             .with_annotations(ToolAnnotations::new().read_only(false).destructive(false).idempotent(true).open_world(false)),
+        Tool::new("awr_team_access_inspect",
+            "Project-admin only. Inspect one subject actor/client membership, grants and redacted credential metadata for this project. Shows impact on other clients and other projects. Never returns raw secrets. Requires access.manage_project.",
+            access_inspect.as_object().unwrap().clone())
+            .with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(false)),
+        Tool::new("awr_team_access_preview",
+            "Project-admin only. Preview a project-bounded member/role/grant/credential-hash plan without mutation. Impact labels membership sharing and refuses tenant-wide credential revoke. Raw bearers must be generated via awr-server access token (protected install channel) and only secret_hash may appear here. Requires access.manage_project.",
+            access_preview.as_object().unwrap().clone())
+            .with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(false)),
+        Tool::new("awr_team_access_apply",
+            "Project-admin only. Apply the exact reviewed access plan digests. Exact request_id replay returns the historical receipt. Last-admin removal without handoff, tenant credential revoke, attest/reconcile grants, and non-admin callers are refused. Never accepts or returns raw secrets. Requires access.manage_project.",
+            access_apply.as_object().unwrap().clone())
+            .with_annotations(ToolAnnotations::new().read_only(false).destructive(true).idempotent(true).open_world(false)),
+        Tool::new("awr_team_access_outcome",
+            "Project-admin only. Query the receipt for an original access.apply request_id before retrying. Returns redacted identity and auth metadata only. Requires access.manage_project.",
+            access_outcome.as_object().unwrap().clone())
+            .with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(false)),
     ]
 }
 
@@ -145,7 +222,7 @@ impl ServerHandler for Endpoint {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("awr-team-mcp", env!("CARGO_PKG_VERSION")))
-            .with_instructions("The URL binds one operator-registered project; bearer credentials are checked on every request. Begin with awr_team_query capabilities. Work/session selectors bind a workstream; missing permissions never mean satisfied dependencies. Consume work.prepare before checkpointing. Session journals and claims grant no execution rights. Claim replay is a historical receipt; use claim.inspect for current lease state. If a command outcome is unknown, inspect its original request_id before an exact retry. Recheck context and permission after relevant changes. MCP connection closure never closes a durable work session.")
+            .with_instructions("The URL binds one operator-registered project; bearer credentials are checked on every request. Begin with awr_team_query capabilities. Project admins manage members via awr_team_access_* tools after local owner bootstrap of the first admin. Raw credentials are never accepted or returned over MCP — generate them with awr-server access token and register only secret_hash. Work/session selectors bind a workstream; missing permissions never mean satisfied dependencies. Consume work.prepare before checkpointing. Session journals and claims grant no execution rights. Claim replay is a historical receipt; use claim.inspect for current lease state. If a command outcome is unknown, inspect its original request_id before an exact retry. Recheck context and permission after relevant changes. MCP connection closure never closes a durable work session.")
     }
 
     fn get_tool(&self, name: &str) -> Option<Tool> {
@@ -180,6 +257,24 @@ impl ServerHandler for Endpoint {
             .cloned()
             .ok_or_else(|| ErrorData::invalid_params("authenticated request required", None))?;
         let args = Value::Object(request.arguments.unwrap_or_default());
+        let access_tool = matches!(
+            request.name.as_ref(),
+            "awr_team_access_inspect"
+                | "awr_team_access_preview"
+                | "awr_team_access_apply"
+                | "awr_team_access_outcome"
+        );
+        let forge_ok = if access_tool {
+            super::reject_access_management_forgeries(&args)
+        } else {
+            super::reject_forged_authority_fields(&args)
+        };
+        if forge_ok.is_err() {
+            return Ok(CallToolResult::structured_error(json!({
+                "code":"Forbidden","message":"access denied"
+            }))
+            .into());
+        }
         let result = tokio::time::timeout_at(access.deadline, async {
             match request.name.as_ref() {
                 "awr_team_query" => {
@@ -205,6 +300,90 @@ impl ServerHandler for Endpoint {
                             &self.project.project_id,
                             &access.bearer,
                             c,
+                        )
+                        .await
+                }
+                "awr_team_access_inspect" => {
+                    let subject_actor = args
+                        .get("subject_actor_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| PgError::Protocol("invalid access inspect".into()))?;
+                    let subject_client = args
+                        .get("subject_client_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| PgError::Protocol("invalid access inspect".into()))?;
+                    self.state
+                        .store
+                        .project_access()
+                        .inspect(
+                            &self.project.tenant_id,
+                            &self.project.project_id,
+                            &access.bearer,
+                            subject_actor,
+                            subject_client,
+                        )
+                        .await
+                }
+                "awr_team_access_preview" => {
+                    let plan: awr_team_pg::AdminAccessPlan = serde_json::from_value(
+                        args.get("plan").cloned().unwrap_or(Value::Null),
+                    )
+                    .map_err(|_| PgError::Protocol("invalid access plan".into()))?;
+                    self.state
+                        .store
+                        .project_access()
+                        .preview(
+                            &self.project.tenant_id,
+                            &self.project.project_id,
+                            &access.bearer,
+                            &plan,
+                        )
+                        .await
+                }
+                "awr_team_access_apply" => {
+                    let plan: awr_team_pg::AdminAccessPlan = serde_json::from_value(
+                        args.get("plan").cloned().unwrap_or(Value::Null),
+                    )
+                    .map_err(|_| PgError::Protocol("invalid access plan".into()))?;
+                    let request_id = args
+                        .get("request_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| PgError::Protocol("invalid access apply".into()))?;
+                    let expected_state = args
+                        .get("expected_state")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| PgError::Protocol("invalid access apply".into()))?;
+                    let expected_plan = args
+                        .get("expected_plan")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| PgError::Protocol("invalid access apply".into()))?;
+                    self.state
+                        .store
+                        .project_access()
+                        .apply(
+                            &self.project.tenant_id,
+                            &self.project.project_id,
+                            &access.bearer,
+                            &plan,
+                            request_id,
+                            expected_state,
+                            expected_plan,
+                        )
+                        .await
+                }
+                "awr_team_access_outcome" => {
+                    let request_id = args
+                        .get("request_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| PgError::Protocol("invalid access outcome".into()))?;
+                    self.state
+                        .store
+                        .project_access()
+                        .outcome(
+                            &self.project.tenant_id,
+                            &self.project.project_id,
+                            &access.bearer,
+                            request_id,
                         )
                         .await
                 }

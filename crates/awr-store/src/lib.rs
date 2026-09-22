@@ -19,6 +19,7 @@ pub use mcp::with_mcp_operation;
 mod mutation;
 mod mutation_apply;
 mod object_catalog;
+mod operation_readset;
 mod preview_snapshot;
 mod projection;
 mod query;
@@ -50,6 +51,7 @@ pub use delta::{
 };
 pub use events::{BranchFilter, EventCursor, EventPage, EventQuery};
 pub use object_catalog::{CatalogCursor, CatalogKind, CatalogPage, CatalogRow, CatalogScope};
+pub use operation_readset::SQLITE_COORDINATOR_EPOCH;
 pub use reconcile::{ReconcileAction, ReconcileReceipt, RuntimeFinding, RuntimeInspection};
 use rusqlite::{Connection, OpenFlags, TransactionBehavior};
 pub use scoped_read::{ScopedCursor, WorkstreamRead, WorkstreamReadSelection};

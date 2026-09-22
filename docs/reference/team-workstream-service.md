@@ -8,7 +8,13 @@ executions, resume agents or adopt cross-workstream deliveries. Use its live
 capabilities response to discover available operations.
 Unsupported capabilities are refused. Live authorization is enforced in PostgreSQL
 transactions shared by HTTP and MCP domain entries; clients must not treat UI
-filtering as an ACL. Team rows retain historical `scope_id=main` while
+filtering as an ACL. AWR-TMCP-011 maps each command/query onto the frozen
+TMCP-010 business action matrix at that same gate: verified bearer credentials
+supply identity, while request bodies, tool names and reconnects cannot forge
+actor, role or grants. Readers cannot claim or write; developers may maintain
+their own sessions/executions on authorized work but cannot edit/publish plans
+or manage project access. Exact receipt replay reuses the original result;
+changed intent or expired/revoked authority is refused without a business write. Team rows retain historical `scope_id=main` while
 `workstream_id` isolates streams. Legacy unscoped Team entrypoints refuse writes
 against enabled projects. An operator-local
 [reference runner](team-reference-runner.md) can consume scoped admissions for
@@ -223,11 +229,15 @@ prevent stale updates even if a caller refreshes its project revision. Each
 successful command commits state, scoped event, project revision and immutable
 outcome receipt together. Failure rolls back all of them.
 
-This command version retains project-wide revision preconditions and project
-serialization. Concurrent unrelated commands can still require a refresh;
-task-level read sets and independent concurrent writes are a later protocol.
-Never remove the revision requirement or automatically resubmit changed intent
-to suppress these conflicts.
+Ordinary commands validate a work-scoped read set (coordinator epoch, authority,
+ownership, contract, and action tokens such as session/claim/fence/work versions).
+The project revision remains an ordered audit cursor and is still returned on
+receipts, but unrelated audit-cursor advances do not create semantic conflicts.
+Writers still take the project admission lock for SQLite-compatible single-writer
+serialization and a total audit order. Legacy clients may still send
+`expected_project_revision`; the server accepts a well-formed decimal without
+treating it as business CAS. Never automatically resubmit changed intent to
+suppress true conflicts.
 
 Paused/archived workstreams permit checkpoint preservation and session closure
 with a still-valid write grant; they do not permit new sessions. A frozen,

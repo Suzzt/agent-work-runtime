@@ -6,9 +6,9 @@
 
 use awr_team::{SourceActivationPlan, WorkContract, WorkId};
 use awr_team_pg::{
-    DependencyEdge, EdgeMutation, GraphStore, IngestRequest, LeaseStore, PgError, SourceFile,
-    SourceStore, paths_conflict, reference_shared_outcome, require_main_scope,
-    validate_required_graph,
+    DependencyEdge, EdgeMutation, GraphStore, IngestRequest, LeaseStore, PgError, ResourceBound,
+    ResourceLeaseBind, SourceFile, SourceStore, paths_conflict, reference_shared_outcome,
+    require_main_scope, resources_conflict, validate_required_graph,
 };
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -752,3 +752,129 @@ async fn replace_edges_rejects_cycle_with_explainable_path() {
     }
 }
 
+#[tokio::test]
+async fn worktree_local_and_shared_external_resources_are_distinct() {
+    let (_lock, _admin, store, _db) = setup().await;
+    store
+        .reserve_bound(
+            TENANT,
+            PROJECT,
+            "work-a",
+            &ResourceBound {
+                kind: "file".into(),
+                key: "src/shared.rs".into(),
+                worktree_id: "wt-a".into(),
+            },
+            ResourceLeaseBind {
+                lease_generation: 1,
+                fence: 1,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    // Same path in another worktree is allowed.
+    store
+        .reserve_bound(
+            TENANT,
+            PROJECT,
+            "work-b",
+            &ResourceBound {
+                kind: "file".into(),
+                key: "src/shared.rs".into(),
+                worktree_id: "wt-b".into(),
+            },
+            ResourceLeaseBind {
+                lease_generation: 1,
+                fence: 2,
+            },
+            None,
+        )
+        .await
+        .expect("different worktrees must not contend over local files");
+    // Shared external resource contends regardless of worktree.
+    store
+        .reserve_bound(
+            TENANT,
+            PROJECT,
+            "work-a",
+            &ResourceBound {
+                kind: "external".into(),
+                key: "postgres://shared/db".into(),
+                worktree_id: String::new(),
+            },
+            ResourceLeaseBind {
+                lease_generation: 1,
+                fence: 1,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let err = store
+        .reserve_bound(
+            TENANT,
+            PROJECT,
+            "work-b",
+            &ResourceBound {
+                kind: "external".into(),
+                key: "postgres://shared/db".into(),
+                worktree_id: String::new(),
+            },
+            ResourceLeaseBind {
+                lease_generation: 2,
+                fence: 3,
+            },
+            None,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, PgError::ResourceConflict), "got {err}");
+    let err = store
+        .reserve_bound(
+            TENANT,
+            PROJECT,
+            "work-b",
+            &ResourceBound {
+                kind: "external".into(),
+                key: "postgres://shared/db".into(),
+                worktree_id: "wt-b".into(),
+            },
+            ResourceLeaseBind::default(),
+            None,
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, PgError::Protocol(_)),
+        "shared external must reject worktree_id: {err}"
+    );
+}
+
+#[test]
+fn resource_conflict_helper_matches_acceptance() {
+    assert!(!resources_conflict(
+        &ResourceBound {
+            kind: "dir".into(),
+            key: "src".into(),
+            worktree_id: "a".into(),
+        },
+        &ResourceBound {
+            kind: "dir".into(),
+            key: "src".into(),
+            worktree_id: "b".into(),
+        },
+    ));
+    assert!(resources_conflict(
+        &ResourceBound {
+            kind: "integration".into(),
+            key: "ref/prod".into(),
+            worktree_id: String::new(),
+        },
+        &ResourceBound {
+            kind: "integration".into(),
+            key: "ref/prod".into(),
+            worktree_id: String::new(),
+        },
+    ));
+}

@@ -6,6 +6,7 @@ mod execution;
 mod graph;
 mod import;
 mod lease;
+mod lock_order;
 mod migrate;
 mod operator_access;
 mod operator_recovery;
@@ -32,16 +33,18 @@ mod workstream_read;
 
 pub use bootstrap::Bootstrap;
 pub use error::{PgError, PgResult};
-pub use execution::{ExecutionRecord, ExecutionStore, OutboxDelivery, exactly_once_supported};
+pub use execution::{ExecutionRecord, ExecutionStore, OutboxDelivery, admit_live_fence, exactly_once_supported, unknown_effect_retains_resources};
 pub use graph::{
-    DependencyEdge, EdgeMutation, GraphStore, SharedOutcomeRef, SplitProposal,
-    necessary_dependencies_ready, paths_conflict, reference_shared_outcome, require_main_scope,
-    validate_cross_stream_graph, validate_required_graph,
+    DependencyEdge, EdgeMutation, GraphStore, ResourceBound, ResourceDomain, ResourceLeaseBind,
+    SharedOutcomeRef, SplitProposal, necessary_dependencies_ready, paths_conflict,
+    reference_shared_outcome, require_main_scope, resource_domain, resources_conflict,
+    validate_cross_stream_graph, validate_required_graph, validate_resource_kind,
 };
 pub use import::{BackupRecord, FencingBarrier, ImportJob, ImportStore, InspectReport, RestoreRun};
 pub use lease::{ClaimRecord, LeaseStore, SessionRecord};
+pub use lock_order::{ResourceLockKey, lock_claim_after_work, lock_resources_sorted, lock_works_sorted, sort_resource_keys, sort_work_ids};
 pub use migrate::{EXPECTED_SCHEMA_VERSION, check_schema, migrate};
-pub use operator_access::{AccessActor, AccessCredential, AccessGrant, AccessPlan, OperatorAccess};
+pub use operator_access::{AccessActor, AccessCredential, AccessGrant, AccessPlan, AdminAccessPlan, OperatorAccess, ProjectAccessStore};
 pub use operator_recovery::OperatorRecovery;
 pub use operator_history::OperatorHistory;
 pub use operator_backup::OperatorBackup;
@@ -75,10 +78,14 @@ pub use scoped_runner::{
     ScopedReferenceRunner,
 };
 pub use source::{
-    CandidateRecord, CurrentSource, CurrentWorkstreamSource, IngestRequest, SourceFile, SourceStore,
+    CandidateRecord, CurrentSource, CurrentWorkstreamSource, IngestRequest, SOURCE_BINDING_FILE,
+    SoleSourceBinding, SoleSourceKind, SourceFile, SourceStore, WORKSTREAMS_FILE,
 };
+pub use source::planning::{DraftCandidateCreate, SuggestionSubmit};
 pub use tx::{CommandOutcome, CommandRequest, TeamStore};
-pub use workstream_auth::workstream_credential_hash;
+pub use workstream_auth::{
+    command_business_action, map_membership_role, query_business_action, workstream_credential_hash,
+};
 pub use workstream_command::{WorkstreamCommand, WorkstreamCommandStore};
 pub use workstream_read::{WorkstreamQuery, WorkstreamReadStore};
 
@@ -97,6 +104,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 24);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 27);
     }
 }
