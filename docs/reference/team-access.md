@@ -126,9 +126,12 @@ reconciliation, arbitrary source filesystem control or tenant-wide recovery.
 
 Coarse legacy roles `reader` / `reviewer` / `worker` / `admin` and grants
 `read` / `write` / `manage` produce a **preview** only
-(`preview_legacy_migration`). Historical `write` / `manage` never auto-receive
-`planning.*`, `access.manage_project` or `review.decide`. Person links without
-verified evidence stay `unknown` and grant nothing.
+(`preview_legacy_migration`). Effective actions are the **intersection** of
+legacy membership and client grant templates (never a union); missing either
+side contributes no actions from that side. Newly introduced privileges
+(`planning.*`, `access.manage_project`, `review.decide`) are always withheld,
+independent of which grant branch is supplied. Person links without verified
+evidence stay `unknown` and grant nothing.
 
 Fixtures: `tests/fixtures/team-mcp/migration_preview.json` and
 `tests/fixtures/team-mcp/allow_deny_pairs.json`.
