@@ -3,6 +3,7 @@
 pub(crate) mod claims;
 pub(crate) mod executions;
 pub(crate) mod handoffs;
+pub(crate) mod reviews;
 
 use crate::workstream_auth::{CommandAuthPhase, ReaderAuthority, authenticate_writer, authorize_command};
 use crate::workstream_read::{WorkstreamQuery, read, work_binding};
@@ -32,6 +33,12 @@ pub(crate) const COMMANDS: &[&str] = &[
     "handoff.reject",
     "handoff.cancel",
     "handoff.timeout",
+    "evidence.submit",
+    "review.open",
+    "review.accept",
+    "review.return",
+    "work.rework",
+    "work.complete",
 ];
 const RECEIPT_PROTOCOL: &str = "awr-team-workstream-command-v1";
 
@@ -78,6 +85,7 @@ enum Action {
     Claim(claims::Action),
     Execution(executions::Action),
     Handoff(handoffs::Action),
+    Review(reviews::Action),
 }
 
 struct Applied {
@@ -140,6 +148,15 @@ impl WorkstreamCommand {
             | "handoff.reject"
             | "handoff.cancel"
             | "handoff.timeout" => Ok(Action::Handoff(handoffs::Action::parse(
+                &self.op,
+                self.args.clone(),
+            )?)),
+            "evidence.submit"
+            | "review.open"
+            | "review.accept"
+            | "review.return"
+            | "work.rework"
+            | "work.complete" => Ok(Action::Review(reviews::Action::parse(
                 &self.op,
                 self.args.clone(),
             )?)),
@@ -282,6 +299,12 @@ impl WorkstreamCommandStore {
             Action::Handoff(a) => {
                 handoffs::apply(&tx, tenant, project, &auth, &command, ownership, a).await?
             }
+            Action::Review(a) => {
+                reviews::apply(
+                    &tx, tenant, project, &auth, &command, ownership, &contract, a,
+                )
+                .await?
+            }
             a => Applied {
                 data: apply(&tx, tenant, project, &auth, &command, ownership, a).await?,
                 preceding_events: Vec::new(),
@@ -296,6 +319,12 @@ impl WorkstreamCommandStore {
         }
         if command.op.starts_with("handoff.") {
             data["handoff_state_basis"] = json!("at_commit");
+        }
+        if command.op.starts_with("evidence.")
+            || command.op.starts_with("review.")
+            || matches!(command.op.as_str(), "work.rework" | "work.complete")
+        {
+            data["review_state_basis"] = json!("at_commit");
         }
         let next = auth
             .revision
@@ -347,7 +376,7 @@ async fn apply(
     action: Action,
 ) -> PgResult<Value> {
     match action {
-        Action::Claim(_) | Action::Execution(_) | Action::Handoff(_) => Err(invalid()), // Same outer transaction.
+        Action::Claim(_) | Action::Execution(_) | Action::Handoff(_) | Action::Review(_) => Err(invalid()), // Same outer transaction.
         Action::Start(a) => {
             let active: bool = tx.query_one("SELECT EXISTS(SELECT 1 FROM awr_team.sessions
                 WHERE tenant_id=$1 AND project_id=$2 AND actor_id=$3 AND client_id=$4 AND conversation_id=$5 AND work_id=$6 AND state='active')",

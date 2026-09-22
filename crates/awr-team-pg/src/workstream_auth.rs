@@ -239,9 +239,10 @@ pub(crate) fn command_authority(op: &str) -> Option<DomainAuthority> {
     Some(match op {
         "session.checkpoint" | "session.end" | "claim.release" | "execution.cancel"
         | "execution.report" | "handoff.reject" | "handoff.cancel" | "handoff.timeout"
-        | "handoff.inspect" => DomainAuthority::WritePreserve,
+        | "handoff.inspect" | "review.return" | "work.rework" => DomainAuthority::WritePreserve,
         "session.start" | "claim.acquire" | "claim.renew" | "execution.prepare"
-        | "execution.start" | "handoff.propose" | "handoff.accept" => DomainAuthority::WriteActive,
+        | "execution.start" | "handoff.propose" | "handoff.accept"
+        | "evidence.submit" | "review.open" | "review.accept" | "work.complete" => DomainAuthority::WriteActive,
         "execution.attest" => DomainAuthority::Attest,
         "execution.reconcile" => DomainAuthority::Reconcile,
         _ => return None,

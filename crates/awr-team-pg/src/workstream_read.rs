@@ -24,6 +24,9 @@ const QUERIES: &[&str] = &[
     "claim.inspect",
     "execution.inspect",
     "handoff.inspect",
+    "evidence.inspect",
+    "review.inspect",
+    "completion.inspect",
 ];
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -42,6 +45,8 @@ pub struct WorkstreamQuery {
     pub claim_id: Option<String>,
     pub execution_id: Option<String>,
     pub handoff_id: Option<String>,
+    pub evidence_id: Option<String>,
+    pub review_round_id: Option<String>,
 }
 
 impl WorkstreamQuery {
@@ -62,6 +67,8 @@ impl WorkstreamQuery {
             &self.request_id,
             &self.claim_id,
             &self.execution_id,
+            &self.evidence_id,
+            &self.review_round_id,
         ]
         .into_iter()
         .flatten()
@@ -91,6 +98,8 @@ impl WorkstreamQuery {
             || self.claim_id.is_some() != (self.op == "claim.inspect")
             || self.execution_id.is_some() != (self.op == "execution.inspect")
             || self.handoff_id.is_some() != (self.op == "handoff.inspect")
+            || self.evidence_id.is_some() != (self.op == "evidence.inspect")
+            || self.review_round_id.is_some() != (self.op == "review.inspect")
             || matches!(self.op.as_str(), "capabilities" | "workstreams.list")
                 && (self.work_id.is_some()
                     || self.session_id.is_some()
@@ -106,6 +115,9 @@ impl WorkstreamQuery {
                     | "claim.inspect"
                     | "execution.inspect"
                     | "handoff.inspect"
+                    | "evidence.inspect"
+                    | "review.inspect"
+                    | "completion.inspect"
             ) && self.work_id.is_none()
                 && self.session_id.is_none()
         {
@@ -406,6 +418,37 @@ pub(crate) async fn read(
                 return Err(PgError::Forbidden);
             }
             value
+        }
+        "evidence.inspect" => {
+            let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
+            let _ = work_binding(tx, tenant, project, auth, work).await?;
+            let evidence_id = q.evidence_id.as_deref().ok_or(PgError::Forbidden)?;
+            let value = crate::workstream_command::reviews::inspect_evidence(
+                tx, tenant, project, evidence_id,
+            )
+            .await?;
+            if value["evidence"]["work_id"] != work {
+                return Err(PgError::Forbidden);
+            }
+            value
+        }
+        "review.inspect" => {
+            let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
+            let _ = work_binding(tx, tenant, project, auth, work).await?;
+            let round_id = q.review_round_id.as_deref().ok_or(PgError::Forbidden)?;
+            let value = crate::workstream_command::reviews::inspect_review(
+                tx, tenant, project, round_id,
+            )
+            .await?;
+            if value["review"]["work_id"] != work {
+                return Err(PgError::Forbidden);
+            }
+            value
+        }
+        "completion.inspect" => {
+            let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
+            let _ = work_binding(tx, tenant, project, auth, work).await?;
+            crate::workstream_command::reviews::inspect_completion(tx, tenant, project, work).await?
         }
         "command.inspect" => {
             let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;

@@ -506,6 +506,28 @@ schema-owner `backup-rebuild-*` (fencing-quiet, empty-or-matching ownership only
 catalogs, contracts, receipts and grants remain outside that subset. Enabled-project
 history still requires explicit migration before backup.
 
+
+## Evidence, review, rework and completion (WS-018)
+
+Mainline-enabled Team projects use authenticated workstream commands for the
+review lifecycle. Legacy `ReviewStore` entrypoints still refuse enabled
+projects; do not route enabled traffic through them.
+
+| Command | Role |
+|---|---|
+| `evidence.submit` | Record evidence bound to the current contract (and optional execution). Agent self-report is `caller_asserted` and never equals trusted execution or human approval. |
+| `review.open` | Open a review round bound to exact `contract_hash`, artifact digest, execution result digest and round index. |
+| `review.accept` / `review.return` | Human reviewer decision. Independence is by responsible **person**, not by a second agent of the same person. Personal self-review is allowed only when `completion_policy` is `trusted_execution_and_author_self_review`, and is labeled `personal_self_review` — never `team_independent`. |
+| `work.rework` | Acknowledge a returned/rejected round. History is retained. |
+| `work.complete` | Atomically validate runtime state, evidence↔execution binding, selected completion receipt and actual approver person. Distinguishes execution success, author self-report, human approval and task completion. |
+
+Queries: `evidence.inspect`, `review.inspect`, `completion.inspect`.
+
+Completion receipts expose `independence_kind` and `team_independent_acceptance` for WS-030 adoption authorization. Provider-private session fields are never included (`provider_private_session` is always null).
+
+Artifact/contract changes invalidate prior open/approved rounds for other
+bundles; reject/return/rework keep historical rounds.
+
 ## Limits and errors
 
 Requests are limited to 64 KiB, pages to 100 items, search to 512 bytes, and
