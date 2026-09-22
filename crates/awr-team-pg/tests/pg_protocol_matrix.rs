@@ -9,16 +9,19 @@ mod fixture;
 
 use awr_core::{
     AgentAuthorization, AuthorizationScope, AuthorizationStatus, AuthorizedAction,
-    ExecutionSubjectKind, IssueAuthorizationRequest, PersonId,
+    ExecutionSubjectKind, Id, IssueAuthorizationRequest, PersonId, Workstream, WorkstreamCatalog,
+    WorkstreamState,
 };
 use awr_team::{
     Action, DraftChange, DraftDefinitionState, DraftOpKind, OrdinaryPlanningSelfApprovePolicy,
-    PERMISSION_POLICY_VERSION, ResourceRef, RoleTemplate, TaskDraft, action_allowed_for_template,
+    PERMISSION_POLICY_VERSION, ResourceRef, RoleTemplate, SourceActivationPlan, TaskDraft,
+    WorkContract, WorkId, WorkstreamBundle, WorkstreamContract, action_allowed_for_template,
     authority_from_template, authorize_action, with_independent_review,
 };
 use awr_team_pg::{
-    AdminAccessPlan, AuthorizationStore, DraftCandidateCreate, OpsAuditStore, OpsHistoryFilter,
-    PgError, ProjectAccessStore, SourceStore, SuggestionSubmit, workstream_credential_hash,
+    ActivationImpactGate, AdminAccessPlan, AuthorizationStore, DraftCandidateCreate, IngestRequest,
+    OpsAuditStore, OpsHistoryFilter, PgError, ProjectAccessStore, SourceFile, SourceStore,
+    SuggestionSubmit, workstream_credential_hash,
 };
 use fixture::*;
 use serde_json::{Value, json};
@@ -60,6 +63,54 @@ fn draft(id: &str, deps: &[&str]) -> TaskDraft {
         definition_state: DraftDefinitionState::Draft,
         split_from: None,
         split_children: vec![],
+    }
+}
+
+fn successor_bundle(title_suffix: &str) -> WorkstreamBundle {
+    let definitions = vec![(1, "alpha"), (2, "private-beta")]
+        .into_iter()
+        .map(|(i, key)| Workstream {
+            id: Id::from(i),
+            project_id: PROJECT.into(),
+            external_key: key.into(),
+            title: format!("{key}{title_suffix}"),
+            state: WorkstreamState::Active,
+            authority_version: 1,
+            goal_keys: vec![key.into()],
+            acceptance_contracts: vec![],
+        })
+        .collect();
+    let contracts = vec![
+        ("a", 1, vec![]),
+        ("b-private", 2, vec![]),
+        ("c", 1, vec!["b-private"]),
+    ]
+    .into_iter()
+    .map(|(id, stream, deps)| WorkstreamContract {
+        workstream_id: Id::from(stream),
+        contract: WorkContract {
+            codec: WorkContract::CODEC.into(),
+            work_id: WorkId::new(id).unwrap(),
+            external_key: id.into(),
+            goals: vec!["ship".into()],
+            hard_rules: vec!["preserve compatibility".into()],
+            scope_paths: vec!["src".into()],
+            acceptance: vec!["verified".into()],
+            required_dependencies: deps.into_iter().map(Into::into).collect(),
+            completion_policy: "review".into(),
+            verification_requirements: vec!["report".into()],
+        },
+    })
+    .collect();
+    WorkstreamBundle {
+        codec: WorkstreamBundle::CODEC.into(),
+        catalog: WorkstreamCatalog {
+            version: 1,
+            project_id: PROJECT.into(),
+            legacy_default: None,
+            workstreams: definitions,
+        },
+        contracts,
     }
 }
 
@@ -283,22 +334,68 @@ async fn cross_scope_identity() {
 async fn read_surface_isolation() {
     let (_g, admin, db, store) = setup().await;
     enable_writes(&admin).await;
-    // Positive: B can search its own stream.
+    admin
+        .batch_execute(
+            "UPDATE awr_team.work_contracts
+             SET title='PUBLIC-ALPHA-VISIBLE'
+             WHERE tenant_id='reader-tenant' AND project_id='reader-project'
+               AND work_id='a';
+             UPDATE awr_team.work_contracts
+             SET title='PRIVATE-BETA-SECRET'
+             WHERE tenant_id='reader-tenant' AND project_id='reader-project'
+               AND work_id='b-private';",
+        )
+        .await
+        .unwrap();
+
     let mut q = query("work.search");
-    q.workstream_id = Some(awr_core::Id::from(1));
-    q.search = Some("alpha".into());
+    q.workstream_id = Some(Id::from(1));
+    q.search = Some("PUBLIC-ALPHA".into());
     let listed = store.query(TENANT, PROJECT, A, q).await.unwrap();
-    assert!(listed.get("items").is_some() || listed.get("data").is_some() || listed.is_object());
-    // Negative: B cannot see stream-2 private works via stream-1 token search.
+    let items = listed["data"]["items"]
+        .as_array()
+        .expect("search items envelope");
+    let ids: Vec<&str> = items.iter().filter_map(|i| i["work_id"].as_str()).collect();
+    assert!(
+        ids.contains(&"a"),
+        "positive control must return the allowed public work: {listed}"
+    );
+    assert!(
+        !ids.contains(&"b-private"),
+        "stream-1 search must not return private stream work: {listed}"
+    );
+
     let mut q2 = query("work.search");
-    q2.workstream_id = Some(awr_core::Id::from(2));
-    q2.search = Some("alpha".into());
-    let listed_b = store.query(TENANT, PROJECT, B, q2.clone()).await;
-    if let Ok(v) = listed_b {
-        let blob = v.to_string();
-        assert!(!blob.contains("\"external_key\":\"a\"") || true);
-    }
-    // Positive: project_admin export is project-scoped.
+    q2.workstream_id = Some(Id::from(2));
+    q2.search = Some("PRIVATE-BETA".into());
+    let listed_b = store.query(TENANT, PROJECT, B, q2).await.unwrap();
+    let b_items = listed_b["data"]["items"].as_array().unwrap();
+    let b_ids: Vec<&str> = b_items
+        .iter()
+        .filter_map(|i| i["work_id"].as_str())
+        .collect();
+    assert_eq!(b_ids, vec!["b-private"], "{listed_b}");
+    assert!(
+        !listed_b.to_string().contains("PUBLIC-ALPHA-VISIBLE"),
+        "cross-stream title disclosure: {listed_b}"
+    );
+    assert!(
+        !b_ids.iter().any(|id| *id == "a" || *id == "c"),
+        "forbidden stream-1 ids leaked: {b_ids:?}"
+    );
+
+    let mut q_cross = query("work.search");
+    q_cross.workstream_id = Some(Id::from(2));
+    q_cross.search = Some("PRIVATE-BETA".into());
+    let denied = store.query(TENANT, PROJECT, A, q_cross).await;
+    assert!(
+        matches!(
+            denied,
+            Err(PgError::Forbidden) | Err(PgError::Workstream(_))
+        ),
+        "ungranted stream search must deny: {denied:?}"
+    );
+
     let audit = OpsAuditStore::from_config(common::with_app_role(&common::test_config(), &db));
     let admin_export = audit
         .export(
@@ -313,7 +410,6 @@ async fn read_surface_isolation() {
         .await
         .unwrap();
     assert_eq!(admin_export["scope"], "project");
-    // Negative: developer export is self-scoped and cannot count other members.
     admin
         .batch_execute(
             "UPDATE awr_team.project_memberships SET role='developer', membership_version=membership_version+1
@@ -342,7 +438,14 @@ async fn read_surface_isolation() {
     record(
         "read_surface_isolation",
         "controls",
-        json!({"search_ok":true,"admin_project_export":true,"member_self_only":true}),
+        json!({
+            "search_ok": true,
+            "allowed_ids": ids,
+            "stream2_ids": b_ids,
+            "cross_stream_denied": true,
+            "admin_project_export": true,
+            "member_self_only": true
+        }),
     );
 }
 
@@ -714,16 +817,15 @@ async fn proposal_approval_binding() {
 
 #[tokio::test]
 async fn source_cas_and_crash() {
-    let (_g, admin, _db, store) = maintainer_store().await;
-    // Positive: capabilities advertise separated approve/publish.
-    let caps = SourceStore::planning_capabilities();
-    assert_eq!(caps["approve_publish_separated"], true);
-    // Negative: approve refuses stale baseline when source digest is forced stale.
+    let (_g, admin, db, planning) = maintainer_store().await;
+    let source = SourceStore::from_config(common::with_app_role(&common::test_config(), &db));
+
+    // Positive: publish a planning candidate through the store boundary.
     let create = DraftCandidateCreate {
         changes: vec![DraftChange {
             op: DraftOpKind::CreateTask,
             before: None,
-            after: draft("SHARED-2", &[]),
+            after: draft("SHARED-CAS", &[]),
         }],
         suggestion_ids: vec![],
         allowed_spec_roots: vec!["specs".into()],
@@ -731,47 +833,231 @@ async fn source_cas_and_crash() {
         self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
         author_person_id: Some("agent".into()),
     };
-    let created = store
+    let created = planning
         .create_planning_candidate(TENANT, PROJECT, A, &create)
         .await
         .unwrap();
     let candidate_id = created["candidate_id"].as_str().unwrap().to_string();
-    // Corrupt baseline to force CAS refusal if column exists; otherwise use wrong digest.
-    let _ = admin
-        .batch_execute(
-            "UPDATE awr_team.planning_candidates SET source_baseline_digest='deadbeef'
-             WHERE id IN (SELECT id FROM awr_team.planning_candidates LIMIT 1)",
+    let digest = created["candidate_digest"].as_str().unwrap().to_string();
+    planning
+        .approve_planning_candidate(TENANT, PROJECT, A, &candidate_id, &digest, Some("agent"))
+        .await
+        .unwrap();
+    let published = planning
+        .publish_planning_candidate(TENANT, PROJECT, A, &candidate_id, &digest)
+        .await
+        .unwrap();
+    let receipt_id = published["receipt_id"].as_str().unwrap().to_string();
+    assert!(!receipt_id.is_empty(), "{published}");
+
+    let before_snapshot: String = admin
+        .query_one(
+            "SELECT active_snapshot_id FROM awr_team.projects WHERE tenant_id=$1 AND id=$2",
+            &[&TENANT, &PROJECT],
         )
-        .await;
-    let err = store
+        .await
+        .unwrap()
+        .get(0);
+
+    // Negative: wrong digest is a real denial (never `|| true`).
+    let create2 = DraftCandidateCreate {
+        changes: vec![DraftChange {
+            op: DraftOpKind::CreateTask,
+            before: None,
+            after: draft("SHARED-CAS-2", &[]),
+        }],
+        suggestion_ids: vec![],
+        allowed_spec_roots: vec!["specs".into()],
+        project_goal_keys: vec!["delivery".into()],
+        self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
+        author_person_id: Some("agent".into()),
+    };
+    let created2 = planning
+        .create_planning_candidate(TENANT, PROJECT, A, &create2)
+        .await
+        .unwrap();
+    let candidate2 = created2["candidate_id"].as_str().unwrap().to_string();
+    let err = planning
         .approve_planning_candidate(
             TENANT,
             PROJECT,
             A,
-            &candidate_id,
+            &candidate2,
             "0000000000000000000000000000000000000000000000000000000000000000",
             Some("agent"),
         )
         .await
         .unwrap_err();
     assert!(
-        matches!(err, PgError::Forbidden | PgError::Protocol(_)) || true,
-        "{err:?}"
+        matches!(
+            err,
+            PgError::StaleApproval
+                | PgError::PreconditionsChanged
+                | PgError::Protocol(_)
+                | PgError::Forbidden
+                | PgError::CandidateNotApproved
+        ),
+        "expected digest CAS denial, got {err:?}"
     );
+
+    // Interrupt activation after projection install; active snapshot must stay put.
+    let bundle = successor_bundle("-cas-interrupt");
+    let bytes = serde_json::to_vec(&bundle).unwrap();
+    let ingested = source
+        .ingest(IngestRequest {
+            tenant_id: TENANT.into(),
+            project_id: PROJECT.into(),
+            actor_id: "agent".into(),
+            parser_version: "workstreams/1".into(),
+            files: vec![SourceFile {
+                path: "workstreams.json".into(),
+                bytes: bytes.clone(),
+            }],
+        })
+        .await
+        .unwrap();
+    source
+        .approve(
+            TENANT,
+            PROJECT,
+            &ingested.proposal_id,
+            "reviewer",
+            &ingested.manifest_digest,
+        )
+        .await
+        .unwrap();
+    let epoch: String = admin
+        .query_one(
+            "SELECT authority_epoch::text FROM awr_team.projects WHERE tenant_id=$1 AND id=$2",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let plan = SourceActivationPlan {
+        candidate_digest: ingested.manifest_digest.clone(),
+        parser_version: ingested.parser_version.clone(),
+        expected_authority_epoch: epoch.clone(),
+        approved_candidate_digest: ingested.manifest_digest.clone(),
+    };
+    source
+        .abort_workstreams_after_installing_projection(
+            TENANT,
+            PROJECT,
+            "agent",
+            &ingested.proposal_id,
+            &plan,
+        )
+        .await
+        .unwrap();
+    let after_abort: String = admin
+        .query_one(
+            "SELECT active_snapshot_id FROM awr_team.projects WHERE tenant_id=$1 AND id=$2",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(after_abort, before_snapshot);
+
+    // Recovery: complete activation; new snapshot and retained source bytes.
+    let recovered = source
+        .activate_workstreams(TENANT, PROJECT, "agent", &ingested.proposal_id, &plan)
+        .await
+        .unwrap();
+    assert_ne!(recovered.snapshot_id, before_snapshot);
+    let catalog_json: serde_json::Value = admin
+        .query_one(
+            "SELECT catalog_json FROM awr_team.workstream_catalogs
+             WHERE tenant_id=$1 AND project_id=$2 AND snapshot_id=$3",
+            &[&TENANT, &PROJECT, &recovered.snapshot_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert!(
+        catalog_json.to_string().contains("cas-interrupt"),
+        "recovered catalog missing published source bytes marker: {catalog_json}"
+    );
+    let source_ref: serde_json::Value = admin
+        .query_one(
+            "SELECT source_ref_json FROM awr_team.source_snapshots
+             WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+            &[&TENANT, &PROJECT, &recovered.snapshot_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert!(
+        source_ref.to_string().len() > 32,
+        "source_ref must retain published files"
+    );
+    let _ = bytes;
+
     record(
         "source_cas_and_crash",
         "controls",
-        json!({"caps_separated":true,"stale_digest_refused":true}),
+        json!({
+            "published_receipt_id": receipt_id,
+            "stale_digest_refused": true,
+            "interrupt_retained_snapshot": before_snapshot,
+            "recovered_snapshot": recovered.snapshot_id,
+            "exercised": true
+        }),
     );
 }
 
 #[tokio::test]
 async fn live_source_publication() {
-    let (_g, admin, _db, store) = setup().await;
+    let (_g, admin, db, read) = setup().await;
     enable_writes(&admin).await;
-    // Positive: unrelated work can still start session while another work exists.
-    let prepared = prepare(&store, A, "a").await;
-    let ok = store
+    let source = SourceStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let planning = SourceStore::from_config(common::with_app_role(&common::test_config(), &db));
+    admin
+        .batch_execute(
+            "UPDATE awr_team.project_memberships SET role='maintainer', membership_version=membership_version+1
+             WHERE actor_id='agent';
+             UPDATE awr_team.workstream_grants SET can_write=true, grant_version=grant_version+1
+             WHERE client_id='cli-a';
+             INSERT INTO awr_team.work_items(tenant_id,project_id,id,external_key) VALUES
+               ('reader-tenant','reader-project','API-1','API-1'),
+               ('reader-tenant','reader-project','CLIENT-1','CLIENT-1')
+             ON CONFLICT DO NOTHING;",
+        )
+        .await
+        .unwrap();
+
+    // Positive: publish a new shared source candidate; unrelated work "a" keeps running.
+    let create = DraftCandidateCreate {
+        changes: vec![DraftChange {
+            op: DraftOpKind::CreateTask,
+            before: None,
+            after: draft("SHARED-LIVE", &[]),
+        }],
+        suggestion_ids: vec![],
+        allowed_spec_roots: vec!["specs".into()],
+        project_goal_keys: vec!["delivery".into()],
+        self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
+        author_person_id: Some("agent".into()),
+    };
+    let created = planning
+        .create_planning_candidate(TENANT, PROJECT, A, &create)
+        .await
+        .unwrap();
+    let candidate_id = created["candidate_id"].as_str().unwrap().to_string();
+    let digest = created["candidate_digest"].as_str().unwrap().to_string();
+    planning
+        .approve_planning_candidate(TENANT, PROJECT, A, &candidate_id, &digest, Some("agent"))
+        .await
+        .unwrap();
+    let published = planning
+        .publish_planning_candidate(TENANT, PROJECT, A, &candidate_id, &digest)
+        .await
+        .unwrap();
+    assert!(!published["receipt_id"].as_str().unwrap().is_empty());
+
+    let prepared = prepare(&read, A, "a").await;
+    let ok = read
         .commands()
         .execute(
             TENANT,
@@ -779,27 +1065,139 @@ async fn live_source_publication() {
             A,
             command(
                 &prepared,
-                "live-pub-ok",
+                "live-pub-unrelated",
                 "session.start",
-                json!({"conversation_id":"live-pub"}),
+                json!({"conversation_id":"live-pub-unrelated"}),
             ),
         )
         .await
         .unwrap();
     assert_eq!(ok["replayed"], false);
-    // Negative control via capabilities: direct_done / sql not available as bypass.
-    let caps = store
-        .query(TENANT, PROJECT, A, query("capabilities"))
+    let session_id = ok["receipt"]["data"]["session_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Plant an in-flight execution identity that must not be silently dropped.
+    admin
+        .execute(
+            "INSERT INTO awr_team.executions(
+                tenant_id,project_id,id,work_id,fence,contract_hash,input_digest,
+                executor_actor_id,state,scope_id)
+             VALUES($1,$2,'exec-live-a','a',1,$3,$4,'agent','running','main')
+             ON CONFLICT DO NOTHING",
+            &[
+                &TENANT,
+                &PROJECT,
+                &prepared["data"]["contract_hash"].as_str().unwrap(),
+                &"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            ],
+        )
         .await
         .unwrap();
-    if let Some(p) = caps.get("planning_mcp") {
-        assert_ne!(p.get("direct_done"), Some(&json!(true)));
-        assert_ne!(p.get("sql_tools"), Some(&json!(true)));
-    }
+
+    // Publish a successor source and require impact/stop evidence for live work.
+    let bundle = successor_bundle("-live-pub");
+    let ingested = source
+        .ingest(IngestRequest {
+            tenant_id: TENANT.into(),
+            project_id: PROJECT.into(),
+            actor_id: "agent".into(),
+            parser_version: "workstreams/1".into(),
+            files: vec![SourceFile {
+                path: "workstreams.json".into(),
+                bytes: serde_json::to_vec(&bundle).unwrap(),
+            }],
+        })
+        .await
+        .unwrap();
+    source
+        .approve(
+            TENANT,
+            PROJECT,
+            &ingested.proposal_id,
+            "reviewer",
+            &ingested.manifest_digest,
+        )
+        .await
+        .unwrap();
+    let epoch: String = admin
+        .query_one(
+            "SELECT authority_epoch::text FROM awr_team.projects WHERE tenant_id=$1 AND id=$2",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let plan = SourceActivationPlan {
+        candidate_digest: ingested.manifest_digest.clone(),
+        parser_version: ingested.parser_version.clone(),
+        expected_authority_epoch: epoch,
+        approved_candidate_digest: ingested.manifest_digest.clone(),
+    };
+    let denied = source
+        .activate_workstreams_with_impact(
+            TENANT,
+            PROJECT,
+            "agent",
+            &ingested.proposal_id,
+            &plan,
+            &ActivationImpactGate {
+                impact_proven: true,
+                allow_activation: false,
+                affected_work_ids: vec!["a".into()],
+                unrelated_work_ids: vec!["b-private".into()],
+                stopped_work_ids: vec![],
+                refuse_reason: Some("live_execution_requires_stop".into()),
+                recovery_actions: vec!["stop_or_reconcile_exec-live-a".into()],
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            denied,
+            PgError::ActivationImpactUnproven(_)
+                | PgError::WritebackRefused(_)
+                | PgError::RecoveryBlocked
+                | PgError::Forbidden
+                | PgError::Protocol(_)
+                | PgError::PreconditionsChanged
+        ),
+        "live affected execution must not be bypassed: {denied:?}"
+    );
+
+    let exec_state: String = admin
+        .query_one(
+            "SELECT state FROM awr_team.executions
+             WHERE tenant_id=$1 AND project_id=$2 AND id='exec-live-a'",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(exec_state, "running");
+    let session_alive: String = admin
+        .query_one(
+            "SELECT state FROM awr_team.sessions WHERE id=$1",
+            &[&session_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(session_alive, "active");
+
     record(
         "live_source_publication",
         "controls",
-        json!({"unrelated_session_ok":true,"no_direct_done_bypass":true}),
+        json!({
+            "published": true,
+            "unrelated_session_ok": true,
+            "session_id": session_id,
+            "live_execution_retained": "exec-live-a",
+            "impact_bypass_denied": true,
+            "exercised": true
+        }),
     );
 }
 
