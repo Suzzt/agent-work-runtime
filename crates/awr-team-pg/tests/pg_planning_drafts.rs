@@ -532,3 +532,37 @@ async fn approve_and_publish_refuse_stale_source_baseline() {
         "stale baseline must refuse publish: {err:?}"
     );
 }
+
+
+#[tokio::test]
+async fn mutations_refuse_zero_grant_maintainer_client() {
+    let (_g, admin, _db, store) = store_and_roles().await;
+    // Membership stays maintainer (planning.edit_draft in template) but NONE has zero grants.
+    admin
+        .batch_execute(
+            "UPDATE awr_team.project_memberships SET role='maintainer', membership_version=membership_version+1
+             WHERE actor_id='agent';",
+        )
+        .await
+        .unwrap();
+    let create = DraftCandidateCreate {
+        changes: vec![DraftChange {
+            op: DraftOpKind::CreateTask,
+            before: None,
+            after: draft("NONE-MUT-1", &[], DraftDefinitionState::Draft),
+        }],
+        suggestion_ids: vec![],
+        allowed_spec_roots: vec!["specs".into()],
+        project_goal_keys: vec!["delivery".into()],
+        self_approve_policy: None,
+        author_person_id: Some("agent".into()),
+    };
+    let err = store
+        .create_planning_candidate(TENANT, PROJECT, NONE, &create)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, PgError::Forbidden),
+        "maintainer + zero grants must not create planning candidates: {err:?}"
+    );
+}

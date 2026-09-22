@@ -226,6 +226,7 @@ impl SourceStore {
             known_external_keys: known.keys.iter().map(String::as_str).collect(),
         };
         validate_candidate(&candidate, &base_view).map_err(map_team)?;
+        authorize_candidate_writable_scope(&tx, &auth, tenant_id, project_id, &candidate).await?;
         let digest = candidate.candidate_digest().map_err(map_team)?;
         let changes_json =
             serde_json::to_value(&candidate.changes).map_err(|e| PgError::Protocol(e.to_string()))?;
@@ -332,6 +333,7 @@ impl SourceStore {
             known_external_keys: known.keys.iter().map(String::as_str).collect(),
         };
         validate_candidate(&candidate, &base_view).map_err(map_team)?;
+        authorize_candidate_writable_scope(&tx, &auth, tenant_id, project_id, &candidate).await?;
         let digest = candidate.candidate_digest().map_err(map_team)?;
         let changes_json =
             serde_json::to_value(&candidate.changes).map_err(|e| PgError::Protocol(e.to_string()))?;
@@ -465,6 +467,7 @@ impl SourceStore {
         let mut candidate = load_candidate(&tx, tenant_id, project_id, candidate_id).await?;
         let (live_digest, live_epoch) = current_baseline(&tx, tenant_id, project_id).await?;
         ensure_baseline_current(&candidate, &live_digest, &live_epoch)?;
+        authorize_candidate_readable_scope(&tx, &auth, tenant_id, project_id, &candidate).await?;
         if let Some(person) = author_person_id {
             // Allow callers to assert person identity for self-approve checks.
             if candidate.author_person_id != person && auth.actor_id != person {
@@ -561,6 +564,7 @@ impl SourceStore {
         let mut candidate = load_candidate(&tx, tenant_id, project_id, candidate_id).await?;
         let (live_digest, live_epoch) = current_baseline(&tx, tenant_id, project_id).await?;
         ensure_baseline_current(&candidate, &live_digest, &live_epoch)?;
+        authorize_candidate_readable_scope(&tx, &auth, tenant_id, project_id, &candidate).await?;
         // Attach latest approval for publish checks.
         if let Some(row) = tx
             .query_opt(
@@ -689,6 +693,54 @@ fn ensure_baseline_current(
 ) -> PgResult<()> {
     if candidate.baseline_digest != live_digest || candidate.baseline_epoch != live_epoch {
         return Err(PgError::PreconditionsChanged);
+    }
+    Ok(())
+}
+
+
+/// Fail closed unless every exposed affected task is inside the client's writable
+/// workstream grants. Membership template planning rights alone are insufficient.
+async fn authorize_candidate_writable_scope(
+    tx: &Transaction<'_>,
+    auth: &ReaderAuthority,
+    tenant_id: &str,
+    project_id: &str,
+    candidate: &PlanningCandidate,
+) -> PgResult<()> {
+    if auth.access.grants.iter().all(|g| !g.write) {
+        return Err(PgError::Forbidden);
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for change in &candidate.changes {
+        let work_id = change.after.work_id.as_str();
+        if !seen.insert(work_id.to_owned()) {
+            continue;
+        }
+        let row = tx
+            .query_opt(
+                "SELECT workstream_id FROM awr_team.workstream_ownership
+                 WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3",
+                &[&tenant_id, &project_id, &work_id],
+            )
+            .await?;
+        match row {
+            Some(r) => {
+                let stream: Id = r
+                    .get::<_, String>(0)
+                    .parse()
+                    .map_err(|_| PgError::Forbidden)?;
+                auth.access
+                    .authorize(&auth.catalog, stream, WorkstreamAction::Write)
+                    .map_err(|_| PgError::Forbidden)?;
+            }
+            None => {
+                // Unbound/new draft work: require at least one live write grant
+                // (already checked) but do not invent stream authority.
+                if !auth.access.grants.iter().any(|g| g.write) {
+                    return Err(PgError::Forbidden);
+                }
+            }
+        }
     }
     Ok(())
 }
