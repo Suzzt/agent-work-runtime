@@ -275,7 +275,11 @@ pub fn independent_review_eligible(role: RoleTemplate) -> bool {
     !matches!(role, RoleTemplate::Reader)
 }
 
-fn scope_covers(scope: &AuthorityScope, resource: &ResourceRef, now_unix_ms: u64) -> TeamResult<()> {
+fn scope_covers(
+    scope: &AuthorityScope,
+    resource: &ResourceRef,
+    now_unix_ms: u64,
+) -> TeamResult<()> {
     if scope.revoked {
         return Err(TeamError::PermissionDenied("authority revoked".into()));
     }
@@ -505,9 +509,7 @@ pub fn preview_legacy_migration(
             LegacyRole::Admin => {
                 suggested = Some(RoleTemplate::ProjectAdmin);
                 granted = template_actions(RoleTemplate::ProjectAdmin);
-                notes.push(
-                    "legacy admin maps to project_admin template before withholding".into(),
-                );
+                notes.push("legacy admin maps to project_admin template before withholding".into());
             }
         }
     }

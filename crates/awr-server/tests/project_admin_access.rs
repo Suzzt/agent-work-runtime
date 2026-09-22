@@ -83,8 +83,7 @@ async fn mcp(base: &str, token: &str) -> McpClient {
 }
 
 fn member_plan() -> AdminAccessPlan {
-    let token =
-        "awr1.mcp-member.2222222222222222222222222222222222222222222222222222222222222222";
+    let token = "awr1.mcp-member.2222222222222222222222222222222222222222222222222222222222222222";
     serde_json::from_value(json!({
         "protocol_version":1,
         "subject":{"id":"mcp-human","kind":"human","display_name":"MCP member"},
@@ -137,17 +136,25 @@ async fn admin_can_preview_apply_via_mcp_and_http_non_admin_denied_no_raw_secret
     }
 
     let plan = member_plan();
-    let preview_args = json!({"protocol_version":1,"plan":plan}).as_object().unwrap().clone();
+    let preview_args = json!({"protocol_version":1,"plan":plan})
+        .as_object()
+        .unwrap()
+        .clone();
     let preview = admin_mcp
-        .call_tool(CallToolRequestParams::new("awr_team_access_preview".to_owned()).with_arguments(preview_args))
+        .call_tool(
+            CallToolRequestParams::new("awr_team_access_preview".to_owned())
+                .with_arguments(preview_args),
+        )
         .await
         .unwrap();
     let preview_val: Value = preview.structured_content.clone().unwrap();
     assert_eq!(preview_val["applied"], false);
     assert!(!preview_val.to_string().contains("awr1.mcp-member."));
-    assert!(!preview_val
-        .to_string()
-        .contains(plan.credential.as_ref().unwrap().secret_hash.as_str()));
+    assert!(
+        !preview_val
+            .to_string()
+            .contains(plan.credential.as_ref().unwrap().secret_hash.as_str())
+    );
 
     let apply_args = json!({
         "protocol_version":1,
@@ -160,7 +167,10 @@ async fn admin_can_preview_apply_via_mcp_and_http_non_admin_denied_no_raw_secret
     .unwrap()
     .clone();
     let applied = admin_mcp
-        .call_tool(CallToolRequestParams::new("awr_team_access_apply".to_owned()).with_arguments(apply_args))
+        .call_tool(
+            CallToolRequestParams::new("awr_team_access_apply".to_owned())
+                .with_arguments(apply_args),
+        )
         .await
         .unwrap();
     let applied_val: Value = applied.structured_content.clone().unwrap();
@@ -178,10 +188,7 @@ async fn admin_can_preview_apply_via_mcp_and_http_non_admin_denied_no_raw_secret
         )
         .await
         .unwrap();
-    assert_eq!(
-        outcome.structured_content.unwrap()["outcome"],
-        "committed"
-    );
+    assert_eq!(outcome.structured_content.unwrap()["outcome"], "committed");
 
     // HTTP admin preview works.
     let http_preview = client
@@ -264,5 +271,4 @@ async fn admin_can_preview_apply_via_mcp_and_http_non_admin_denied_no_raw_secret
         .await
         .unwrap();
     assert_eq!(forged.status(), reqwest::StatusCode::FORBIDDEN);
-
 }
