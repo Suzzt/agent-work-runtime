@@ -1,0 +1,16 @@
+{
+  "case": "resource_limits_positive_and_negative",
+  "candidates": 10,
+  "policy": {
+    "max_assessments": 3
+  },
+  "expect": {
+    "kept": 3,
+    "omitted_count_min": 7,
+    "truncation_reason": "assessments_exceeded",
+    "hard_gate_not": "pass"
+  },
+  "negative": {
+    "description": "Truncation must not report Pass / low-risk as if scan completed"
+  }
+}

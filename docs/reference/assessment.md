@@ -66,7 +66,9 @@ as `not_evaluated` or field `state=unsupported` until implemented):
   construction land in `awr_core::fact_snapshot` / `awr_runtime::fact_snapshot`;
   fixtures under `tests/fixtures/assessment/signals/`. WorkspaceFacts only via
   host supply or explicit collection; prepare does not run Git/AST/network.
-- Full typed envelope runtime object beyond the frozen schema (DEC-012)
+- Typed AssessmentEnvelope compose + unknown/conflict semantics (DEC-012) —
+  `awr_core::assessment_envelope` (`compose_assessment_envelope` /
+  `evaluate_assessment`); fixtures under `tests/fixtures/assessment/envelope/`.
 - Counterexample corpus (DEC-013)
 - Composition pipeline (DEC-020) and CLI/MCP field injection (DEC-021)
 - Context packing / retention explain (DEC-030+)
@@ -91,8 +93,8 @@ Every signal in an envelope carries:
 
 | Field | Allowed values / meaning |
 | --- | --- |
-| `state` | `known` \| `missing` \| `stale` \| `conflicting` \| `unsupported` \| `unknown` |
-| `basis` | `source_declared` \| `runtime_recorded` \| `host_asserted` \| `locally_observed` \| `rule_derived` |
+| `state` | `known` | `missing` | `stale` | `conflicting` | `unsupported` | `unknown` |
+| `basis` | `source_declared` | `runtime_recorded` | `host_asserted` | `locally_observed` | `rule_derived` |
 | Classification | **fact** = source/runtime recorded value with identity; **observation** = host-asserted or locally observed, not independently verified; **inference** = rule_derived suggestion that must never be written as verified fact |
 
 Tip mapping examples:
@@ -167,7 +169,7 @@ Rules:
 
 - `null` and `unknown` mean unset / not independently established. Do not
   substitute `0`, `false`, or empty-success.
-- `assessments[].support` ∈ `supported` \| `unknown` \| `conflicting` \| `unsupported`.
+- `assessments[].support` ∈ `supported` | `unknown` | `conflicting` | `unsupported`.
 - `advisory_actions[].code` must come from the frozen advisory set below (machine
   enums, not free-form scripts).
 - `unsupported_fields` maps dotted paths → `"unknown"` for any profile field the
@@ -182,7 +184,7 @@ Maps 1:1 from tip `assess_management` / `ManagementDecision`:
 | Envelope path | Tip source |
 | --- | --- |
 | `management.decision.version` | `ManagementDecision.version` (=1) |
-| `management.decision.mode` | `undetermined` \| `lightweight` \| `continuous` |
+| `management.decision.mode` | `undetermined` | `lightweight` | `continuous` |
 | `management.decision.reasons[]` | `{code,basis,reference}` |
 | `management.decision.unknown_observations[]` | unknown host fields |
 | `management.decision.reevaluation_signals[]` | elapsed / rework signals |
@@ -204,7 +206,7 @@ Maps from tip `ActionGuidance` / prepare action view / status action guidance:
 | `action_rationale.next_action` | `ActionGuidance.next_action` |
 | `action_rationale.recheck` | `ActionGuidance.recheck` |
 | `action_rationale.max_bytes` | `ACTION_GUIDANCE_MAX_BYTES` (1024) |
-| `action_rationale.response_view` | `full` \| `summary` \| `action` when applicable |
+| `action_rationale.response_view` | `full` | `summary` | `action` when applicable |
 
 ## 6. Frozen reason codes and bases
 
@@ -367,10 +369,32 @@ recurse the repository.
 
 Machine fixtures: `tests/fixtures/assessment/signals/`.
 
-## 13. Related pages
+## 13. DEC-012 typed envelope compose (unknown / conflict)
+
+Schema id remains `awr-assessment-envelope-v1`. Pure
+`compose_assessment_envelope` / `evaluate_assessment` accept fixed identity,
+versioned `AssessmentPolicy`, `as_of`, optional `FactSnapshot`, optional
+`ManagementDecision` / `ActionGuidance`, and labeled sub-assessments.
+
+| Rule | Behavior |
+| --- | --- |
+| Support vocabulary | `supported` / `unknown` / `conflicting` / `unsupported` on each assessment; layers add `not_evaluated` |
+| Preserve raw conclusions | Each sub-assessment keeps its original `conclusion`; compose does not rewrite unknown → false / low-risk |
+| Conflict priority | Aggregate / layer merge uses Conflicting > Unknown > Unsupported > Supported > NotEvaluated |
+| Reason order | Policy `reason_code_order` sorts reason codes and assessment surfacing deterministically (no expression DSL) |
+| Hard gate (`hard_gate`) | `hard_reject` or hard reason codes → `Reject` / `Unknown`; heuristic scores never clear the gate |
+| Evidence quality | `required` / `observed` / `missing` / `stale` / `conflicting` / `unsupported` + `applicability` separately; coverage note is a field-count ratio, not probability |
+| Resource limits | Caps on assessments / advisory / candidates / return bytes; truncation sets `omitted_count` and must not claim Pass/full scan |
+| Replay | Same input + policy + `as_of` → identical `assessment_hash` |
+| Forbidden | Uncalibrated `confidence` / `probability` / `calibrated_probability` / `p_success` on conclusions |
+
+Machine fixtures: `tests/fixtures/assessment/envelope/`.
+
+## 14. Related pages
+
 
 
 - [Management intensity](management.md) — classification rules hosts still follow
 - [Workflow prepare](workflow.md) — prepare / completion preflight
 - [Daily work](daily-work.md) — status action queues
-- Fixtures: `tests/fixtures/assessment/contracts/`
+- Fixtures: `tests/fixtures/assessment/contracts/`, `signals/`, `envelope/`

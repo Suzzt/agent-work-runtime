@@ -55,6 +55,8 @@ mod guidance;
 pub use guidance::*;
 mod fact_snapshot;
 pub use fact_snapshot::*;
+mod assessment_envelope;
+pub use assessment_envelope::*;
 mod ordinary;
 pub use ordinary::*;
 

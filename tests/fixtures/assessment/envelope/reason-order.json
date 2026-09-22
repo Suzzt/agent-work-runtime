@@ -1,0 +1,10 @@
+{
+  "case": "stable_reason_and_conflict_order",
+  "input_ids": ["c_units", "a_conflict", "d_claim", "b_query"],
+  "expected_order": ["a_conflict", "d_claim", "b_query", "c_units"],
+  "notes": [
+    "hard_reject + conflicting sorts before hard Supported",
+    "then Unknown hard reason by policy reason_code_order",
+    "then non-hard Supported by id/reason rank"
+  ]
+}

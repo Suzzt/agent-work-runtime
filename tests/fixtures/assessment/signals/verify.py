@@ -17,7 +17,7 @@ def main() -> int:
     manifest = load("manifest.json")
     schema = load("schema.json")
     assert manifest["schema_id"] == schema["schema_id"]
-    assert manifest["dec_012_started"] is False
+    assert manifest["dec_012_started"] is True
     for name in manifest["fixtures"]:
         data = load(name)
         assert "case" in data, name

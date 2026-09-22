@@ -1,0 +1,11 @@
+{
+  "case": "same_input_policy_as_of_identical_hash",
+  "as_of": 42,
+  "policy_id": "tip_management_v1",
+  "policy_version": 1,
+  "expect": {
+    "repeat_compare": "assessment_hash_equal",
+    "management_mode_support": "unknown",
+    "unsupported_fields_value": "unknown"
+  }
+}

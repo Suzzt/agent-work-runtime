@@ -4,13 +4,22 @@
   "collector_version": 1,
   "work": "AWR-DEC-011",
   "title": "Bounded fact snapshot and source-quality labeling",
-  "depends_on": ["AWR-DEC-010"],
+  "depends_on": [
+    "AWR-DEC-010"
+  ],
   "ceilings": {
     "max_candidates": 256,
     "max_bytes": 262144,
     "max_scan_ops": 1024
   },
-  "signal_states": ["known", "missing", "stale", "conflicting", "unsupported", "unknown"],
+  "signal_states": [
+    "known",
+    "missing",
+    "stale",
+    "conflicting",
+    "unsupported",
+    "unknown"
+  ],
   "signal_bases": [
     "source_declared",
     "runtime_recorded",
@@ -18,7 +27,11 @@
     "locally_observed",
     "rule_derived"
   ],
-  "classifications": ["fact", "observation", "inference"],
+  "classifications": [
+    "fact",
+    "observation",
+    "inference"
+  ],
   "fixtures": [
     "stale-snapshot.json",
     "partial-results.json",
@@ -37,5 +50,5 @@
     "inference_is_not_verified_fact",
     "missing_fields_stay_missing"
   ],
-  "dec_012_started": false
+  "dec_012_started": true
 }

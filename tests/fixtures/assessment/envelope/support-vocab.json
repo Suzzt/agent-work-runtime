@@ -1,0 +1,41 @@
+{
+  "case": "support_vocab_preserves_raw_conclusions",
+  "assessments": [
+    {
+      "id": "ready",
+      "support": "supported",
+      "conclusion": true,
+      "reason_codes": [],
+      "basis_refs": ["work_readiness.ready"],
+      "hard_reject": false
+    },
+    {
+      "id": "diff",
+      "support": "unknown",
+      "conclusion": null,
+      "reason_codes": ["missing_required_field"],
+      "basis_refs": ["fact_snapshot.coverage.missing.workspace.changed_lines"],
+      "hard_reject": false
+    },
+    {
+      "id": "owner",
+      "support": "conflicting",
+      "conclusion": ["a", "b"],
+      "reason_codes": ["conflicting_signals"],
+      "basis_refs": ["fact_snapshot.coverage.conflicting.work.owner"],
+      "hard_reject": true
+    },
+    {
+      "id": "model_success",
+      "support": "unsupported",
+      "conclusion": null,
+      "reason_codes": [],
+      "basis_refs": ["profile.out_of_scope"],
+      "hard_reject": false
+    }
+  ],
+  "forbidden_coercions": [
+    {"from": "unknown", "not_to": false},
+    {"from": "unknown", "not_to": "low_risk"}
+  ]
+}
