@@ -117,8 +117,10 @@ fn shared_keys_conflict(kind: &str, key_a: &str, key_b: &str) -> bool {
 
 fn path_like_conflict(kind_a: &str, key_a: &str, kind_b: &str, key_b: &str) -> bool {
     if kind_a == "workspace" || kind_b == "workspace" {
-        // A workspace claim is exclusive for that worktree identity.
-        return kind_a == "workspace" && kind_b == "workspace";
+        // Exclusive workspace reservation conflicts with any WorktreeLocal
+        // path (file/dir/prefix) in the same worktree, in either order.
+        // Caller already matched worktree_id.
+        return true;
     }
     if kind_a == "file" && kind_b == "file" {
         return canonicalize(key_a) == canonicalize(key_b);
@@ -888,6 +890,19 @@ mod tests {
         };
         assert!(resources_conflict(&w1, &w1b));
         assert!(!resources_conflict(&w1, &w2));
+        let file = ResourceBound {
+            kind: "file".into(),
+            key: "src/main.rs".into(),
+            worktree_id: "wt-1".into(),
+        };
+        let file_other = ResourceBound {
+            kind: "file".into(),
+            key: "src/main.rs".into(),
+            worktree_id: "wt-2".into(),
+        };
+        assert!(resources_conflict(&w1, &file));
+        assert!(resources_conflict(&file, &w1));
+        assert!(!resources_conflict(&w1, &file_other));
     }
 
     #[test]
