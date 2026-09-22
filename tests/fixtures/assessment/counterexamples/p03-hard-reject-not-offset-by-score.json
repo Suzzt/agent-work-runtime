@@ -1,0 +1,15 @@
+{
+  "case": "P03",
+  "slug": "hard-reject-not-offset-by-score",
+  "kind": "positive_boundary",
+  "description": "Claim conflict hard reject stands with astronomical soft score.",
+  "level": "L1",
+  "synthetic": true,
+  "expect": {
+    "hard_gate": "reject",
+    "soft_scores_may_clear_gate": false
+  },
+  "forbidden": {
+    "average_soft_score_clears_hard_reject": true
+  }
+}

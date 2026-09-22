@@ -1,0 +1,15 @@
+{
+  "case": "P02",
+  "slug": "missing-field-stays-missing",
+  "kind": "positive_boundary",
+  "description": "Explicit missing workspace field remains missing/unknown after envelope compose.",
+  "level": "L1",
+  "synthetic": true,
+  "expect": {
+    "workspace.changed_lines": "missing",
+    "zero_fill": false
+  },
+  "forbidden": {
+    "changed_lines_equals_zero": true
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "case": "C10",
+  "slug": "two-versions-same-entity",
+  "fault": "同实体两个版本",
+  "theme": "conflict",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "entity_versions": [
+      {
+        "entity_kind": "work",
+        "entity_id": "w1",
+        "version": "5"
+      },
+      {
+        "entity_kind": "work",
+        "entity_id": "w1",
+        "version": "6"
+      }
+    ]
+  },
+  "expect": {
+    "support": "conflicting",
+    "hard_gate_in": [
+      "reject",
+      "unknown"
+    ],
+    "silent_pick_newer": false
+  },
+  "forbidden": {
+    "silent_choose_newer_version": true
+  },
+  "hard_constraint": false
+}

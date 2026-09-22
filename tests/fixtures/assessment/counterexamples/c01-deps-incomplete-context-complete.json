@@ -1,0 +1,39 @@
+{
+  "case": "C01",
+  "slug": "deps-incomplete-context-complete",
+  "fault": "依赖未完成但上下文齐全",
+  "theme": "readiness_vs_context",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "context_complete": true,
+    "dependencies_resolved": false,
+    "diagnostics": [
+      "unresolved_dependencies"
+    ]
+  },
+  "expect": {
+    "layers.context_completeness.status_in": [
+      "supported"
+    ],
+    "layers.work_readiness.status_in": [
+      "unsupported",
+      "unknown"
+    ],
+    "work_readiness.ready": false,
+    "hard_gate_in": [
+      "reject",
+      "unknown"
+    ]
+  },
+  "forbidden": {
+    "conclude_ready_from_context_alone": true,
+    "average_layer_scores_to_pass": true
+  },
+  "hard_constraint": false
+}

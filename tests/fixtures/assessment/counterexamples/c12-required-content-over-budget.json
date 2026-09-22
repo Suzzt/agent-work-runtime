@@ -1,0 +1,30 @@
+{
+  "case": "C12",
+  "slug": "required-content-over-budget",
+  "fault": "required内容超预算",
+  "theme": "time_or_byte_budget",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "mandatory_bytes": 50000,
+    "return_byte_budget": 8192,
+    "time_budget_ms": 50
+  },
+  "expect": {
+    "explicit_failure": true,
+    "mandatory_trimmed": false,
+    "hard_gate": "reject"
+  },
+  "forbidden": {
+    "trim_mandatory_to_fit_budget": true,
+    "pass_by_dropping_required": true,
+    "average_or_soft_score_offsets_hard_constraint": true
+  },
+  "hard_constraint": true,
+  "critical_family": "time_budget"
+}

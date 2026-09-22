@@ -1,0 +1,235 @@
+{
+  "work": "AWR-DEC-013",
+  "title": "Counterexample coverage matrix (pre-registered)",
+  "schema_id": "awr-assessment-counterexample-corpus-v1",
+  "schema_version": 1,
+  "acceptance_source": "docs/design ACCEPTANCE.md §1 (20 classes) + DEC-013 acceptance",
+  "level": "L1_synthetic",
+  "not_a_substitute_for": [
+    "L4_real_business"
+  ],
+  "classes": [
+    {
+      "id": "C01",
+      "slug": "deps-incomplete-context-complete",
+      "fault": "依赖未完成但上下文齐全",
+      "theme": "readiness_vs_context",
+      "fixture": "c01-deps-incomplete-context-complete.json",
+      "hard_constraint": false,
+      "critical_family": null
+    },
+    {
+      "id": "C02",
+      "slug": "cross-session-claim-during-prepare",
+      "fault": "本会话准备期间另一会话claim",
+      "theme": "wrong_task_or_claim",
+      "fixture": "c02-cross-session-claim-during-prepare.json",
+      "hard_constraint": true,
+      "critical_family": "wrong_task"
+    },
+    {
+      "id": "C03",
+      "slug": "pending-external-write-lost",
+      "fault": "未决外部写结果丢失",
+      "theme": "error_retry",
+      "fixture": "c03-pending-external-write-lost.json",
+      "hard_constraint": true,
+      "critical_family": "error_retry"
+    },
+    {
+      "id": "C04",
+      "slug": "missing-git-diff-workspace",
+      "fault": "缺git diff/工作区数据",
+      "theme": "missing_fields",
+      "fixture": "c04-missing-git-diff-workspace.json",
+      "hard_constraint": true,
+      "critical_family": "missing_fields"
+    },
+    {
+      "id": "C05",
+      "slug": "declared-small-measured-large",
+      "fault": "用户说小改动但采集范围大",
+      "theme": "declared_vs_measured",
+      "fixture": "c05-declared-small-measured-large.json",
+      "hard_constraint": false,
+      "critical_family": null
+    },
+    {
+      "id": "C06",
+      "slug": "related-signals-same-log",
+      "fault": "多个相关信号来自同一日志",
+      "theme": "evidence_independence",
+      "fixture": "c06-related-signals-same-log.json",
+      "hard_constraint": false,
+      "critical_family": null
+    },
+    {
+      "id": "C07",
+      "slug": "source-or-contract-changed",
+      "fault": "来源/合同改变",
+      "theme": "staleness",
+      "fixture": "c07-source-or-contract-changed.json",
+      "hard_constraint": false,
+      "critical_family": null
+    },
+    {
+      "id": "C08",
+      "slug": "stop-or-revoke",
+      "fault": "stop或撤权发生",
+      "theme": "revoke",
+      "fixture": "c08-stop-or-revoke.json",
+      "hard_constraint": true,
+      "critical_family": "revoke"
+    },
+    {
+      "id": "C09",
+      "slug": "instructions-in-tool-logs",
+      "fault": "指令藏于工具日志",
+      "theme": "policy_vs_data",
+      "fixture": "c09-instructions-in-tool-logs.json",
+      "hard_constraint": false,
+      "critical_family": null
+    },
+    {
+      "id": "C10",
+      "slug": "two-versions-same-entity",
+      "fault": "同实体两个版本",
+      "theme": "conflict",
+      "fixture": "c10-two-versions-same-entity.json",
+      "hard_constraint": false,
+      "critical_family": null
+    },
+    {
+      "id": "C11",
+      "slug": "collection-truncated-or-over-limit",
+      "fault": "采集截断/候选超限",
+      "theme": "coverage_gaps",
+      "fixture": "c11-collection-truncated-or-over-limit.json",
+      "hard_constraint": false,
+      "critical_family": null
+    },
+    {
+      "id": "C12",
+      "slug": "required-content-over-budget",
+      "fault": "required内容超预算",
+      "theme": "time_or_byte_budget",
+      "fixture": "c12-required-content-over-budget.json",
+      "hard_constraint": true,
+      "critical_family": "time_budget"
+    },
+    {
+      "id": "C13",
+      "slug": "critical-error-mid-or-tail-log",
+      "fault": "日志中/尾部有关键错误",
+      "theme": "truncation_safety",
+      "fixture": "c13-critical-error-mid-or-tail-log.json",
+      "hard_constraint": false,
+      "critical_family": null
+    },
+    {
+      "id": "C14",
+      "slug": "archive-corrupt-revoke-or-pin-invalid",
+      "fault": "归档损坏/撤权/pin失效",
+      "theme": "evidence_withdrawal",
+      "fixture": "c14-archive-corrupt-revoke-or-pin-invalid.json",
+      "hard_constraint": true,
+      "critical_family": "evidence_withdrawal"
+    },
+    {
+      "id": "C15",
+      "slug": "prepared-without-ack",
+      "fault": "历史prepared但没有ACK",
+      "theme": "delivery_unknown",
+      "fixture": "c15-prepared-without-ack.json",
+      "hard_constraint": true,
+      "critical_family": "delivery_unknown"
+    },
+    {
+      "id": "C16",
+      "slug": "completion-reopened-or-standard-changed",
+      "fault": "完成记录被重开/标准改变",
+      "theme": "completion_validity",
+      "fixture": "c16-completion-reopened-or-standard-changed.json",
+      "hard_constraint": false,
+      "critical_family": null
+    },
+    {
+      "id": "C17",
+      "slug": "few-samples-cancel-or-cost-unmeasured",
+      "fault": "历史少样本/取消/费用缺测",
+      "theme": "unmeasured_stats",
+      "fixture": "c17-few-samples-cancel-or-cost-unmeasured.json",
+      "hard_constraint": false,
+      "critical_family": null
+    },
+    {
+      "id": "C18",
+      "slug": "replay-same-input-policy-as-of",
+      "fault": "相同输入+policy+as_of回放",
+      "theme": "determinism",
+      "fixture": "c18-replay-same-input-policy-as-of.json",
+      "hard_constraint": false,
+      "critical_family": null
+    },
+    {
+      "id": "C19",
+      "slug": "no-qualified-candidate-or-capability-expired",
+      "fault": "没有合格候选/能力过期",
+      "theme": "auto_no_advice",
+      "fixture": "c19-no-qualified-candidate-or-capability-expired.json",
+      "hard_constraint": false,
+      "critical_family": null
+    },
+    {
+      "id": "C20",
+      "slug": "explain-disabled-or-legacy-consumer",
+      "fault": "explain禁用/旧CLI或MCP消费者",
+      "theme": "legacy_compat",
+      "fixture": "c20-explain-disabled-or-legacy-consumer.json",
+      "hard_constraint": false,
+      "critical_family": null
+    }
+  ],
+  "positives": [
+    {
+      "id": "P01",
+      "slug": "ready-context-admission-boundary",
+      "fixture": "p01-ready-context-admission-boundary.json"
+    },
+    {
+      "id": "P02",
+      "slug": "missing-field-stays-missing",
+      "fixture": "p02-missing-field-stays-missing.json"
+    },
+    {
+      "id": "P03",
+      "slug": "hard-reject-not-offset-by-score",
+      "fixture": "p03-hard-reject-not-offset-by-score.json"
+    },
+    {
+      "id": "P04",
+      "slug": "baseline-off-candidate-on-identity",
+      "fixture": "p04-baseline-off-candidate-on-identity.json"
+    },
+    {
+      "id": "P05",
+      "slug": "metric-families-separated",
+      "fixture": "p05-metric-families-separated.json"
+    }
+  ],
+  "critical_families_zero_tolerance": [
+    "error_retry",
+    "revoke",
+    "wrong_task",
+    "evidence_withdrawal",
+    "missing_fields",
+    "delivery_unknown",
+    "time_budget"
+  ],
+  "hard_constraint_rule": "critical family violations are hard fails; soft-score averages must not offset them",
+  "counts": {
+    "counterexamples": 20,
+    "positives": 5,
+    "critical_with_hard_constraint": 7
+  }
+}

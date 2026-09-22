@@ -1,0 +1,28 @@
+{
+  "case": "C11",
+  "slug": "collection-truncated-or-over-limit",
+  "fault": "采集截断/候选超限",
+  "theme": "coverage_gaps",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "candidates": 400,
+    "max_candidates": 256,
+    "truncated": true
+  },
+  "expect": {
+    "report_coverage_and_gaps": true,
+    "claim_full_scan": false,
+    "hard_gate_not": "pass"
+  },
+  "forbidden": {
+    "claim_full_scan_after_truncation": true,
+    "pass_despite_omitted_required": true
+  },
+  "hard_constraint": false
+}

@@ -1,0 +1,32 @@
+{
+  "case": "C16",
+  "slug": "completion-reopened-or-standard-changed",
+  "fault": "完成记录被重开/标准改变",
+  "theme": "completion_validity",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "prior_completion_receipt_id": "rcpt-1",
+    "completion_standard_version": "v2",
+    "prior_standard_version": "v1"
+  },
+  "expect": {
+    "original_receipt_retained": true,
+    "current_completion_reevaluated": true,
+    "layers.completion_validity.status_in": [
+      "unknown",
+      "unsupported",
+      "conflicting"
+    ]
+  },
+  "forbidden": {
+    "erase_original_receipt": true,
+    "reuse_old_pass_under_new_standard": true
+  },
+  "hard_constraint": false
+}

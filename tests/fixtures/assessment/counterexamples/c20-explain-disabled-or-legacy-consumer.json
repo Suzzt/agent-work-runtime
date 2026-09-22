@@ -1,0 +1,27 @@
+{
+  "case": "C20",
+  "slug": "explain-disabled-or-legacy-consumer",
+  "fault": "explain禁用/旧CLI或MCP消费者",
+  "theme": "legacy_compat",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "assessment_explain": "off",
+    "consumer": "legacy_cli"
+  },
+  "expect": {
+    "legacy_contract_preserved": true,
+    "original_hard_protections_active": true,
+    "new_explain_required": false
+  },
+  "forbidden": {
+    "disable_claim_completion_guards_when_explain_off": true,
+    "break_unnegotiated_consumers": true
+  },
+  "hard_constraint": false
+}

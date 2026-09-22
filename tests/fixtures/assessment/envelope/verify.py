@@ -17,7 +17,7 @@ def load(name: str):
 def main() -> int:
     manifest = load("manifest.json")
     assert manifest["schema_id"] == "awr-assessment-envelope-v1"
-    assert manifest["dec_013_started"] is False
+    assert manifest["dec_013_started"] is True
     assert set(manifest["support_vocab"]) == {
         "supported",
         "unknown",
