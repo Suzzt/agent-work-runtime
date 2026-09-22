@@ -324,6 +324,9 @@ pub fn query_business_action(op: &str) -> Option<awr_team::Action> {
         "source.content",
         "artifact.content",
         "planning.outcome",
+        "audit.history",
+        "audit.export",
+        "audit.count",
     ];
     if QUERIES.contains(&op) {
         Some(awr_team::Action::WorkRead)

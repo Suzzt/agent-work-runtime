@@ -297,6 +297,36 @@ impl OperatorAccess {
         let event = json!({"operator_role":operator,"actor_id":plan.actor.id,"client_id":plan.client_id,"request_id":request});
         tx.execute("INSERT INTO awr_team.events(tenant_id,project_id,id,project_revision,event_index,event_type,actor_id,payload_json)
             VALUES($1,$2,$3,$4,0,'access.changed',$5,$6)",&[&plan.tenant_id,&plan.project_id,&crate::tx::new_id(),&revision,&plan.actor.id,&event]).await?;
+        // TMCP-040: owner access apply also binds ops audit in-TX.
+        {
+            let summary = serde_json::json!({
+                "plan_digest": plan_digest,
+                "actor_id": plan.actor.id,
+                "client_id": plan.client_id,
+                "operator_role": operator,
+            });
+            let digest = crate::ops_audit::digest_of(&summary);
+            let audit = crate::ops_audit::OpsAuditWrite {
+                category: crate::ops_audit::OpsCategory::Access,
+                action: "access.manage_project".into(),
+                result: "committed",
+                person_id: None,
+                actor_id: plan.actor.id.clone(),
+                client_id: plan.client_id.clone(),
+                target_kind: "access_plan".into(),
+                target_id: Some(plan.actor.id.clone()),
+                work_id: None,
+                change_id: None,
+                request_id: Some(request.to_string()),
+                membership_version: None,
+                authority_version: None,
+                policy_version: Some(awr_team::PERMISSION_POLICY_VERSION as i32),
+                source_version: None,
+                digest: Some(digest),
+                summary,
+            };
+            crate::ops_audit::record_in_tx(&tx, &plan.tenant_id, &plan.project_id, &audit).await?;
+        }
         tx.commit().await?;
         Ok(json!({"replayed":false,"receipt":receipt}))
     }
@@ -794,12 +824,32 @@ impl ProjectAccessStore {
         crate::check_schema(&client).await?;
         let tx = client.transaction().await?;
         let auth = authenticate(&tx, tenant, project, bearer).await?;
-        authorize_domain_action(
+        if let Err(err) = authorize_domain_action(
             &auth,
             awr_team::Action::AccessManageProject,
             None,
             None,
-        )?;
+        ) {
+            tx.rollback().await?;
+            let _ = crate::ops_audit::record_deny(
+                self.pool.as_ref(),
+                tenant,
+                project,
+                &crate::ops_audit::OpsDenyWrite {
+                    category: crate::ops_audit::OpsCategory::Access,
+                    action: "access.manage_project".into(),
+                    actor_id: Some(auth.actor_id.clone()),
+                    client_id: Some(auth.client_id.clone()),
+                    person_id: None,
+                    target_kind: Some("member".into()),
+                    target_id: Some(plan.subject.id.clone()),
+                    request_id: Some(request.to_string()),
+                    reason_code: "permission_denied".into(),
+                },
+            )
+            .await;
+            return Err(err);
+        }
         refuse_self_special_elevation(&auth, plan)?;
         if let Some(r) = tx
             .query_opt(
@@ -932,6 +982,28 @@ impl ProjectAccessStore {
             ],
         )
         .await?;
+        // TMCP-040: bind ops audit in the same TX as access receipt/event.
+        {
+            let summary = serde_json::json!({
+                "plan_digest": plan_digest,
+                "remove_membership": plan.remove_membership,
+                "subject_actor_id": plan.subject.id,
+                "subject_client_id": plan.subject_client_id,
+                "role": plan.role,
+            });
+            let digest = crate::ops_audit::digest_of(&summary);
+            let mut audit = crate::ops_audit::write_from_auth(
+                &auth,
+                crate::ops_audit::OpsCategory::Access,
+                "access.manage_project",
+                "access_plan",
+            );
+            audit.request_id = Some(request.to_string());
+            audit.target_id = Some(plan.subject.id.clone());
+            audit.digest = Some(digest);
+            audit.summary = summary;
+            crate::ops_audit::record_in_tx(&tx, tenant, project, &audit).await?;
+        }
         // Concurrent membership revoke of the caller must not commit. Intentional
         // self-demotion / last-admin handoff is allowed when another admin remains.
         let self_demotion = plan.subject.id == auth.actor_id

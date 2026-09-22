@@ -411,6 +411,34 @@ impl ReviewStore {
             }),
         )
         .await?;
+        {
+            let summary = json!({
+                "round_id": round_id,
+                "decision": decision,
+                "independence_kind": independence_kind,
+                "reviewer_person_id": reviewer_person,
+            });
+            let audit = crate::ops_audit::OpsAuditWrite {
+                category: crate::ops_audit::OpsCategory::Delivery,
+                action: "review.decide".into(),
+                result: "committed",
+                person_id: Some(reviewer_person.clone()),
+                actor_id: reviewer_actor_id.to_string(),
+                client_id: "review".into(),
+                target_kind: "review".into(),
+                target_id: Some(round_id.to_string()),
+                work_id: Some(work_id.clone()),
+                change_id: None,
+                request_id: None,
+                membership_version: None,
+                authority_version: None,
+                policy_version: Some(awr_team::PERMISSION_POLICY_VERSION as i32),
+                source_version: None,
+                digest: Some(crate::ops_audit::digest_of(&summary)),
+                summary,
+            };
+            crate::ops_audit::record_in_tx(&tx, tenant_id, project_id, &audit).await?;
+        }
         tx.commit().await?;
         Ok(ReviewRound {
             id: round_id.into(),
@@ -839,6 +867,34 @@ impl ReviewStore {
             &result,
         )
         .await?;
+        {
+            let summary = json!({
+                "receipt_id": receipt_id,
+                "contract_hash": evidence.contract_hash,
+                "policy": policy,
+                "request_id": request_id,
+            });
+            let audit = crate::ops_audit::OpsAuditWrite {
+                category: crate::ops_audit::OpsCategory::Delivery,
+                action: "delivery.finalize".into(),
+                result: "committed",
+                person_id: None,
+                actor_id: actor_id.to_string(),
+                client_id: client_id.to_string(),
+                target_kind: "completion".into(),
+                target_id: Some(receipt_id.clone()),
+                work_id: Some(evidence.work_id.clone()),
+                change_id: None,
+                request_id: Some(request_id.to_string()),
+                membership_version: None,
+                authority_version: None,
+                policy_version: Some(awr_team::PERMISSION_POLICY_VERSION as i32),
+                source_version: Some(evidence.contract_hash.clone()),
+                digest: Some(crate::ops_audit::digest_of(&summary)),
+                summary,
+            };
+            crate::ops_audit::record_in_tx(&tx, tenant_id, project_id, &audit).await?;
+        }
         tx.commit().await?;
         Ok(CompletionReceipt {
             id: receipt_id,
@@ -969,6 +1025,36 @@ impl ReviewStore {
             }),
         )
         .await?;
+        {
+            let summary = json!({
+                "delivery_id": id,
+                "repository": repository,
+                "pr_number": pr_number,
+                "head_sha": head_sha,
+                "fact_source": fact_source,
+                "contract_hash": contract_hash,
+            });
+            let audit = crate::ops_audit::OpsAuditWrite {
+                category: crate::ops_audit::OpsCategory::Delivery,
+                action: "delivery.register_pr".into(),
+                result: "committed",
+                person_id: owner_person_id.map(|s| s.to_string()),
+                actor_id: actor_id.to_string(),
+                client_id: "delivery".into(),
+                target_kind: "delivery".into(),
+                target_id: Some(id.clone()),
+                work_id: Some(work_id.to_string()),
+                change_id: None,
+                request_id: None,
+                membership_version: None,
+                authority_version: None,
+                policy_version: Some(awr_team::PERMISSION_POLICY_VERSION as i32),
+                source_version: Some(contract_hash.to_string()),
+                digest: Some(crate::ops_audit::digest_of(&summary)),
+                summary,
+            };
+            crate::ops_audit::record_in_tx(&tx, tenant_id, project_id, &audit).await?;
+        }
         tx.commit().await?;
         Ok(PrDelivery {
             id,
@@ -1114,6 +1200,35 @@ impl ReviewStore {
             }),
         )
         .await?;
+        {
+            let summary = json!({
+                "delivery_id": delivery_id,
+                "expected_head_sha": expected_head_sha,
+                "gh_approved": cur_approved,
+                "gh_merged": cur_merged,
+                "fact_source": fact_source,
+            });
+            let audit = crate::ops_audit::OpsAuditWrite {
+                category: crate::ops_audit::OpsCategory::Delivery,
+                action: "delivery.observe_pr".into(),
+                result: "committed",
+                person_id: None,
+                actor_id: actor_id.to_string(),
+                client_id: "delivery".into(),
+                target_kind: "delivery".into(),
+                target_id: Some(delivery_id.to_string()),
+                work_id: Some(work_id.clone()),
+                change_id: None,
+                request_id: None,
+                membership_version: None,
+                authority_version: None,
+                policy_version: Some(awr_team::PERMISSION_POLICY_VERSION as i32),
+                source_version: Some(contract_hash.clone()),
+                digest: Some(crate::ops_audit::digest_of(&summary)),
+                summary,
+            };
+            crate::ops_audit::record_in_tx(&tx, tenant_id, project_id, &audit).await?;
+        }
         tx.commit().await?;
         Ok(PrDelivery {
             id: delivery_id.into(),

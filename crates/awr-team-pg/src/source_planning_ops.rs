@@ -262,19 +262,13 @@ impl SourceStore {
             proposed_notes: req.proposed_notes.clone(),
             author_person_id: req.author_person_id.clone(),
         };
-        let result = self
-            .submit_planning_suggestion(tenant_id, project_id, bearer, &submit)
-            .await?;
-        self.commit_planning_receipt(
-            tenant_id,
-            project_id,
-            bearer,
-            &req.request_id,
-            "planning.propose",
-            &hash,
-            result,
-        )
-        .await
+        let bind = crate::source::planning::PlanningCommandBind {
+            request_id: req.request_id.clone(),
+            op: "planning.propose".into(),
+            request_hash: hash,
+        };
+        self.submit_planning_suggestion_bound(tenant_id, project_id, bearer, &submit, Some(&bind))
+            .await
     }
 
     pub async fn planning_draft(
@@ -307,8 +301,15 @@ impl SourceStore {
                     self_approve_policy: req.self_approve_policy.clone(),
                     author_person_id: req.author_person_id.clone(),
                 };
-                self.create_planning_candidate(tenant_id, project_id, bearer, &create)
-                    .await?
+                let bind = crate::source::planning::PlanningCommandBind {
+                    request_id: req.request_id.clone(),
+                    op: "planning.edit_draft".into(),
+                    request_hash: hash.clone(),
+                };
+                self.create_planning_candidate_bound(
+                    tenant_id, project_id, bearer, &create, Some(&bind),
+                )
+                .await?
             }
             "edit" => {
                 let candidate_id = req.candidate_id.as_deref().ok_or_else(|| {

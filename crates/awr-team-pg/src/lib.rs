@@ -9,6 +9,7 @@ mod lease;
 mod lock_order;
 mod migrate;
 mod operator_access;
+mod ops_audit;
 mod operator_recovery;
 mod operator_history;
 mod operator_backup;
@@ -46,6 +47,7 @@ pub use lease::{ClaimRecord, LeaseStore, SessionRecord};
 pub use lock_order::{ResourceLockKey, lock_claim_after_work, lock_resources_sorted, lock_works_sorted, sort_resource_keys, sort_work_ids};
 pub use migrate::{EXPECTED_SCHEMA_VERSION, check_schema, migrate};
 pub use operator_access::{AccessActor, AccessCredential, AccessGrant, AccessPlan, AdminAccessPlan, OperatorAccess, ProjectAccessStore};
+pub use ops_audit::{OpsAuditStore, OpsCategory, OpsDenyWrite, OpsHistoryFilter, OpsAuditWrite, DENY_CAPACITY_PER_PROJECT, digest_of, record_deny, record_in_tx, redact_summary};
 pub use operator_recovery::OperatorRecovery;
 pub use operator_history::OperatorHistory;
 pub use operator_backup::OperatorBackup;
@@ -82,7 +84,7 @@ pub use source::{
     CandidateRecord, CurrentSource, CurrentWorkstreamSource, IngestRequest, SOURCE_BINDING_FILE,
     SoleSourceBinding, SoleSourceKind, SourceFile, SourceStore, WORKSTREAMS_FILE,
 };
-pub use source::planning::{DraftCandidateCreate, SuggestionSubmit};
+pub use source::planning::{DraftCandidateCreate, PlanningCommandBind, SuggestionSubmit};
 pub use source::planning_ops::{PlanningApproveRequest, PlanningDraftRequest, PlanningPublishRequest, PlanningSuggestRequest};
 pub use source::writeback::{ActivationImpactGate, WritebackActivateRequest};
 pub use tx::{CommandOutcome, CommandRequest, TeamStore};
@@ -111,6 +113,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 30);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 31);
     }
 }
