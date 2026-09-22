@@ -113,6 +113,25 @@ impl ExecutionStore {
             }
             return replay_execution(&result);
         }
+        // Fixed lock order (WS-023): discover work_id unlocked, lock task, then claim.
+        let peek = tx
+            .query_opt(
+                "SELECT scope_id, work_id FROM awr_team.claims
+                 WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+                &[&tenant_id, &project_id, &claim_id],
+            )
+            .await?
+            .ok_or(PgError::LeaseExpired)?;
+        let scope_id: String = peek.get(0);
+        let work_id: String = peek.get(1);
+        crate::lock_order::lock_works_sorted(
+            &tx,
+            tenant_id,
+            project_id,
+            &scope_id,
+            &[work_id.clone()],
+        )
+        .await?;
         let claim = tx
             .query_opt(
                 "SELECT session_id, work_id, scope_id, actor_id, fence, state

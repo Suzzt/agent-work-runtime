@@ -138,6 +138,16 @@ impl LeaseStore {
         if session_actor != actor_id || session_client != client_id || state != "active" {
             return Err(PgError::Forbidden);
         }
+        // Task row before claim mutations (WS-023 lock order), even under a future
+        // narrower project Share mode.
+        crate::lock_order::lock_works_sorted(
+            &tx,
+            tenant_id,
+            project_id,
+            &scope_id,
+            &[work_id.clone()],
+        )
+        .await?;
         expire_due(&tx, tenant_id, project_id, &scope_id, &work_id).await?;
         let blocked: bool = tx
             .query_opt(
@@ -306,6 +316,24 @@ impl LeaseStore {
             }
             return replay_claim(&existing.1);
         }
+        let peek = tx
+            .query_opt(
+                "SELECT scope_id, work_id FROM awr_team.claims
+                 WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+                &[&tenant_id, &project_id, &claim_id],
+            )
+            .await?
+            .ok_or_else(|| PgError::Protocol("claim not found".into()))?;
+        let scope_id: String = peek.get(0);
+        let work_id: String = peek.get(1);
+        crate::lock_order::lock_works_sorted(
+            &tx,
+            tenant_id,
+            project_id,
+            &scope_id,
+            &[work_id.clone()],
+        )
+        .await?;
         let row = tx
             .query_opt(
                 "SELECT session_id, actor_id, work_id, fence, lease_version, expires_at::text, state, scope_id
