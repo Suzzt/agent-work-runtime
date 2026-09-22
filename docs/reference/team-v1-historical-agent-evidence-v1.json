@@ -1,0 +1,1519 @@
+{
+  "schema_version": 1,
+  "index_id": "team-p13-pr50-historical-agent-evidence-v1",
+  "index_seal_algorithm": "sha256(UTF-8 bytes with CRLF normalized to LF)",
+  "review_state": "historical_pending_review",
+  "declaration_source": {
+    "git_commit_sha": "a9b7123aa3f31a729dd180f03a378faabf1c0a42",
+    "matrix_git_blob_sha1": "e1e25d211d331ab18263da17b576e1eab5ad51ae",
+    "matrix_file_sha256": "b6761eda49cdf5e62853c6eac99df12ef2db80ccb9b8277823211fefd6dee685",
+    "completion_manifest_sha256": "9cdad25c6fee024722db7d79321acf6121a6bfbb82baa1723fc89e1e8f69c27f"
+  },
+  "case_definition_fingerprint": {
+    "version": "team-v1-case-definition-v1",
+    "algorithm": "sha256(compact JSON object with ordered id,title,phase,required fields)",
+    "historical_run_binding": null
+  },
+  "retained_material_review": {
+    "observed_at": "2026-09-22T06:47:37.925265+00:00",
+    "reviewed_main_sha": "85698e4adff721659100059dfc870b58879ac294",
+    "case_summary_count": 42,
+    "summary_hashes_match_completion_manifest": true,
+    "existing_referenced_artifact_mismatches": 0,
+    "case_ids_with_missing_referenced_temporary_outputs": [
+      "TC-026",
+      "TC-031",
+      "TC-039",
+      "TC-041",
+      "TC-042",
+      "TC-043",
+      "TC-059",
+      "TC-069"
+    ],
+    "retained_driver_sha256": "aa0f940bde342096d9fdcdd72ee8c95872f5c4879e4df01ea82e9eef28578963",
+    "retained_driver_historical_binding": null,
+    "full_chain_reverified": false
+  },
+  "limitations": [
+    "Hash agreement locates retained summaries; it does not verify the reported business outcomes.",
+    "The historical tested source, driver-to-run binding, run identity and time, participant identities, independent oracle identity, and explicit expected result remain unknown.",
+    "The retained driver hash describes bytes observed during this review, not a proven historical run input.",
+    "No live Agent, PostgreSQL, HTTP, MCP, or CLI transport rerun was performed.",
+    "The case-definition fingerprint covers the public id, title, phase, and required flag; it is not a historical run-to-full-acceptance-contract binding.",
+    "New or promoted acceptance requires a new versioned evidence contract; this sealed historical index rejects additions."
+  ],
+  "entries": [
+    {
+      "case_id": "TC-001",
+      "case_definition": {
+        "id": "TC-001",
+        "title": "源声明 completed 不能直接完成团队任务",
+        "phase": "P8",
+        "required": true,
+        "sha256": "97405d49d844cc34128e1b7c7df5d5a89ab3e133d3c82e59b56058692b32d6a2"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "054386de48dcf666043982f818b8df74d2017733f2887e23d49977ae44c5805b"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-001.json",
+        "sha256": "054386de48dcf666043982f818b8df74d2017733f2887e23d49977ae44c5805b"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-002",
+      "case_definition": {
+        "id": "TC-002",
+        "title": "Agent 自报不能升级为可信验证",
+        "phase": "P8",
+        "required": true,
+        "sha256": "d81c0657b56a0e3b463a59971fb9e640b928fa019d03266a69ab64d45cff9c49"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "70886d4562a7f84c7ca386c9f76acc522ed09778d3fd6580ba2f38a1c47888cf"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-002.json",
+        "sha256": "70886d4562a7f84c7ca386c9f76acc522ed09778d3fd6580ba2f38a1c47888cf"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-003",
+      "case_definition": {
+        "id": "TC-003",
+        "title": "同任务跨进程竞争",
+        "phase": "P5",
+        "required": true,
+        "sha256": "9b65276fecd7ef022b48eeff0da78574bba32f1410d2ed335de531166b66b3ea"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "53a6f155163933196d7a1af0e97eb68d2851285795f65b6a85d873ea8c23bd94"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-003.json",
+        "sha256": "53a6f155163933196d7a1af0e97eb68d2851285795f65b6a85d873ea8c23bd94"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-004",
+      "case_definition": {
+        "id": "TC-004",
+        "title": "不同任务不因全局客户端 CAS 相互失败",
+        "phase": "P5",
+        "required": true,
+        "sha256": "fff905a667e0246533c47b1754278e71df8d917fbf3f4273fdc065771c3d7ad1"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "c91120139667a7757d2adc55fa97d60f3ea083f52d46b2c313cc782cad2eec73"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-004.json",
+        "sha256": "c91120139667a7757d2adc55fa97d60f3ea083f52d46b2c313cc782cad2eec73"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-006",
+      "case_definition": {
+        "id": "TC-006",
+        "title": "旧 fence 不能推进当前工作",
+        "phase": "P5",
+        "required": true,
+        "sha256": "fd95a2b03e9f7ada822f86049ca2140054000dcd99032098e715fe8904a58045"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "75344776c903f217a4aca58fc8c763cd50169f65e42f1f5d476a715f526fdd51"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-006.json",
+        "sha256": "75344776c903f217a4aca58fc8c763cd50169f65e42f1f5d476a715f526fdd51"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-008",
+      "case_definition": {
+        "id": "TC-008",
+        "title": "受影响任务占用时拒绝合同激活",
+        "phase": "P6",
+        "required": true,
+        "sha256": "7244cd1f311d79a8738ff72038e16fad065648ac7ca94ad99ca55f58240284a2"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "1ee7a2f28314ee9ec363156a3cd03229cd5bf2dd23aaba4751634b07937c0586"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-008.json",
+        "sha256": "1ee7a2f28314ee9ec363156a3cd03229cd5bf2dd23aaba4751634b07937c0586"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-009",
+      "case_definition": {
+        "id": "TC-009",
+        "title": "旧合同证据不能完成新合同",
+        "phase": "P8",
+        "required": true,
+        "sha256": "0ab365a215bdcc109581d3fb40c90f7ea9e3dd0d06c25c55f861afe211f1591b"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "a69cb65064b90bd7de68cfe80b24faac8a9d99e35896fbed3ee95a9f82c16dba"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-009.json",
+        "sha256": "a69cb65064b90bd7de68cfe80b24faac8a9d99e35896fbed3ee95a9f82c16dba"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-010",
+      "case_definition": {
+        "id": "TC-010",
+        "title": "候选依赖图完整验证",
+        "phase": "P6",
+        "required": true,
+        "sha256": "dbaa8f8e4d06d0f6f5d2bbd51d890b3cfd0c43ad9199875f366e3f856a09d97d"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "3c213c473d7dfe7f268d6e6216eff6720940a883f81411e3f4b22143cb9ca154"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-010.json",
+        "sha256": "3c213c473d7dfe7f268d6e6216eff6720940a883f81411e3f4b22143cb9ca154"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-011",
+      "case_definition": {
+        "id": "TC-011",
+        "title": "conversation 不能跨参与者劫持",
+        "phase": "P5",
+        "required": true,
+        "sha256": "44dfb59dc8b55838cf8cbfa8ed90b236c134a6b55a3787e5119dae08437cd835"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "1709fdf040f12c921b1ec668f79267d706ccde2bf1234b319511fd439fb636dd"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-011.json",
+        "sha256": "1709fdf040f12c921b1ec668f79267d706ccde2bf1234b319511fd439fb636dd"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-013",
+      "case_definition": {
+        "id": "TC-013",
+        "title": "交接原子化与旧权限失效",
+        "phase": "P5",
+        "required": true,
+        "sha256": "12cff9ba567deca6e1f5d17579fe6ea4ed0e9794374fe028a05e7c8d9f0e76c0"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "4ae2894356eb8570d3d3536372571ff313432ab75d1d111a9a1791faa6d2fa41"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-013.json",
+        "sha256": "4ae2894356eb8570d3d3536372571ff313432ab75d1d111a9a1791faa6d2fa41"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-014",
+      "case_definition": {
+        "id": "TC-014",
+        "title": "未知执行阻止不安全再派发",
+        "phase": "P7",
+        "required": true,
+        "sha256": "86687c8fd3390023e327942410170fc15933f200669e5c55a3f900f1f65539e5"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "fcd9da8ecdb34ba26f9de25fbfe6e468adca5acccd21c213db02ffa91f98f1dd"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-014.json",
+        "sha256": "fcd9da8ecdb34ba26f9de25fbfe6e468adca5acccd21c213db02ffa91f98f1dd"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-016",
+      "case_definition": {
+        "id": "TC-016",
+        "title": "同请求多次提交只执行一次领域动作",
+        "phase": "P2",
+        "required": true,
+        "sha256": "6b7708dcd60f5d48c35307110f9988486be1000f8ca0b6bd94bce64ffea95ef7"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "35557b0681e176e9d34f007851c37a6b4611e0b5d38627d5ac4ebe94415d8762"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-016.json",
+        "sha256": "35557b0681e176e9d34f007851c37a6b4611e0b5d38627d5ac4ebe94415d8762"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-017",
+      "case_definition": {
+        "id": "TC-017",
+        "title": "同请求身份更换参数拒绝",
+        "phase": "P2",
+        "required": true,
+        "sha256": "debb247a9d52b175ca7a194a9b3555406bd7489749fbbc32737e9d1cdbb559a0"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "02d84cc4d15d66d111e5d14c4c332694ae99788ce8f740a662cb8d2bd996a617"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-017.json",
+        "sha256": "02d84cc4d15d66d111e5d14c4c332694ae99788ce8f740a662cb8d2bd996a617"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-020",
+      "case_definition": {
+        "id": "TC-020",
+        "title": "必需报告字节变化",
+        "phase": "P8",
+        "required": true,
+        "sha256": "05d1d2cbb0079951472440a946ca53b8f5742bea84093e870e63578916518180"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "a7d5448c7b1a21ab516bb64a48ca8a5f2695e68623d9894d9b68b5729a9fe3c8"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-020.json",
+        "sha256": "a7d5448c7b1a21ab516bb64a48ca8a5f2695e68623d9894d9b68b5729a9fe3c8"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-021",
+      "case_definition": {
+        "id": "TC-021",
+        "title": "作者与独立评审职责分离",
+        "phase": "P8",
+        "required": true,
+        "sha256": "40e33d9cd423eeecec2d959c3001d928bff7d8def2b3a6fc98c8b9471ed78a34"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "dc0e8706405c4dc4df229cd8fd4cde259c6229e77dd0d265dc6094d267106f98"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-021.json",
+        "sha256": "dc0e8706405c4dc4df229cd8fd4cde259c6229e77dd0d265dc6094d267106f98"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-022",
+      "case_definition": {
+        "id": "TC-022",
+        "title": "重复导入幂等",
+        "phase": "P9",
+        "required": true,
+        "sha256": "f25d6d4906d5db3273e9aa6f5bdda002af15b02c4f3e9651d6134abf1b0b7d5e"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "b65dd40ba15e5d1aa72e9588f94d3b1cf935daa8f89c96d7d75dffce3a06dc96"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-022.json",
+        "sha256": "b65dd40ba15e5d1aa72e9588f94d3b1cf935daa8f89c96d7d75dffce3a06dc96"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-023",
+      "case_definition": {
+        "id": "TC-023",
+        "title": "多个本地源分歧不得自动最后写入胜出",
+        "phase": "P9",
+        "required": true,
+        "sha256": "816de9aeea14632ed59d36debf63be7900d77e56f710bd6837fffe83ae3ee989"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "d1f1a0ff979d0ca6fcdb19a0315b714f29b4fe4ff085960545140001ff19cc97"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-023.json",
+        "sha256": "d1f1a0ff979d0ca6fcdb19a0315b714f29b4fe4ff085960545140001ff19cc97"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-026",
+      "case_definition": {
+        "id": "TC-026",
+        "title": "同 revision 多事件分页",
+        "phase": "P4",
+        "required": true,
+        "sha256": "1e9a347d15ad960855df730d9cb7563c1f19c6c4513fc32cd988c421ca72cc7d"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "1c9e5833af2f765e487ef91cc7ae73c784dfd444dbc103a3d37987d372580041"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-026.json",
+        "sha256": "1c9e5833af2f765e487ef91cc7ae73c784dfd444dbc103a3d37987d372580041"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-027",
+      "case_definition": {
+        "id": "TC-027",
+        "title": "跨项目读取隔离",
+        "phase": "P2",
+        "required": true,
+        "sha256": "07feee9f4cee2840b9b04de24544e052aae6e65aceaae1a30cf148ab82778c8c"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "ab74f8fd7f8735d8805054d273af933f7bec81a7e6075836d22d743a0eaae463"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-027.json",
+        "sha256": "ab74f8fd7f8735d8805054d273af933f7bec81a7e6075836d22d743a0eaae463"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-028",
+      "case_definition": {
+        "id": "TC-028",
+        "title": "跨项目关联写入隔离",
+        "phase": "P2",
+        "required": true,
+        "sha256": "51ef004b4e51a29c0b9761426c205fcafd590f8b05ff46e6c8a8ef1b34f01903"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "91e5e8e82e74b4e8857dba30e29b287a90e47573861079bb6c40bff76a76abbb"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-028.json",
+        "sha256": "91e5e8e82e74b4e8857dba30e29b287a90e47573861079bb6c40bff76a76abbb"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-030",
+      "case_definition": {
+        "id": "TC-030",
+        "title": "上下文缺必需事实不能标完整",
+        "phase": "P8",
+        "required": true,
+        "sha256": "3838b610a93924bac30c5a0ca037f7fb338a28d80aa0108d2a2a58e8fae617dd"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "3cebedf894b96ee950f7e2fa4e3dd10403d3a6a77286962cb49161f1a4f8c0de"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-030.json",
+        "sha256": "3cebedf894b96ee950f7e2fa4e3dd10403d3a6a77286962cb49161f1a4f8c0de"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-031",
+      "case_definition": {
+        "id": "TC-031",
+        "title": "旧客户端不静默进入 Team 语义",
+        "phase": "P10",
+        "required": true,
+        "sha256": "93056820ccedcd9458217444ae39e6b7f994d7bbcd1323cd2121c1ab3080b56e"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "9f0b94af79382e258c4d5cf0ec833b40d3efdc239f26c19300a4528552e46193"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-031.json",
+        "sha256": "9f0b94af79382e258c4d5cf0ec833b40d3efdc239f26c19300a4528552e46193"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-033",
+      "case_definition": {
+        "id": "TC-033",
+        "title": "无权释放他人租约",
+        "phase": "P5",
+        "required": true,
+        "sha256": "ef09bcbb6508600731429a6e6a492db9aed73b78a5ad589d1c5cd987deb07077"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "cf77fddd55b6c3676c8f98193f97f8b87bfcd182de77f7bae59b8ffe7c84fa0d"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-033.json",
+        "sha256": "cf77fddd55b6c3676c8f98193f97f8b87bfcd182de77f7bae59b8ffe7c84fa0d"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-036",
+      "case_definition": {
+        "id": "TC-036",
+        "title": "源上传路径与包安全",
+        "phase": "P3",
+        "required": true,
+        "sha256": "ea04207f8ff864027900ef0e171862a0c1f4b1564d799e2ba7e02f04c6b5c87f"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "10506980b23c6738369cb9dfd2efadcf2119cff7ceccaf68c3602af73f835ee5"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-036.json",
+        "sha256": "10506980b23c6738369cb9dfd2efadcf2119cff7ceccaf68c3602af73f835ee5"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-039",
+      "case_definition": {
+        "id": "TC-039",
+        "title": "远端断线不能本地接管团队权威",
+        "phase": "P10",
+        "required": true,
+        "sha256": "ddcaf1ee78d043d5115d7ccbca60b27d0de2242591fab1022c6df0f904c95795"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "d5327325dffd6f42b260b76512315c4e7b0fddf56d04a2e07a10b28da427d97c"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-039.json",
+        "sha256": "d5327325dffd6f42b260b76512315c4e7b0fddf56d04a2e07a10b28da427d97c"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-041",
+      "case_definition": {
+        "id": "TC-041",
+        "title": "个人模式回归",
+        "phase": "P10",
+        "required": true,
+        "sha256": "247a6513c1e1a34cc716af0777dcbe2b489a4a8cab2841728105962485c78bbf"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "00ab618a5b2d4085c8d2ebbc9d31433daf713555cf50460d6917d6aee6eaea46"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-041.json",
+        "sha256": "00ab618a5b2d4085c8d2ebbc9d31433daf713555cf50460d6917d6aee6eaea46"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-042",
+      "case_definition": {
+        "id": "TC-042",
+        "title": "canonical 编码与版本转换",
+        "phase": "P1",
+        "required": true,
+        "sha256": "fcea81cc4a1c544862444d224f418c801532a66053615a88013e93c6d67e997c"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "2e8c481cb81bef94f167b0495476011c7f9c374ca7a88a733c1e1cfa7d64eff9"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-042.json",
+        "sha256": "2e8c481cb81bef94f167b0495476011c7f9c374ca7a88a733c1e1cfa7d64eff9"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-043",
+      "case_definition": {
+        "id": "TC-043",
+        "title": "显式远端项目选择",
+        "phase": "P10",
+        "required": true,
+        "sha256": "72f9020c25e63f67259e674871be7375643e85f540f5af07821606f0c0c4450b"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "14ab21fdb34e092c7008664579f2bbb83ed8d27a47e8b1fb0caec09a4e1d8856"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-043.json",
+        "sha256": "14ab21fdb34e092c7008664579f2bbb83ed8d27a47e8b1fb0caec09a4e1d8856"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-044",
+      "case_definition": {
+        "id": "TC-044",
+        "title": "目录前缀资源冲突",
+        "phase": "P6",
+        "required": true,
+        "sha256": "88d403a375fc5f2aaddbdb5f30bfebfd730d8f0214efaadd46c1d27cff97a4e9"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "42ed662117c01b8d81fafd57bc87da1cb094c385b2661c0d005f2d0fea5b111c"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-044.json",
+        "sha256": "42ed662117c01b8d81fafd57bc87da1cb094c385b2661c0d005f2d0fea5b111c"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-045",
+      "case_definition": {
+        "id": "TC-045",
+        "title": "不支持的工作范围明确拒绝",
+        "phase": "P6",
+        "required": true,
+        "sha256": "d4d845eb45a6414b34971d59ca0048452ec67984123f495050801d02a1bf91f3"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "9f529016d2676e971a3626474d7600662ed62e48c9f64faff925edcb41cafcd9"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-045.json",
+        "sha256": "9f529016d2676e971a3626474d7600662ed62e48c9f64faff925edcb41cafcd9"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-049",
+      "case_definition": {
+        "id": "TC-049",
+        "title": "图和发布预算超限不得假装完整",
+        "phase": "P6",
+        "required": true,
+        "sha256": "3aecd986151528504dfcb902fe283debb77050860bb5a227ce39a91bcee7fb55"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "ae36de39390a6bf0fad31e81fafc12448252f5f1c0ae46ecabb4b76246a5face"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-049.json",
+        "sha256": "ae36de39390a6bf0fad31e81fafc12448252f5f1c0ae46ecabb4b76246a5face"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-050",
+      "case_definition": {
+        "id": "TC-050",
+        "title": "实际改动超出申报范围",
+        "phase": "P7",
+        "required": true,
+        "sha256": "3fe15e5aefc2c7399433f3f26817d0639e96210c4c33dbb4c7d075c32c57fb4f"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "8d83482ea75b5684492ba3b88602307be765aefac696565053052c19b0054129"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-050.json",
+        "sha256": "8d83482ea75b5684492ba3b88602307be765aefac696565053052c19b0054129"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-051",
+      "case_definition": {
+        "id": "TC-051",
+        "title": "普通确认类策略不得由执行者降级",
+        "phase": "P8",
+        "required": true,
+        "sha256": "88dee1d60d65145a107ec681b4b9bb1d1efbcdf48b31c97de78efb632f94d508"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "df648a59f3ad46b54ffc72e2e03cf6fb52638c751fbf70d4875a38e4d1db31aa"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-051.json",
+        "sha256": "df648a59f3ad46b54ffc72e2e03cf6fb52638c751fbf70d4875a38e4d1db31aa"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-052",
+      "case_definition": {
+        "id": "TC-052",
+        "title": "子任务结束不能替代父级集成验收",
+        "phase": "P6",
+        "required": true,
+        "sha256": "56bda85d47c1d1b733ae9e2830e56784fc57eff715628690147dc6194cd00c81"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "170eb019a4a7d03d7b0729a81262de03149abddb8d689b2b18d3a30c754873f4"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-052.json",
+        "sha256": "170eb019a4a7d03d7b0729a81262de03149abddb8d689b2b18d3a30c754873f4"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-055",
+      "case_definition": {
+        "id": "TC-055",
+        "title": "评审材料变化使旧批准失效",
+        "phase": "P8",
+        "required": true,
+        "sha256": "236fb06ff3ef0daa8ef31bbe3c4dbcfda486ec3ffc64985eac686de4c6a078f1"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "a656c7699c85780b3845aea90efcacd6109580a393a747ac9dde85e98aeb913b"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-055.json",
+        "sha256": "a656c7699c85780b3845aea90efcacd6109580a393a747ac9dde85e98aeb913b"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-056",
+      "case_definition": {
+        "id": "TC-056",
+        "title": "选定证据缺失不能由另一个报告替代",
+        "phase": "P8",
+        "required": true,
+        "sha256": "c1ad8ea92c998aaeac6def688c7503a708cd7f608341335c871bc123bc2e0b03"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "762919f694e3fa23c6d602df7007e7a5eb483340ff1554ccd123a4fa16fd0a9f"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-056.json",
+        "sha256": "762919f694e3fa23c6d602df7007e7a5eb483340ff1554ccd123a4fa16fd0a9f"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-058",
+      "case_definition": {
+        "id": "TC-058",
+        "title": "交接只迁移工作资料不伪称私有会话恢复",
+        "phase": "P5",
+        "required": true,
+        "sha256": "bed95bb5f7c64d1e88ac4924b85e57b5b76aa8b2f9ae0f2df204390fd6a6586f"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "cea792b79aeb3a8e5afe894c76a088db7250d5cf13a7d685301a6ef6a891d36b"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-058.json",
+        "sha256": "cea792b79aeb3a8e5afe894c76a088db7250d5cf13a7d685301a6ef6a891d36b"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-059",
+      "case_definition": {
+        "id": "TC-059",
+        "title": "64位版本数字无精度损失",
+        "phase": "P10",
+        "required": true,
+        "sha256": "9af5cd27e642403c0ae3f824c8e762e443b12a66e1bd0e5fbd22eddac655042e"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "8fa88265f5e11709ff7fa87d35a890f69efac11ceb87fe53606cf49097b716f3"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-059.json",
+        "sha256": "8fa88265f5e11709ff7fa87d35a890f69efac11ceb87fe53606cf49097b716f3"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-062",
+      "case_definition": {
+        "id": "TC-062",
+        "title": "上游变更使下游旧依据失效",
+        "phase": "P6",
+        "required": true,
+        "sha256": "4e977ea792a654b758de230a04b29973b8afcc719b9f3a2af0e52769c06bcc98"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "f563d8c1e4a0bbd12f493d036a1a57e7dec27d1e0b6051d3a5f790de319d234f"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-062.json",
+        "sha256": "f563d8c1e4a0bbd12f493d036a1a57e7dec27d1e0b6051d3a5f790de319d234f"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-063",
+      "case_definition": {
+        "id": "TC-063",
+        "title": "dirty worktree 必须绑定实际字节",
+        "phase": "P8",
+        "required": true,
+        "sha256": "26edb75db7f26268ddfcbf8974c23bf71e679be40c26ee162a11c22a3e0d451c"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "d5efa4a67f5553c019570c4ab792596c175b9ab01c2527011b329b9b999bfeda"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-063.json",
+        "sha256": "d5efa4a67f5553c019570c4ab792596c175b9ab01c2527011b329b9b999bfeda"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-064",
+      "case_definition": {
+        "id": "TC-064",
+        "title": "历史身份与证据导入不提升可信度",
+        "phase": "P9",
+        "required": true,
+        "sha256": "9aabeca65ef5811b32c557cfc3045651f18d4f977e09ad9ff956620d48e16360"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "2a9c2fc42b129468e3824259f9d740b29f11a2cd2b2c50cd5d27eb0e242576a1"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-064.json",
+        "sha256": "2a9c2fc42b129468e3824259f9d740b29f11a2cd2b2c50cd5d27eb0e242576a1"
+      },
+      "supported_scope": "retained_summary_integrity_only",
+      "unverified_claims": [
+        "business_outcome_not_independently_reverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    },
+    {
+      "case_id": "TC-069",
+      "case_definition": {
+        "id": "TC-069",
+        "title": "HTTP MCP CLI 三入口语义一致",
+        "phase": "P10",
+        "required": true,
+        "sha256": "7e6ad7a02148d2690358a39daa54d4c39f12523d795dfcdb80d60eb7d255753c"
+      },
+      "binding": {
+        "tested_source_git_sha": null,
+        "historical_driver_sha256": null,
+        "run_id": null,
+        "run_at": null,
+        "participant_identities": null,
+        "oracle": {
+          "expected": null,
+          "observed": {
+            "claimed_result": "pass",
+            "bound_summary_sha256": "13bb47a5e620ff90221b346d31bcb1a8d19cfe8f38861ce32a7bfe503c05bfa4"
+          },
+          "independent_identity": null
+        }
+      },
+      "evidence": {
+        "archive_ref": "TEAM-P13/TC-069.json",
+        "sha256": "13bb47a5e620ff90221b346d31bcb1a8d19cfe8f38861ce32a7bfe503c05bfa4"
+      },
+      "supported_scope": "shared_admission_function_comparison",
+      "unverified_claims": [
+        "real_http_transport_unverified",
+        "real_mcp_transport_unverified",
+        "real_cli_transport_unverified"
+      ],
+      "review_state": "historical_pending_review",
+      "current_verified": false
+    }
+  ]
+}
