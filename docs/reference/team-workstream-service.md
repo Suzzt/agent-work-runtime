@@ -501,8 +501,10 @@ operator provisioning CLI and its immutable receipts without granting existing
 clients new rights. The [scoped reference runner](team-reference-runner.md)
 integrates bounded local file writes and saved-fact reporting, but does not adopt
 or backfill existing in-flight execution history. Generic agent dispatch and
-full logical rebuild-from-manifest restore remains outside the available workflow;
-enabled-project history still requires explicit migration before backup.
+a bounded ownership/work-inventory rebuild-from-manifest slice is available via
+schema-owner `backup-rebuild-*` (fencing-quiet, empty-or-matching ownership only);
+catalogs, contracts, receipts and grants remain outside that subset. Enabled-project
+history still requires explicit migration before backup.
 
 ## Limits and errors
 
@@ -559,7 +561,8 @@ the database boundary in that test is synthetic, not a physical backup/restore.
 Generic agent dispatch remains unavailable through this surface. Bounded
 owner-only history migration, active-claim/execution quarantine recovery,
 explicit CHECK-safe execution attribution with a reviewed `executor_client_id`, and
-enabled-project logical backup/fencing restore are separate schema-owner CLI flows
+enabled-project logical backup/fencing restore and bounded ownership rebuild are
+separate schema-owner CLI flows
 (`awr-server access history-*` / `quarantine-*` / `execution-attribution-*` / `backup-*`), not HTTP/MCP client
 capabilities. Physical database basebackup
 stays an external operator responsibility.

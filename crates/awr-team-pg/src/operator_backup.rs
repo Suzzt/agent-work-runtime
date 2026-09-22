@@ -1,7 +1,11 @@
-//! Schema-owner backup metadata and guarded fencing restore for enabled projects.
+//! Schema-owner backup metadata, guarded fencing restore, and bounded rebuild
+//! for enabled projects.
 //! Physical PostgreSQL basebackup remains external. Legacy ImportStore backup/restore
 //! already refuse enabled workstreams; this CLI is the explicit replacement slice.
-//! Never forges completion receipts, credentials, or client HTTP/MCP grants.
+//! Verified fencing never copies rows. A separate digest-gated rebuild can
+//! materialize work_items inventory + workstream_ownership when the project is
+//! fenced and ownership-empty (or already matching). Never forges completion
+//! receipts, grants, actors, catalogs, contracts, or client HTTP/MCP authority.
 use crate::operator_access::require_owner_project;
 use crate::{PgError, PgResult};
 use serde_json::{Value, json};
@@ -91,11 +95,101 @@ pub(crate) fn plan_restore(
     }
 }
 
+
+/// Pure rebuild planning over already-captured digests (unit-tested without PG).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct RebuildDecision {
+    pub safe_to_apply: bool,
+    pub mode: &'static str,
+    pub refusals: Vec<&'static str>,
+    pub insert_ownership: usize,
+    pub insert_work_items: usize,
+}
+
+pub(crate) fn plan_rebuild(
+    backup_format: &str,
+    schema_ok: bool,
+    manifest_ownership_valid: bool,
+    work_coverage_ok: bool,
+    ownership_empty: bool,
+    ownership_digest_matches: bool,
+    work_key_conflicts: bool,
+    has_active_claims: bool,
+    has_active_sessions: bool,
+    has_live_executions: bool,
+    unattributed_history: bool,
+    ownership_rows: usize,
+    missing_work_items: usize,
+) -> RebuildDecision {
+    let mut refusals = Vec::new();
+    if backup_format != BACKUP_FORMAT {
+        refusals.push("unsupported_backup_format");
+    }
+    if !schema_ok {
+        refusals.push("schema_version_mismatch");
+    }
+    if !manifest_ownership_valid {
+        refusals.push("invalid_manifest_ownership");
+    }
+    if !work_coverage_ok {
+        refusals.push("work_items_missing_for_ownership");
+    }
+    if work_key_conflicts {
+        refusals.push("work_item_external_key_conflict");
+    }
+    if !ownership_empty && !ownership_digest_matches {
+        refusals.push("dangerous_ownership_overwrite");
+    }
+    if has_active_claims {
+        refusals.push("active_claims_present");
+    }
+    if has_active_sessions {
+        refusals.push("active_sessions_present");
+    }
+    if has_live_executions {
+        refusals.push("live_executions_present_fence_first");
+    }
+    if unattributed_history {
+        refusals.push("unattributed_history_present");
+    }
+    let safe = refusals.is_empty();
+    let mode = if !safe {
+        "refused"
+    } else if ownership_digest_matches {
+        "already_materialized"
+    } else {
+        "ownership_materialize"
+    };
+    RebuildDecision {
+        safe_to_apply: safe,
+        mode,
+        refusals,
+        insert_ownership: if safe && !ownership_digest_matches {
+            ownership_rows
+        } else {
+            0
+        },
+        insert_work_items: if safe { missing_work_items } else { 0 },
+    }
+}
+
 pub(crate) fn backup_limits_document() -> Value {
     json!({
         "physical_basebackup": "external_operator_responsibility",
         "logical_manifest": "recorded_in_awr_team.backups",
         "restores_table_rows_from_manifest": false,
+        "rebuild_from_manifest": {
+            "subset": "work_inventory_and_ownership_when_empty_v1",
+            "requires_fencing_quiet": true,
+            "work_items_external_key_only": true,
+            "workstream_ownership": true,
+            "work_contracts": false,
+            "workstream_catalogs": false,
+            "workstream_snapshot_ownership": false,
+            "completion_receipts": false,
+            "grants_or_actors": false,
+            "dangerous_overwrite": false
+        },
         "rewrites_completion_receipts": false,
         "forges_credentials_or_grants": false,
         "outbox_replay": false,
@@ -127,10 +221,18 @@ impl OperatorBackup {
             ));
         }
         let logical = logical_inventory_digests(&tx, tenant, project).await?;
+        let work_inventory = work_inventory_rows(&tx, tenant, project).await?;
         let receipts = completion_receipt_inventory(&tx, tenant, project).await?;
         let epoch = projection["coordinator_epoch"].as_str().unwrap_or("").to_string();
         let artifact_digests = logical["artifact_digests"].clone();
         let source_digests = logical["source_digests"].clone();
+        let rebuildable = json!({
+            "subset": "work_inventory_and_ownership_when_empty_v1",
+            "ownership": projection["ownership"].clone(),
+            "ownership_digest": projection["ownership_digest"].clone(),
+            "work_inventory": work_inventory["items"].clone(),
+            "work_inventory_digest": work_inventory["digest"].clone()
+        });
         let manifest = json!({
             "format": BACKUP_FORMAT,
             "protocol": PROTOCOL,
@@ -142,6 +244,8 @@ impl OperatorBackup {
             "workstreams_enabled": true,
             "projection": projection,
             "logical": logical,
+            "work_inventory": work_inventory,
+            "rebuildable": rebuildable,
             "completion_receipts": receipts,
             "limits": backup_limits_document(),
             "operator_role": operator
@@ -498,6 +602,231 @@ impl OperatorBackup {
         tx.commit().await?;
         Ok(result)
     }
+
+    /// Digest-gated preview for bounded logical rebuild from a backup manifest.
+    /// Safe subset: missing work_items (id+external_key) + empty ownership rows.
+    pub async fn rebuild_preview(
+        client: &mut Client,
+        tenant: &str,
+        project: &str,
+        backup_id: &str,
+    ) -> PgResult<Value> {
+        if ![tenant, project, backup_id].iter().all(|s| identity(s)) {
+            return Err(invalid());
+        }
+        crate::check_schema(client).await?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await?;
+        let operator = require_owner_project(&tx, tenant, project, false).await?;
+        let plan = build_rebuild_plan(&tx, tenant, project, backup_id, &operator).await?;
+        tx.commit().await?;
+        Ok(plan)
+    }
+
+    /// Apply bounded rebuild using exact preview digests. Never overwrites divergent
+    /// ownership, never touches receipts/grants/actors/catalogs/contracts.
+    pub async fn rebuild_apply(
+        client: &mut Client,
+        tenant: &str,
+        project: &str,
+        backup_id: &str,
+        request: &str,
+        expected_state: &str,
+        expected_plan: &str,
+    ) -> PgResult<Value> {
+        if ![tenant, project, backup_id, request]
+            .iter()
+            .all(|s| identity(s))
+            || !hex(expected_state)
+            || !hex(expected_plan)
+        {
+            return Err(invalid());
+        }
+        crate::check_schema(client).await?;
+        let tx = client.transaction().await?;
+        let operator = require_owner_project(&tx, tenant, project, true).await?;
+        let intent_hash = hash(&json!({
+            "protocol": PROTOCOL,
+            "op": "rebuild.apply",
+            "tenant_id": tenant,
+            "project_id": project,
+            "backup_id": backup_id,
+            "expected_state": expected_state,
+            "expected_plan": expected_plan
+        }))?;
+        if let Some(r) = tx
+            .query_opt(
+                "SELECT request_hash,result_json FROM awr_team.backup_operations
+            WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3",
+                &[&tenant, &project, &request],
+            )
+            .await?
+        {
+            if r.get::<_, String>(0) != intent_hash {
+                return Err(PgError::IdempotencyConflict);
+            }
+            let receipt: Value = r.get(1);
+            tx.commit().await?;
+            return Ok(json!({"replayed":true,"receipt":receipt}));
+        }
+        let plan = build_rebuild_plan(&tx, tenant, project, backup_id, &operator).await?;
+        if plan["state_digest"].as_str() != Some(expected_state)
+            || plan["plan_digest"].as_str() != Some(expected_plan)
+        {
+            return Err(PgError::PreconditionsChanged);
+        }
+        if plan["decision"]["safe_to_apply"] != true {
+            return Err(PgError::Unsupported(
+                "rebuild plan refused; resolve refusals and preview again".into(),
+            ));
+        }
+        let mode = plan["decision"]["mode"].as_str().unwrap_or("refused");
+        let mut inserted_work = 0i64;
+        let mut inserted_ownership = 0i64;
+        if mode == "ownership_materialize" || mode == "already_materialized" {
+            let work_items = plan["materialize"]["work_items_to_insert"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            for item in &work_items {
+                let wid = item["work_id"].as_str().unwrap_or("");
+                let key = item["external_key"].as_str().unwrap_or("");
+                if wid.is_empty() || key.is_empty() || !identity(wid) || !identity(key) {
+                    return Err(invalid());
+                }
+                let n = tx
+                    .execute(
+                        "INSERT INTO awr_team.work_items(tenant_id,project_id,id,external_key)
+                    VALUES($1,$2,$3,$4)
+                    ON CONFLICT (tenant_id,project_id,id) DO NOTHING",
+                        &[&tenant, &project, &wid, &key],
+                    )
+                    .await?;
+                inserted_work += n as i64;
+            }
+            if mode == "ownership_materialize" {
+                let ownership = plan["materialize"]["ownership_to_insert"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default();
+                for row in &ownership {
+                    let wid = row["work_id"].as_str().unwrap_or("");
+                    let sid = row["workstream_id"].as_str().unwrap_or("");
+                    let ver = row["ownership_version"]
+                        .as_str()
+                        .and_then(|s| s.parse::<i64>().ok())
+                        .unwrap_or(0);
+                    if wid.is_empty()
+                        || sid.is_empty()
+                        || ver <= 0
+                        || !identity(wid)
+                        || !identity(sid)
+                    {
+                        return Err(invalid());
+                    }
+                    let n = tx
+                        .execute(
+                            "INSERT INTO awr_team.workstream_ownership
+                        (tenant_id,project_id,work_id,workstream_id,ownership_version)
+                        VALUES($1,$2,$3,$4,$5)
+                        ON CONFLICT (tenant_id,project_id,work_id) DO NOTHING",
+                            &[&tenant, &project, &wid, &sid, &ver],
+                        )
+                        .await?;
+                    inserted_ownership += n as i64;
+                }
+            }
+        }
+        // Re-verify ownership digest matches backup after materialization.
+        let current = workstream_projection(&tx, tenant, project).await?;
+        let expected_own = plan["materialize"]["target_ownership_digest"]
+            .as_str()
+            .unwrap_or("");
+        if current["ownership_digest"].as_str() != Some(expected_own) {
+            return Err(PgError::PreconditionsChanged);
+        }
+        let revision: i64 = tx
+            .query_opt(
+                "UPDATE awr_team.projects SET project_revision=project_revision+1
+            WHERE tenant_id=$1 AND id=$2 AND project_revision<9223372036854775807
+            RETURNING project_revision",
+                &[&tenant, &project],
+            )
+            .await?
+            .ok_or(PgError::PreconditionsChanged)?
+            .get(0);
+        let report = json!({
+            "mode": mode,
+            "inserted_work_items": inserted_work,
+            "inserted_ownership_rows": inserted_ownership,
+            "ownership_digest": current["ownership_digest"],
+            "completion_receipts_modified": false,
+            "grants_modified": false,
+            "actors_forged": false,
+            "catalogs_rewritten": false,
+            "contracts_rewritten": false
+        });
+        let receipt = json!({
+            "protocol": PROTOCOL,
+            "op": "rebuild.apply",
+            "request_id": request,
+            "request_hash": intent_hash,
+            "operator_role": operator,
+            "tenant_id": tenant,
+            "project_id": project,
+            "backup_id": backup_id,
+            "state_digest": expected_state,
+            "plan_digest": expected_plan,
+            "project_revision": revision.to_string(),
+            "report": report,
+            "completion_receipts_modified": false,
+            "identity_forged": false,
+            "execution_authorized": false,
+            "automatic_resume": false
+        });
+        tx.execute(
+            "INSERT INTO awr_team.backup_operations(tenant_id,project_id,request_id,request_hash,operator_role,op,result_json)
+            VALUES($1,$2,$3,$4,$5,'rebuild.apply',$6)",
+            &[&tenant, &project, &request, &intent_hash, &operator, &receipt],
+        )
+        .await?;
+        let event = json!({
+            "operator_role": operator,
+            "request_id": request,
+            "backup_id": backup_id,
+            "mode": mode,
+            "inserted_ownership_rows": inserted_ownership,
+            "inserted_work_items": inserted_work
+        });
+        tx.execute(
+            "INSERT INTO awr_team.events(tenant_id,project_id,id,project_revision,event_index,event_type,actor_id,payload_json)
+            VALUES($1,$2,$3,$4,0,'backup.enabled_rebuild_ownership',$5,$6)",
+            &[
+                &tenant,
+                &project,
+                &crate::tx::new_id(),
+                &revision,
+                &format!("operator:{operator}"),
+                &event,
+            ],
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(json!({"replayed":false,"receipt":receipt}))
+    }
+
+    pub async fn rebuild_outcome(
+        client: &mut Client,
+        tenant: &str,
+        project: &str,
+        request: &str,
+    ) -> PgResult<Value> {
+        // Same immutable backup_operations receipt surface as restore_outcome.
+        Self::restore_outcome(client, tenant, project, request).await
+    }
 }
 
 async fn workstream_projection(
@@ -653,6 +982,285 @@ async fn logical_inventory_digests(
     }))
 }
 
+
+async fn work_inventory_rows(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+) -> PgResult<Value> {
+    let items: Vec<Value> = tx
+        .query(
+            "SELECT id,external_key FROM awr_team.work_items
+        WHERE tenant_id=$1 AND project_id=$2 ORDER BY id",
+            &[&tenant, &project],
+        )
+        .await?
+        .iter()
+        .map(|r| {
+            json!({
+                "work_id": r.get::<_, String>(0),
+                "external_key": r.get::<_, String>(1)
+            })
+        })
+        .collect();
+    Ok(json!({
+        "items": items,
+        "digest": digest_value(&json!(items))
+    }))
+}
+
+async fn fencing_quiet_flags(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+) -> PgResult<(bool, bool, bool)> {
+    let row = tx
+        .query_one(
+            "SELECT
+            EXISTS(SELECT 1 FROM awr_team.claims WHERE tenant_id=$1 AND project_id=$2 AND state='active'),
+            EXISTS(SELECT 1 FROM awr_team.sessions WHERE tenant_id=$1 AND project_id=$2 AND state='active'),
+            EXISTS(SELECT 1 FROM awr_team.executions WHERE tenant_id=$1 AND project_id=$2
+                AND state IN ('prepared','queued','accepted','running'))",
+            &[&tenant, &project],
+        )
+        .await?;
+    Ok((row.get(0), row.get(1), row.get(2)))
+}
+
+fn parse_manifest_ownership(manifest: &Value) -> PgResult<Vec<Value>> {
+    let rows = manifest
+        .pointer("/projection/ownership")
+        .or_else(|| manifest.pointer("/rebuildable/ownership"))
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let wid = row.get("work_id").and_then(|v| v.as_str()).unwrap_or("");
+        let sid = row
+            .get("workstream_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let ver = row
+            .get("ownership_version")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if !identity(wid) || !identity(sid) || ver.parse::<i64>().ok().filter(|v| *v > 0).is_none()
+        {
+            return Err(PgError::RestoreIncomplete);
+        }
+        out.push(json!({
+            "work_id": wid,
+            "workstream_id": sid,
+            "ownership_version": ver
+        }));
+    }
+    out.sort_by(|a, b| {
+        a["work_id"]
+            .as_str()
+            .unwrap_or("")
+            .cmp(b["work_id"].as_str().unwrap_or(""))
+    });
+    Ok(out)
+}
+
+fn parse_manifest_work_inventory(manifest: &Value) -> Vec<Value> {
+    manifest
+        .pointer("/work_inventory/items")
+        .or_else(|| manifest.pointer("/rebuildable/work_inventory"))
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default()
+}
+
+async fn build_rebuild_plan(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    backup_id: &str,
+    operator: &str,
+) -> PgResult<Value> {
+    let row = tx
+        .query_opt(
+            "SELECT manifest_hash,schema_version,manifest_json FROM awr_team.backups
+        WHERE tenant_id=$1 AND project_id=$2 AND id=$3 FOR SHARE",
+            &[&tenant, &project, &backup_id],
+        )
+        .await?
+        .ok_or(PgError::RestoreIncomplete)?;
+    let stored_hash: String = row.get(0);
+    let schema_version: i32 = row.get(1);
+    let manifest: Value = row
+        .get::<_, Option<Value>>(2)
+        .ok_or(PgError::RestoreIncomplete)?;
+    if digest_value(&manifest) != stored_hash {
+        return Err(PgError::RestoreIncomplete);
+    }
+    let format = manifest["format"].as_str().unwrap_or("");
+    let ownership_present = manifest.pointer("/projection/ownership").is_some()
+        || manifest.pointer("/rebuildable/ownership").is_some();
+    let (ownership_rows, target_ownership_digest, manifest_ownership_valid) =
+        match parse_manifest_ownership(&manifest) {
+            Ok(rows) if ownership_present => {
+                let digest = digest_value(&json!(rows));
+                let bak_digest = manifest
+                    .pointer("/projection/ownership_digest")
+                    .or_else(|| manifest.pointer("/rebuildable/ownership_digest"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let digest_ok = bak_digest.is_empty() || bak_digest == digest;
+                (rows, digest, digest_ok)
+            }
+            _ => (Vec::new(), String::new(), false),
+        };
+
+    let current = workstream_projection(tx, tenant, project).await?;
+    let current_work = work_inventory_rows(tx, tenant, project).await?;
+    let (active_claims, active_sessions, live_executions) =
+        fencing_quiet_flags(tx, tenant, project).await?;
+
+    let inventory = parse_manifest_work_inventory(&manifest);
+    let mut current_by_id = std::collections::BTreeMap::new();
+    if let Some(items) = current_work["items"].as_array() {
+        for item in items {
+            if let (Some(id), Some(key)) = (
+                item.get("work_id").and_then(|v| v.as_str()),
+                item.get("external_key").and_then(|v| v.as_str()),
+            ) {
+                current_by_id.insert(id.to_string(), key.to_string());
+            }
+        }
+    }
+
+    let mut work_key_conflicts = false;
+    let mut inventory_by_id = std::collections::BTreeMap::new();
+    for item in &inventory {
+        let wid = item.get("work_id").and_then(|v| v.as_str()).unwrap_or("");
+        let key = item
+            .get("external_key")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if !identity(wid) || !identity(key) {
+            work_key_conflicts = true;
+            continue;
+        }
+        if let Some(existing) = current_by_id.get(wid) {
+            if existing != key {
+                work_key_conflicts = true;
+            }
+        }
+        inventory_by_id.insert(wid.to_string(), key.to_string());
+    }
+
+    // Coverage: every ownership work_id must exist now or be insertable from inventory.
+    // Only ownership-referenced work_items are candidates for insert (bounded subset).
+    let mut missing = 0usize;
+    let mut work_items_to_insert = Vec::new();
+    for row in &ownership_rows {
+        let wid = row["work_id"].as_str().unwrap_or("");
+        if current_by_id.contains_key(wid) {
+            continue;
+        }
+        match inventory_by_id.get(wid) {
+            Some(key) => work_items_to_insert
+                .push(json!({"work_id": wid, "external_key": key.as_str()})),
+            None => missing += 1,
+        }
+    }
+    let work_coverage_ok = missing == 0;
+    let ownership_empty = current["ownership"]
+        .as_array()
+        .map(|a| a.is_empty())
+        .unwrap_or(true);
+    let ownership_digest_matches =
+        current["ownership_digest"].as_str() == Some(target_ownership_digest.as_str());
+
+    let decision = plan_rebuild(
+        format,
+        schema_version == crate::EXPECTED_SCHEMA_VERSION
+            && manifest["schema_version"] == crate::EXPECTED_SCHEMA_VERSION,
+        manifest_ownership_valid,
+        work_coverage_ok,
+        ownership_empty,
+        ownership_digest_matches,
+        work_key_conflicts,
+        active_claims,
+        active_sessions,
+        live_executions,
+        current["unattributed_history"] == true,
+        ownership_rows.len(),
+        work_items_to_insert.len(),
+    );
+
+    let state = json!({
+        "tenant_id": tenant,
+        "project_id": project,
+        "backup_id": backup_id,
+        "backup_manifest_hash": stored_hash,
+        "target_ownership_digest": target_ownership_digest,
+        "current_ownership_digest": current["ownership_digest"],
+        "current_work_inventory_digest": current_work["digest"],
+        "active_claims": active_claims,
+        "active_sessions": active_sessions,
+        "live_executions": live_executions
+    });
+    let plan_body = json!({
+        "protocol": PROTOCOL,
+        "op": "rebuild.preview",
+        "backup_id": backup_id,
+        "decision": {
+            "safe_to_apply": decision.safe_to_apply,
+            "mode": decision.mode,
+            "refusals": decision.refusals,
+            "insert_ownership": decision.insert_ownership,
+            "insert_work_items": decision.insert_work_items
+        },
+        "actions_if_applied": [
+            "insert_missing_work_items_id_external_key",
+            "insert_ownership_rows_when_empty"
+        ],
+        "actions_never": [
+            "overwrite_divergent_ownership",
+            "rewrite_completion_receipts",
+            "forge_credentials_or_grants",
+            "rewrite_catalogs_or_contracts",
+            "replay_outbox",
+            "authorize_execution_or_resume"
+        ],
+        "limits": backup_limits_document()
+    });
+    Ok(json!({
+        "protocol": PROTOCOL,
+        "applied": false,
+        "operator_role": operator,
+        "state_digest": hash(&state)?,
+        "plan_digest": hash(&plan_body)?,
+        "state": state,
+        "decision": plan_body["decision"],
+        "actions_if_applied": plan_body["actions_if_applied"],
+        "actions_never": plan_body["actions_never"],
+        "materialize": {
+            "target_ownership_digest": target_ownership_digest,
+            "ownership_to_insert": if decision.mode == "ownership_materialize" {
+                ownership_rows
+            } else {
+                Vec::new()
+            },
+            "work_items_to_insert": if decision.safe_to_apply {
+                work_items_to_insert
+            } else {
+                Vec::new()
+            }
+        },
+        "limits": backup_limits_document(),
+        "next_action": if decision.safe_to_apply {
+            "Apply with exact state_digest and plan_digest after fencing quiet and inventory review."
+        } else {
+            "Resolve refusals (fence first / empty ownership / work coverage); do not apply."
+        }
+    }))
+}
+
 async fn build_restore_plan(
     tx: &Transaction<'_>,
     tenant: &str,
@@ -798,5 +1406,104 @@ mod tests {
             limits["legacy_import_store"],
             "refuses_enabled_workstream_projects"
         );
+        assert_eq!(limits["restores_table_rows_from_manifest"], false);
+        assert_eq!(
+            limits["rebuild_from_manifest"]["subset"],
+            "work_inventory_and_ownership_when_empty_v1"
+        );
+        assert_eq!(limits["rebuild_from_manifest"]["dangerous_overwrite"], false);
+        assert_eq!(limits["rebuild_from_manifest"]["completion_receipts"], false);
+        assert_eq!(limits["rebuild_from_manifest"]["grants_or_actors"], false);
+    }
+
+    #[test]
+    fn rebuild_materializes_when_fenced_and_ownership_empty() {
+        let d = plan_rebuild(
+            BACKUP_FORMAT,
+            true,
+            true,
+            true,
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            2,
+            1,
+        );
+        assert!(d.safe_to_apply);
+        assert_eq!(d.mode, "ownership_materialize");
+        assert_eq!(d.insert_ownership, 2);
+        assert_eq!(d.insert_work_items, 1);
+    }
+
+    #[test]
+    fn rebuild_is_idempotent_when_ownership_digest_already_matches() {
+        let d = plan_rebuild(
+            BACKUP_FORMAT,
+            true,
+            true,
+            true,
+            false,
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            3,
+            0,
+        );
+        assert!(d.safe_to_apply);
+        assert_eq!(d.mode, "already_materialized");
+        assert_eq!(d.insert_ownership, 0);
+    }
+
+    #[test]
+    fn rebuild_refuses_dangerous_overwrite_and_live_activity() {
+        let d = plan_rebuild(
+            BACKUP_FORMAT,
+            true,
+            true,
+            true,
+            false,
+            false,
+            false,
+            true,
+            true,
+            true,
+            false,
+            2,
+            0,
+        );
+        assert!(!d.safe_to_apply);
+        assert!(d.refusals.contains(&"dangerous_ownership_overwrite"));
+        assert!(d.refusals.contains(&"active_claims_present"));
+        assert!(d.refusals.contains(&"active_sessions_present"));
+        assert!(d.refusals.contains(&"live_executions_present_fence_first"));
+    }
+
+    #[test]
+    fn rebuild_refuses_missing_work_coverage_and_key_conflicts() {
+        let d = plan_rebuild(
+            BACKUP_FORMAT,
+            true,
+            true,
+            false,
+            true,
+            false,
+            true,
+            false,
+            false,
+            false,
+            false,
+            1,
+            0,
+        );
+        assert!(!d.safe_to_apply);
+        assert!(d.refusals.contains(&"work_items_missing_for_ownership"));
+        assert!(d.refusals.contains(&"work_item_external_key_conflict"));
     }
 }

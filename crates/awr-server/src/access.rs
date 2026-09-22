@@ -198,6 +198,39 @@ pub enum AccessCommand {
         #[arg(long)]
         request_id: String,
     },
+    /// Preview bounded logical rebuild from a backup manifest (owner only; no writes).
+    BackupRebuildPreview {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        backup_id: String,
+    },
+    /// Apply digest-gated ownership/work-inventory rebuild using exact preview digests.
+    BackupRebuildApply {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        backup_id: String,
+        #[arg(long)]
+        request_id: String,
+        #[arg(long)]
+        expected_state: String,
+        #[arg(long)]
+        expected_plan: String,
+    },
+    /// Inspect a backup rebuild-apply request outcome before retrying.
+    BackupRebuildOutcome {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        request_id: String,
+    },
 }
 
 pub type Error = (&'static str, &'static str);
@@ -479,6 +512,39 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
             request_id,
         } => {
             OperatorBackup::restore_outcome(&mut client, &tenant_id, &project_id, &request_id).await
+        }
+        AccessCommand::BackupRebuildPreview {
+            tenant_id,
+            project_id,
+            backup_id,
+        } => {
+            OperatorBackup::rebuild_preview(&mut client, &tenant_id, &project_id, &backup_id).await
+        }
+        AccessCommand::BackupRebuildApply {
+            tenant_id,
+            project_id,
+            backup_id,
+            request_id,
+            expected_state,
+            expected_plan,
+        } => {
+            OperatorBackup::rebuild_apply(
+                &mut client,
+                &tenant_id,
+                &project_id,
+                &backup_id,
+                &request_id,
+                &expected_state,
+                &expected_plan,
+            )
+            .await
+        }
+        AccessCommand::BackupRebuildOutcome {
+            tenant_id,
+            project_id,
+            request_id,
+        } => {
+            OperatorBackup::rebuild_outcome(&mut client, &tenant_id, &project_id, &request_id).await
         }
     }
     .map_err(pg_error)

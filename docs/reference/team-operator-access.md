@@ -122,14 +122,24 @@ Real PostgreSQL E2E for execution attribution was not exercised when
 `AWR_TEAM_DATABASE_URL` / disposable PG was unavailable.
 
 
-Enabled-project logical backup metadata and guarded fencing restore are owner-only.
-Legacy `ImportStore` backup/restore already refuse enabled workstreams. This CLI
-records an `awr-team-enabled-backup-v1` manifest (projection digests, ownership,
-completion-receipt digests, source/artifact digests). Physical `pg_basebackup`
-remains external. Restore preview refuses projection/receipt/inventory drift,
-unattributed history, and outbox replay. Apply performs verified fencing only:
-it never rewrites completion receipts, forges credentials/grants, copies table
-rows from the manifest, or treats local files as a server ACL:
+Enabled-project logical backup metadata, guarded fencing restore, and a bounded
+rebuild-from-manifest slice are owner-only. Legacy `ImportStore` backup/restore
+already refuse enabled workstreams. This CLI records an
+`awr-team-enabled-backup-v1` manifest (projection digests, ownership rows,
+work-item inventory id+external_key, completion-receipt digests, source/artifact
+digests). Physical `pg_basebackup` remains external. Restore preview refuses
+projection/receipt/inventory drift, unattributed history, and outbox replay.
+Restore apply performs verified fencing only: it never rewrites completion
+receipts, forges credentials/grants, copies table rows from the manifest, or
+treats local files as a server ACL.
+
+A separate digest-gated rebuild path can materialize missing `work_items`
+(id + external_key only) and `workstream_ownership` rows when the project is
+fencing-quiet (no active claims/sessions/live executions), ownership is empty
+or already matches the manifest digest, and every ownership work_id is covered
+by current rows or the backup inventory. It refuses divergent ownership
+overwrite, external_key conflicts, catalogs/contracts/grants/actors/receipt
+rewrites, and automatic resume:
 
 ```sh
 awr-server access backup-create --tenant-id tenant-a --project-id project-a
@@ -142,12 +152,21 @@ awr-server access backup-restore-apply --tenant-id tenant-a --project-id project
   --expected-state <state_digest> --expected-plan <plan_digest>
 awr-server access backup-restore-outcome --tenant-id tenant-a --project-id project-a \
   --request-id restore-1
+awr-server access backup-rebuild-preview --tenant-id tenant-a --project-id project-a \
+  --backup-id <id>
+awr-server access backup-rebuild-apply --tenant-id tenant-a --project-id project-a \
+  --backup-id <id> --request-id rebuild-1 \
+  --expected-state <state_digest> --expected-plan <plan_digest>
+awr-server access backup-rebuild-outcome --tenant-id tenant-a --project-id project-a \
+  --request-id rebuild-1
 ```
 
 Physical `pg_basebackup` and post-restore resource fencing remain operator
-responsibilities outside this CLI. This development branch has unit coverage for
-restore planning; real PostgreSQL E2E for enabled-project backup/restore was not
-exercised when `AWR_TEAM_DATABASE_URL` / disposable PG was unavailable.
+responsibilities outside this CLI. Catalogs, contracts, snapshot ownership,
+completion receipts and grants are still outside this rebuild subset. This
+development branch has unit coverage for restore and rebuild planning; real
+PostgreSQL E2E for enabled-project backup/restore/rebuild was not exercised when
+`AWR_TEAM_DATABASE_URL` / disposable PG was unavailable.
 
 Save an access plan as local JSON. Use an actual workstream ID and current authority
 version from inspection, and replace the hash placeholder with `access token`'s
