@@ -2,7 +2,11 @@
 mod common;
 #[path = "fixtures/workstream_access.rs"]
 mod fixture;
-use awr_team_pg::{PgError, WorkstreamCommand, WorkstreamReadStore};
+use awr_team_pg::{
+    PgError, RecordPlanningChangeRequest, SelectiveInvalidationStore, WorkstreamCommand,
+    WorkstreamReadStore,
+};
+use common::{test_config, with_app_role};
 use fixture::*;
 use serde_json::{Value, json};
 use tokio_postgres::Client;
@@ -1228,5 +1232,145 @@ async fn schema_twelve_preserves_legacy_executions_and_failed_migration_is_atomi
             .batch_execute("UPDATE awr_team.executions SET ownership_version=1")
             .await
             .is_err()
+    );
+}
+
+#[tokio::test]
+async fn planning_change_blocks_execution_start_until_confirmed() {
+    let (_g, admin, db, store) = setup().await;
+    enable_writes(&admin).await;
+    let inv = SelectiveInvalidationStore::from_config(with_app_role(&test_config(), &db));
+
+    let (c, e) = ready_intent(&store).await;
+    assert!(
+        inv.action_blocked(TENANT, PROJECT, "a")
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    inv.record_planning_change(
+        TENANT,
+        PROJECT,
+        &RecordPlanningChangeRequest {
+            request_key: "plan-block-a".into(),
+            change_id: "chg-a".into(),
+            discovered_by: "agent".into(),
+            old_graph_version: "g0".into(),
+            new_graph_version: "g1".into(),
+            old_acceptance_contract: "acc0".into(),
+            new_acceptance_contract: "acc1".into(),
+            affected_work_ids: vec!["a".into()],
+            cancel_split_relations: vec![],
+            continue_conditions: vec!["human_confirm".into()],
+            all_project_work_ids: vec!["a".into(), "b-private".into(), "c".into()],
+            now_ms: 50,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        inv.action_blocked(TENANT, PROJECT, "a")
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("chg-a")
+    );
+    // Unrelated work remains unblocked.
+    assert!(
+        inv.action_blocked(TENANT, PROJECT, "c")
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let err = store
+        .commands()
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            admission(&store, &c, &e, "start-blocked").await,
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, PgError::ActionBlockedByInvalidation(ref id) if id == "chg-a"),
+        "unexpected error: {err}"
+    );
+
+    inv.confirm_planning_change(
+        TENANT,
+        PROJECT,
+        &awr_team_pg::DecidePlanningChangeRequest {
+            request_key: "plan-confirm-a".into(),
+            change_id: "chg-a".into(),
+            actor_id: "reviewer".into(),
+            now_ms: 60,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(
+        inv.action_blocked(TENANT, PROJECT, "a")
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // After confirmation, the previously prepared intent may start.
+    let started = store
+        .commands()
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            admission(&store, &c, &e, "start-after-confirm").await,
+        )
+        .await
+        .unwrap();
+    assert_eq!(started["execution_authorized"], true);
+    assert_eq!(started["receipt"]["data"]["admission"], "granted_at_commit");
+}
+
+#[tokio::test]
+async fn planning_change_blocks_execution_prepare_for_affected_work() {
+    let (_g, admin, db, store) = setup().await;
+    enable_writes(&admin).await;
+    let inv = SelectiveInvalidationStore::from_config(with_app_role(&test_config(), &db));
+    inv.record_planning_change(
+        TENANT,
+        PROJECT,
+        &RecordPlanningChangeRequest {
+            request_key: "plan-prep-block".into(),
+            change_id: "chg-prep".into(),
+            discovered_by: "agent".into(),
+            old_graph_version: "g0".into(),
+            new_graph_version: "g1".into(),
+            old_acceptance_contract: "acc0".into(),
+            new_acceptance_contract: "acc1".into(),
+            affected_work_ids: vec!["a".into()],
+            cancel_split_relations: vec![],
+            continue_conditions: vec!["human_confirm".into()],
+            all_project_work_ids: vec!["a".into(), "b-private".into(), "c".into()],
+            now_ms: 50,
+        },
+    )
+    .await
+    .unwrap();
+    let c = claim(&store).await;
+    let err = store
+        .commands()
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            intent(&store, &c, "prepare-blocked").await,
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, PgError::ActionBlockedByInvalidation(ref id) if id == "chg-prep"),
+        "unexpected error: {err}"
     );
 }

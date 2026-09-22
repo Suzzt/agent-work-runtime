@@ -683,6 +683,13 @@ async fn complete(
     if blocked {
         return Err(PgError::RecoveryBlocked);
     }
+    crate::workstream_command::executions::require_clear_of_selective_blocks(
+        tx,
+        tenant,
+        project,
+        &command.work_id,
+    )
+    .await?;
     let policy = contract.completion_policy.as_str();
     if let Some(requested) = a.requested_policy.as_deref() {
         if requested != policy {
