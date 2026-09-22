@@ -30,6 +30,7 @@ mod mutation_apply;
 mod organization;
 mod read;
 mod resume;
+mod responsibility;
 mod work_action;
 mod work_create;
 mod work_edit;
