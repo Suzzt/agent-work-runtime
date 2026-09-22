@@ -155,8 +155,9 @@ before activation. Catalog, contracts, ownership, edges, mode and source pointer
 commit atomically. Rollback preserves the prior projection.
 
 This stage permits enablement only without existing session history or live
-claims/nonterminal executions. Legacy-session migration and reviewed ownership
-movement are not yet implemented for Team. Updates retain scope IDs, keys and
+claims/nonterminal executions. Bounded owner-only session/inactive-claim/event attribution is available via
+the schema-owner history-migration CLI; reviewed ownership movement and
+execution attribution remain unimplemented for Team. Updates retain scope IDs, keys and
 ownership; authority changes require increased versions, and retained scopes
 must be archived instead of removed. Existing work keys cannot change through
 the new codec. A source update also refuses live claims and nonterminal
@@ -183,10 +184,13 @@ operations, and state that local file access is not a server ACL. The
 [reference runner](team-reference-runner.md) performs bounded local file
 writes with explicit executor authority. Old-epoch reconciliation requires an
 explicit operator review and preserves original attribution. Owner-only read-only recovery inspection is available via
-`awr-server access recovery-inspect` for enabled projects; it does not restore or
-migrate. Enabled-project backup/restore, migration of unattributed history and
-real-client acceptance remain outstanding; the current legacy import/restore APIs
-refuse enabled projects. The shared personal MCP read boundary described elsewhere does not
+`awr-server access recovery-inspect` for enabled projects. Explicit unattributed
+history migration (`history-preview` / `history-apply`) can attribute sessions,
+inactive claims and work-bound events from current ownership; it refuses
+executions and active claims and does not forge identity or completion receipts.
+Enabled-project backup/restore, remaining manual recovery cases and real-client
+acceptance remain outstanding; the current legacy import/restore APIs refuse
+enabled projects. The shared personal MCP read boundary described elsewhere does not
 provide Team access.
 
 ### Source projection in the development branch

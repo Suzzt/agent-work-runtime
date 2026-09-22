@@ -1,4 +1,4 @@
-use awr_team_pg::{AccessPlan, OperatorAccess, OperatorRecovery, PgError};
+use awr_team_pg::{AccessPlan, OperatorAccess, OperatorHistory, OperatorRecovery, PgError};
 use clap::Subcommand;
 use serde_json::{Value, json};
 use std::io::{Read, Write};
@@ -56,6 +56,35 @@ pub enum AccessCommand {
         tenant_id: String,
         #[arg(long)]
         project_id: String,
+    },
+    /// Preview unattributed history attribution for an enabled project (no writes).
+    HistoryPreview {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+    },
+    /// Apply the exact reviewed history-migration plan digests.
+    HistoryApply {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        request_id: String,
+        #[arg(long)]
+        expected_state: String,
+        #[arg(long)]
+        expected_plan: String,
+    },
+    /// Inspect a history-migration request outcome before retrying it exactly.
+    HistoryOutcome {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        request_id: String,
     },
 }
 
@@ -190,6 +219,32 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
             tenant_id,
             project_id,
         } => OperatorRecovery::inspect(&mut client, &tenant_id, &project_id).await,
+        AccessCommand::HistoryPreview {
+            tenant_id,
+            project_id,
+        } => OperatorHistory::preview(&mut client, &tenant_id, &project_id).await,
+        AccessCommand::HistoryApply {
+            tenant_id,
+            project_id,
+            request_id,
+            expected_state,
+            expected_plan,
+        } => {
+            OperatorHistory::apply(
+                &mut client,
+                &tenant_id,
+                &project_id,
+                &request_id,
+                &expected_state,
+                &expected_plan,
+            )
+            .await
+        }
+        AccessCommand::HistoryOutcome {
+            tenant_id,
+            project_id,
+            request_id,
+        } => OperatorHistory::outcome(&mut client, &tenant_id, &project_id, &request_id).await,
     }
     .map_err(pg_error)
 }

@@ -9,8 +9,8 @@ Database operations require the schema owner's PostgreSQL privileges through
 `AWR_TEAM_DATABASE_URL`. Ordinary service application credentials and HTTP/MCP
 bearers cannot use this operator interface. The running service continues to use
 its separate application connection. Upgrade explicitly with
-`awr-server migrate --app-role <service-role>` as owner; schema 14 adds operator
-receipts, and bootstrap denies the application role all access to that table.
+`awr-server migrate --app-role <service-role>` as owner; schema 15 adds operator access
+and history-migration receipts; bootstrap denies the application role all access to those tables.
 
 ## Register a client
 
@@ -51,6 +51,22 @@ claims, open waits, unattributed legacy rows lacking `workstream_id`, previous-e
 nonterminal executions, and recorded restore runs. Samples are bounded. Disabled
 or non-workstream projects return `Unsupported`/`Forbidden`. Client HTTP/MCP
 cannot call this path.
+
+Unattributed history (sessions/claims/events/executions lacking `workstream_id`)
+is never adopted automatically. Preview a bounded migration plan, then apply only
+with exact digests. This slice attributes sessions, inactive claims, and events
+that have a unique current `workstream_ownership` binding. It refuses active
+claims, all executions (attribution would forge `executor_client_id`), rows whose
+`work_id` is absent from ownership, and never modifies completion receipts,
+evidence, actors, or trust grades:
+
+```sh
+awr-server access history-preview --tenant-id tenant-a --project-id project-a
+awr-server access history-apply --tenant-id tenant-a --project-id project-a \
+  --request-id migrate-1 --expected-state <state_digest> --expected-plan <plan_digest>
+awr-server access history-outcome --tenant-id tenant-a --project-id project-a \
+  --request-id migrate-1
+```
 
 Save an access plan as local JSON. Use an actual workstream ID and current authority
 version from inspection, and replace the hash placeholder with `access token`'s

@@ -324,6 +324,7 @@ pub(crate) fn workstream_boundary_capabilities() -> serde_json::Value {
         "local_file_access": "not_server_acl_or_confidentiality_sandbox",
         "reference_runner_effects": "operator_local_bounded_files_require_explicit_attestation_grant",
         "operator_recovery_inspection": "schema_owner_cli_read_only_enabled_projects",
+        "operator_history_migration": "sessions_inactive_claims_events_v1",
         "frontend_filtering": false
     })
 }
@@ -502,6 +503,10 @@ mod tests {
         assert_eq!(
             caps["operator_recovery_inspection"],
             "schema_owner_cli_read_only_enabled_projects"
+        );
+        assert_eq!(
+            caps["operator_history_migration"],
+            "sessions_inactive_claims_events_v1"
         );
         assert_eq!(caps["unsupported_capabilities"], "refused");
         assert_eq!(
