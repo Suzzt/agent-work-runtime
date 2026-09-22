@@ -538,6 +538,12 @@ Store APIs (SQLite + Team PG) persist:
 
 Author self-reported done (`author_self_report` / `personal_self_review` / non-`team_independent` completion) cannot produce an adoption credential and cannot unlock execution. Cross-project bindings are refused. Team PG tables use FORCE RLS with transaction-local `awr.tenant_id` / `awr.project_id` (schema 23).
 
+Graph coordination (WS-031) keeps the same-project task DAG acyclic across
+workstreams (`A1 → B1 → A2` legal), returns explainable hard cycle paths, applies
+edge mutations atomically under the project lock (no cyclic union / dangling
+refs), requires all necessary deps for readiness, and treats shared outcomes as
+references consistent with adoption credentials above.
+
 
 Artifact/contract changes invalidate prior open/approved rounds for other
 bundles; reject/return/rework keep historical rounds.

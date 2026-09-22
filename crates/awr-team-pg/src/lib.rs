@@ -33,8 +33,9 @@ pub use bootstrap::Bootstrap;
 pub use error::{PgError, PgResult};
 pub use execution::{ExecutionRecord, ExecutionStore, OutboxDelivery, exactly_once_supported};
 pub use graph::{
-    DependencyEdge, GraphStore, SplitProposal, paths_conflict, require_main_scope,
-    validate_required_graph,
+    DependencyEdge, EdgeMutation, GraphStore, SharedOutcomeRef, SplitProposal,
+    necessary_dependencies_ready, paths_conflict, reference_shared_outcome, require_main_scope,
+    validate_cross_stream_graph, validate_required_graph,
 };
 pub use import::{BackupRecord, FencingBarrier, ImportJob, ImportStore, InspectReport, RestoreRun};
 pub use lease::{ClaimRecord, LeaseStore, SessionRecord};
