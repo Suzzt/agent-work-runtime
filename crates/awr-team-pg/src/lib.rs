@@ -48,7 +48,7 @@ pub use scoped_runner::{
     ScopedReferenceRunner,
 };
 pub use source::{
-    CandidateRecord, CurrentSource, CurrentWorkstreamSource, IngestRequest, SOURCE_BINDING_FILE,
+    CandidateRecord, CurrentSource, CurrentWorkstreamSource, IngestRequest, SOURCE_BINDING_FILE, SOURCE_PROVENANCE_FILE,
     SoleSourceBinding, SoleSourceKind, SourceFile, SourceStore, WORKSTREAMS_FILE,
 };
 pub use tx::{CommandOutcome, CommandRequest, TeamStore};

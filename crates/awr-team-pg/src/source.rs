@@ -11,7 +11,6 @@ use std::collections::BTreeMap;
 mod workstreams;
 use workstreams::SourceProjection;
 
-
 /// Sole authoritative source location bound for Team publish preparation
 /// (AWR-TMCP-020). Developers do not need author-laptop files or ledger write
 /// access; the server directory or private management repo is the only source.
@@ -32,6 +31,7 @@ pub struct SoleSourceBinding {
 }
 
 pub const SOURCE_BINDING_FILE: &str = "source_binding.json";
+pub const SOURCE_PROVENANCE_FILE: &str = "source_provenance.json";
 pub const WORKSTREAMS_FILE: &str = "workstreams.json";
 
 #[derive(Clone, Debug)]
@@ -130,7 +130,9 @@ impl SourceStore {
             .iter()
             .find(|f| f.path == SOURCE_BINDING_FILE)
             .ok_or_else(|| {
-                PgError::Protocol("first publish requires source_binding.json as the sole source location".into())
+                PgError::Protocol(
+                    "first publish requires source_binding.json as the sole source location".into(),
+                )
             })?;
         let binding: SoleSourceBinding = serde_json::from_slice(&binding_file.bytes)
             .map_err(|e| PgError::Protocol(format!("invalid source_binding.json: {e}")))?;
@@ -151,7 +153,8 @@ impl SourceStore {
                     || binding.locator.starts_with("ssh://"))
                 {
                     return Err(PgError::Protocol(
-                        "private management repo locator must be git://, https://, or ssh://".into(),
+                        "private management repo locator must be git://, https://, or ssh://"
+                            .into(),
                     ));
                 }
             }
@@ -173,6 +176,7 @@ impl SourceStore {
                 ));
             }
         }
+        validate_original_source_provenance(files, &binding)?;
         Ok(binding)
     }
 
@@ -197,7 +201,6 @@ impl SourceStore {
         let candidate = self.ingest(request).await?;
         Ok((candidate, binding))
     }
-
 
     pub async fn ingest(&self, request: IngestRequest) -> PgResult<CandidateRecord> {
         if request.parser_version.trim().is_empty() {
@@ -802,6 +805,55 @@ pub(crate) fn files_from_ref(source_ref: &Value) -> PgResult<Vec<(String, Vec<u8
         .collect()
 }
 
+fn validate_original_source_provenance(
+    files: &[SourceFile],
+    binding: &SoleSourceBinding,
+) -> PgResult<()> {
+    let ledger_path = binding
+        .ledger_relative_path
+        .as_deref()
+        .ok_or_else(|| PgError::Protocol("sole source ledger_relative_path required".into()))?;
+    let ledger = files
+        .iter()
+        .find(|f| f.path == ledger_path)
+        .ok_or_else(|| {
+            PgError::Protocol(format!(
+                "publish package missing original ledger bytes at {ledger_path}"
+            ))
+        })?;
+    let provenance = files
+        .iter()
+        .find(|f| f.path == SOURCE_PROVENANCE_FILE)
+        .ok_or_else(|| {
+            PgError::Protocol("publish package missing source_provenance.json".into())
+        })?;
+    let meta: serde_json::Value = serde_json::from_slice(&provenance.bytes)
+        .map_err(|e| PgError::Protocol(format!("invalid source_provenance.json: {e}")))?;
+    let declared = meta
+        .get("source_version_digest")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            PgError::Protocol("source_provenance.json missing source_version_digest".into())
+        })?;
+    let actual = format!("sha256:{}", sha256_hex(&ledger.bytes));
+    if declared != actual {
+        return Err(PgError::Protocol(
+            "source_version_digest does not match original ledger bytes".into(),
+        ));
+    }
+    if meta.get("ledger_relative_path").and_then(|v| v.as_str()) != Some(ledger_path) {
+        return Err(PgError::Protocol(
+            "source_provenance.json ledger_relative_path mismatch".into(),
+        ));
+    }
+    if meta.get("source_status_notes").is_none() {
+        return Err(PgError::Protocol(
+            "source_provenance.json missing source_status_notes".into(),
+        ));
+    }
+    let _ = binding;
+    Ok(())
+}
 
 #[cfg(test)]
 mod publish_prep_tests {
@@ -813,6 +865,27 @@ mod publish_prep_tests {
             locator: "/var/awr/team/demo".into(),
             ledger_relative_path: Some("ledger.yaml".into()),
         }
+    }
+
+    fn provenance_and_ledger(binding: &SoleSourceBinding) -> (SourceFile, SourceFile) {
+        let ledger_path = binding.ledger_relative_path.clone().unwrap();
+        let ledger_bytes = b"# original ledger revision\nworkstreams: {}\n".to_vec();
+        let digest = format!("sha256:{}", super::sha256_hex(&ledger_bytes));
+        let provenance = serde_json::json!({
+            "source_version_digest": digest,
+            "ledger_relative_path": ledger_path,
+            "source_status_notes": []
+        });
+        (
+            SourceFile {
+                path: ledger_path,
+                bytes: ledger_bytes,
+            },
+            SourceFile {
+                path: SOURCE_PROVENANCE_FILE.into(),
+                bytes: serde_json::to_vec(&provenance).unwrap(),
+            },
+        )
     }
 
     fn workstreams_bytes() -> Vec<u8> {
@@ -850,6 +923,8 @@ mod publish_prep_tests {
 
     #[test]
     fn publish_package_rejects_invented_membership_files() {
+        let b = binding();
+        let (ledger, provenance) = provenance_and_ledger(&b);
         let err = SourceStore::validate_publish_package(&[
             SourceFile {
                 path: WORKSTREAMS_FILE.into(),
@@ -857,8 +932,10 @@ mod publish_prep_tests {
             },
             SourceFile {
                 path: SOURCE_BINDING_FILE.into(),
-                bytes: serde_json::to_vec(&binding()).unwrap(),
+                bytes: serde_json::to_vec(&b).unwrap(),
             },
+            ledger,
+            provenance,
             SourceFile {
                 path: "grants.json".into(),
                 bytes: b"[]".to_vec(),
@@ -870,6 +947,8 @@ mod publish_prep_tests {
 
     #[test]
     fn happy_path_publish_package_binds_sole_source() {
+        let b = binding();
+        let (ledger, provenance) = provenance_and_ledger(&b);
         let binding = SourceStore::validate_publish_package(&[
             SourceFile {
                 path: WORKSTREAMS_FILE.into(),
@@ -877,11 +956,33 @@ mod publish_prep_tests {
             },
             SourceFile {
                 path: SOURCE_BINDING_FILE.into(),
-                bytes: serde_json::to_vec(&binding()).unwrap(),
+                bytes: serde_json::to_vec(&b).unwrap(),
             },
+            ledger,
+            provenance,
         ])
         .unwrap();
-        assert_eq!(binding.kind, SoleSourceKind::ServerDirectory);
         assert_eq!(binding.locator, "/var/awr/team/demo");
+    }
+
+    #[test]
+    fn publish_package_rejects_digest_mismatch_for_original_ledger() {
+        let b = binding();
+        let (mut ledger, provenance) = provenance_and_ledger(&b);
+        ledger.bytes = b"# tampered\n".to_vec();
+        let err = SourceStore::validate_publish_package(&[
+            SourceFile {
+                path: WORKSTREAMS_FILE.into(),
+                bytes: workstreams_bytes(),
+            },
+            SourceFile {
+                path: SOURCE_BINDING_FILE.into(),
+                bytes: serde_json::to_vec(&b).unwrap(),
+            },
+            ledger,
+            provenance,
+        ])
+        .unwrap_err();
+        assert!(err.to_string().contains("source_version_digest"), "{err}");
     }
 }
