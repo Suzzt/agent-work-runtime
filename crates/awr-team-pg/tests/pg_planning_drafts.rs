@@ -342,7 +342,7 @@ fn planning_capabilities_surface() {
     let caps = SourceStore::planning_capabilities();
     assert_eq!(caps["suggestion_claimable"], false);
     assert_eq!(caps["approve_publish_separated"], true);
-    assert_eq!(caps["source_writeback"], "deferred_to_tmcp_022");
+    assert_eq!(caps["source_writeback"], "tmcp_022");
 }
 
 #[tokio::test]

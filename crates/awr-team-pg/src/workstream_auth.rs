@@ -266,10 +266,15 @@ pub fn command_business_action(op: &str) -> Option<awr_team::Action> {
     use awr_team::Action::*;
     Some(match op {
         "session.start" | "session.checkpoint" | "session.end" => SessionMaintainOwn,
-        "claim.acquire" | "claim.renew" | "claim.release" => ClaimManageOwn,
+        "claim.acquire" | "claim.renew" | "claim.release"
+        | "handoff.propose" | "handoff.accept" | "handoff.reject" | "handoff.cancel"
+        | "handoff.timeout" | "handoff.inspect" => ClaimManageOwn,
         "execution.prepare" | "execution.start" | "execution.cancel" | "execution.report" => {
             ExecutionRequestAndReportOwn
         }
+        "evidence.submit" | "review.open" => DeliverySubmitAndRequestReview,
+        "review.accept" | "review.return" | "work.rework" => ReviewDecide,
+        "work.complete" => DeliveryFinalize,
         "planning.propose" => PlanningPropose,
         "planning.edit_draft" => PlanningEditDraft,
         "planning.approve" => PlanningApprove,

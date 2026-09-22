@@ -10,6 +10,7 @@ description = "PostgreSQL coordination store for AWR Team V1. Not used by the pe
 [dependencies]
 awr-core.workspace = true
 awr-team = { path = "../awr-team" }
+awr-source = { path = "../awr-source" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

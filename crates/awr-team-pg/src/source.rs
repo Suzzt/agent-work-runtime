@@ -13,6 +13,8 @@ use workstreams::SourceProjection;
 
 #[path = "source_planning.rs"]
 pub mod planning;
+#[path = "source_writeback.rs"]
+pub mod writeback;
 
 
 /// Sole authoritative source location bound for Team publish preparation
@@ -398,6 +400,7 @@ impl SourceStore {
                 plan,
                 false,
                 false,
+                None,
             )
             .await?;
         Ok(CurrentSource {
@@ -407,6 +410,30 @@ impl SourceStore {
             authority_epoch: result.authority_epoch,
             contract_hash: result.projection_hash,
         })
+    }
+
+
+    /// Activate a workstream bundle under a proven TMCP-022 impact gate.
+    pub async fn activate_workstreams_with_impact(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        actor_id: &str,
+        proposal_id: &str,
+        plan: &SourceActivationPlan,
+        impact: &crate::source::writeback::ActivationImpactGate,
+    ) -> PgResult<CurrentWorkstreamSource> {
+        self.activate_inner(
+            tenant_id,
+            project_id,
+            actor_id,
+            proposal_id,
+            plan,
+            true,
+            false,
+            Some(impact),
+        )
+        .await
     }
 
     /// Explicit opt-in; never reinterpret `activate`'s singular contract hash.
@@ -426,6 +453,7 @@ impl SourceStore {
             plan,
             true,
             false,
+            None,
         )
         .await
     }
@@ -449,6 +477,7 @@ impl SourceStore {
                 plan,
                 true,
                 true,
+                None
             )
             .await
         {
@@ -474,6 +503,7 @@ impl SourceStore {
                 plan,
                 false,
                 true,
+                None
             )
             .await
         {
@@ -491,6 +521,7 @@ impl SourceStore {
         plan: &SourceActivationPlan,
         scoped: bool,
         abort: bool,
+        impact: Option<&crate::source::writeback::ActivationImpactGate>,
     ) -> PgResult<CurrentWorkstreamSource> {
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
@@ -602,7 +633,13 @@ impl SourceStore {
         }
         workstreams::reject_external_graph(&files)?;
         projection
-            .validate_transition(&tx, tenant_id, project_id, previous_snapshot.as_deref())
+            .validate_transition_with_impact(
+                &tx,
+                tenant_id,
+                project_id,
+                previous_snapshot.as_deref(),
+                impact,
+            )
             .await?;
         projection
             .install(&tx, tenant_id, project_id, &snapshot_id)

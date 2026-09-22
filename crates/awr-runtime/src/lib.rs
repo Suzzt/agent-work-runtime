@@ -29,6 +29,7 @@ mod mutation;
 mod mutation_apply;
 mod operation_readset;
 mod source_concurrency;
+mod planning_writeback;
 mod organization;
 mod read;
 mod resume;
@@ -66,6 +67,12 @@ pub use mutation::{
     create_proposal, review_proposal,
 };
 pub use operation_readset::{append_work_observation, classify_operation_replay_result};
+pub use planning_writeback::{
+    ActivationDisposition, ActivationImpactReport, AffectedWorkDecision, WorkRuntimeObservation,
+    WritebackJournal, WritebackPhase, activate_ledger_writeback_precise, analyze_activation_impact,
+    plan_ledger_writeback, planning_change_blocks_until_confirmed, planning_changes_as_selective_replan,
+    reevaluate_graph_consumers, same_request_already_completed, writeback_journal_path,
+};
 pub use source_concurrency::{
     SourceConcurrencyReport, activate_precise_patch, activate_shard_candidate,
     classify_whole_file_gate, recover_shard_candidate,

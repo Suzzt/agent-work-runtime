@@ -3,7 +3,7 @@
 //! Domain entry methods authenticate the bearer and authorize TMCP-010
 //! `planning.*` actions. Suggestions never claim or mutate live deps/acceptance.
 //! Approve and publish are separate, digest-bound actions. Source writeback of
-//! published candidates is deferred to TMCP-022.
+//! published candidates is provided by TMCP-022 (`activate_planning_writeback`).
 use super::{PgError, PgResult, SourceStore, sha256_hex};
 use crate::tx::new_id;
 use crate::workstream_auth::{
@@ -675,7 +675,7 @@ impl SourceStore {
             "forge_completion_via_status_allowed": false,
             "approve_publish_separated": true,
             "approval_bound_to_candidate_digest": true,
-            "source_writeback": "deferred_to_tmcp_022"
+            "source_writeback": "tmcp_022"
         })
     }
 }

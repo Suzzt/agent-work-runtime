@@ -16,7 +16,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path};
 
 /// First-round supported ledger adapter id for Team publish preparation.
 pub const SUPPORTED_LEDGER_ADAPTER: &str = "yaml-workstream-ledger-v1";
@@ -715,6 +715,7 @@ pub fn source_status_notes_are_completion_receipts() -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
     use super::*;
 
     fn fixture_root() -> PathBuf {

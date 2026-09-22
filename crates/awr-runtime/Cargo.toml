@@ -10,6 +10,7 @@ repository.workspace = true
 awr-core.workspace = true
 awr-store.workspace = true
 awr-source.workspace = true
+awr-team = { path = "../awr-team" }
 awr-context.workspace = true
 sha2.workspace = true
 serde.workspace = true

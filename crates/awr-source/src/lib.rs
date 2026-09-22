@@ -13,6 +13,7 @@ mod markdown;
 mod markdown_ledger;
 mod mutation;
 mod source_concurrency;
+mod planning_writeback;
 mod query_snapshot;
 pub use query_snapshot::{
     QuerySnapshot, recorded_snapshot, refresh_snapshot, source_state_fingerprint,
@@ -54,6 +55,12 @@ pub use markdown::{
 pub use markdown_ledger::MarkdownLedgerAdapter;
 pub use mutation::{
     MutationSourceCheck, inspect_mutation_source, inspect_registered_source, verify_mutation_source,
+};
+pub use planning_writeback::{
+    CompatibleStatusWriteback, FieldWriteAuthority, LedgerWritebackPatch, RUNTIME_ONLY_FIELDS,
+    SOURCE_WRITABLE_FIELDS, VerifiedDomainStatus, apply_planning_changes_to_ledger,
+    derive_compatible_status_writeback, refuse_external_overwrite, refuse_runtime_field_in_source_write,
+    runtime_field_authority, source_field_authority,
 };
 pub use source_concurrency::{
     ShardCandidate, ShardObservation, ShardWrite, SourceWriteMode, form_shard_candidate,
