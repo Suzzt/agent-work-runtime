@@ -3,7 +3,9 @@
 pub(crate) mod claims;
 pub(crate) mod executions;
 
-use crate::workstream_auth::{CommandAuthPhase, ReaderAuthority, authenticate_writer, authorize_command};
+use crate::workstream_auth::{
+    CommandAuthPhase, ReaderAuthority, authenticate_writer, authorize_command,
+};
 use crate::workstream_read::{WorkstreamQuery, read, work_binding};
 use crate::{PgError, PgPool, PgResult};
 use awr_core::Id;
