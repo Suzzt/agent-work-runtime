@@ -151,3 +151,22 @@ Authenticated Team HTTP/MCP: `handoff.propose|inspect|accept|reject|cancel|timeo
 commands and `handoff.inspect` query. Local MCP `awr_team_handoff` validates packages
 and explains duty without mutating Team state. Persist in SQLite (`010`) and Team PG
 (schema 21).
+
+## Versioned delivery dependencies and adoption credentials (WS-030)
+
+Cross-stream **hard** dependencies bind concrete Work identity, contract hash,
+artifact digest, completion receipt, source/environment, adoption policy and
+export authorization. A WS-018 completion receipt is trusted acceptance evidence
+only when `team_independent_acceptance` is true; author self-report and personal
+self-review never unlock downstream execution.
+
+Two policies are explicit:
+
+- **fixed_delivery** — the selected receipt/contract/artifact survives unrelated
+  upstream replanning; historical adoption credentials retain the original proof.
+- **current_contract** — consumers revalidate when the authoritative current
+  selection drifts from the adopted delivery.
+
+Export authorizations are grant/revoke auditable. Cross-project dependencies are
+refused. Persist in SQLite (`011_delivery_deps`) and Team PG (schema 23) with
+tenant/project RLS matching the responsibility-table CR pattern.

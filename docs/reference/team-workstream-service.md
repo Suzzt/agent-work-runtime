@@ -525,6 +525,20 @@ Queries: `evidence.inspect`, `review.inspect`, `completion.inspect`.
 
 Completion receipts expose `independence_kind` and `team_independent_acceptance` for WS-030 adoption authorization. Provider-private session fields are never included (`provider_private_session` is always null).
 
+## Hard delivery dependencies and adoption credentials (WS-030)
+
+Store APIs (SQLite + Team PG) persist:
+
+| Record | Role |
+|---|---|
+| `hard_delivery_dependencies` | Cross-stream hard edge bound to exact Work + contract + artifact + completion receipt + policy (`fixed_delivery` / `current_contract`). |
+| `export_authorizations` | Auditable grant/deny/revoke of disclosure scope for a concrete delivery version. |
+| `adoption_credentials` | Historical proof that a consumer adopted a verified delivery; fixed-delivery credentials keep the original selected version. |
+| `delivery_credential_receipts` | Idempotent request-key receipts for register/revoke/grant/adopt. |
+
+Author self-reported done (`author_self_report` / `personal_self_review` / non-`team_independent` completion) cannot produce an adoption credential and cannot unlock execution. Cross-project bindings are refused. Team PG tables use FORCE RLS with transaction-local `awr.tenant_id` / `awr.project_id` (schema 23).
+
+
 Artifact/contract changes invalidate prior open/approved rounds for other
 bundles; reject/return/rework keep historical rounds.
 
