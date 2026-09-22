@@ -15,11 +15,22 @@ command dispatch remain unimplemented. These two cases do not contribute to the
 implementation count; the other implementation flags remain historical claims,
 not proof of complete coverage. Every mapping includes its evidence gap.
 
-Historical `real_agent_accepted` records (42 cases) and their evidence references
-are preserved independently of automated coverage. This correction does not
-rerun or revalidate those Agent sessions. The remaining 27 records are
-`automated_evidence_pending`, not an assertion that they cannot be replayed.
-The matrix guard checks references and accounting, not business acceptance.
+Historical `real_agent_accepted` records (42 cases) are preserved independently
+of automated coverage. Their structured references resolve through the sealed
+`team-v1-historical-agent-evidence-v1.json` index, which binds each case
+definition to its retained summary fingerprint. All 42 are
+`historical_pending_review`; `current_verified` is zero. Source and driver
+versions bound to the run, run identity and time, participant identities,
+explicit oracle expectations and an independent oracle identity remain unknown.
+Summary hash agreement locates retained bytes but does not revalidate the
+reported business result. Eight summaries also reference temporary outputs that
+were no longer retained; the index identifies those cases.
+
+This correction did not rerun or revalidate those Agent sessions. The remaining
+27 records are `automated_evidence_pending`, not an assertion that they cannot be
+replayed. The v1 historical index is sealed: adding or promoting an acceptance
+requires a new versioned evidence contract with complete bindings. The matrix
+guard checks references and accounting, not business acceptance.
 
 A live dual-client run used **Kimi Code CLI 2.0.0** and **ZCode CLI 0.16.5**
 on one dedicated Team project (`p11-live` / `work-p11`): claim, implementation,

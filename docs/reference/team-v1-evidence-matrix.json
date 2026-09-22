@@ -1,7 +1,7 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "title": "AWR Team V1 evidence matrix",
-  "notice": "Test references describe partial assertion coverage at reviewed_source_sha, not executed evidence. last_run=null means no bound per-case run. Historical real_agent_accepted records remain independent and are not revalidated by this matrix. TC-060 snapshot/delta continuity lacks direct proof; TC-069 real authenticated HTTP/MCP/CLI dispatch is unimplemented. No release authorization.",
+  "notice": "Test references describe partial assertion coverage at reviewed_source_sha, not executed evidence. last_run=null means no bound per-case run. The 42 real_agent_accepted statuses are preserved historical declarations; their sealed index records all as historical_pending_review and current_verified=0. Hash agreement locates retained summaries but does not revalidate their business outcomes. TC-060 snapshot/delta continuity lacks direct proof; TC-069 retained material supports only shared admission-function comparison, not real HTTP/MCP/CLI transport dispatch. No release authorization.",
   "release_candidate": false,
   "tag_pushed": false,
   "counts": {
@@ -10,6 +10,13 @@
     "real_agent_accepted": 42,
     "automated_partial": 69,
     "automated_evidence_pending": 27
+  },
+  "historical_agent_evidence": {
+    "index_path": "docs/reference/team-v1-historical-agent-evidence-v1.json",
+    "index_sha256": "45e97fc92ed40a79eabb263105f3bbc207c359b747156ff0ef6a8a044ddb5b78",
+    "historical_claims": 42,
+    "historical_pending_review": 42,
+    "current_verified": 0
   },
   "cases": [
     {
@@ -39,7 +46,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-001.json",
+      "agent_evidence": {
+        "index_entry": "TC-001",
+        "summary_sha256": "054386de48dcf666043982f818b8df74d2017733f2887e23d49977ae44c5805b",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "源声明不创建团队完成回执；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -72,7 +83,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-002.json",
+      "agent_evidence": {
+        "index_entry": "TC-002",
+        "summary_sha256": "70886d4562a7f84c7ca386c9f76acc522ed09778d3fd6580ba2f38a1c47888cf",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "自报证据不能完成且作者不能自审；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -105,7 +120,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-003.json",
+      "agent_evidence": {
+        "index_entry": "TC-003",
+        "summary_sha256": "53a6f155163933196d7a1af0e97eb68d2851285795f65b6a85d873ea8c23bd94",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "同进程并发竞争只有一个胜者；跨进程竞争仍缺专门断言；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -138,7 +157,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-004.json",
+      "agent_evidence": {
+        "index_entry": "TC-004",
+        "summary_sha256": "c91120139667a7757d2adc55fa97d60f3ea083f52d46b2c313cc782cad2eec73",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "不同任务分别认领成功；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -203,7 +226,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-006.json",
+      "agent_evidence": {
+        "index_entry": "TC-006",
+        "summary_sha256": "75344776c903f217a4aca58fc8c763cd50169f65e42f1f5d476a715f526fdd51",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "交接提高fence并拒绝旧fence；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -268,7 +295,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-008.json",
+      "agent_evidence": {
+        "index_entry": "TC-008",
+        "summary_sha256": "1ee7a2f28314ee9ec363156a3cd03229cd5bf2dd23aaba4751634b07937c0586",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "占用任务合同变化拒绝；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -301,7 +332,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-009.json",
+      "agent_evidence": {
+        "index_entry": "TC-009",
+        "summary_sha256": "a69cb65064b90bd7de68cfe80b24faac8a9d99e35896fbed3ee95a9f82c16dba",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "旧合同证据拒绝完成；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -334,7 +369,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-010.json",
+      "agent_evidence": {
+        "index_entry": "TC-010",
+        "summary_sha256": "3c213c473d7dfe7f268d6e6216eff6720940a883f81411e3f4b22143cb9ca154",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "循环依赖拒绝且无残留边；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -367,7 +406,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-011.json",
+      "agent_evidence": {
+        "index_entry": "TC-011",
+        "summary_sha256": "1709fdf040f12c921b1ec668f79267d706ccde2bf1234b319511fd439fb636dd",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "续租客户端绑定拒绝；conversation劫持仍缺专门覆盖；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -432,7 +475,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-013.json",
+      "agent_evidence": {
+        "index_entry": "TC-013",
+        "summary_sha256": "4ae2894356eb8570d3d3536372571ff313432ab75d1d111a9a1791faa6d2fa41",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "交接废止旧fence；事务故障原子性待补；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -465,7 +512,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-014.json",
+      "agent_evidence": {
+        "index_entry": "TC-014",
+        "summary_sha256": "fcd9da8ecdb34ba26f9de25fbfe6e468adca5acccd21c213db02ffa91f98f1dd",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "unknown阻止再派发并保留资源；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -530,7 +581,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-016.json",
+      "agent_evidence": {
+        "index_entry": "TC-016",
+        "summary_sha256": "35557b0681e176e9d34f007851c37a6b4611e0b5d38627d5ac4ebe94415d8762",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "重复请求返回相同revision且只产生一个事件；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -563,7 +618,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-017.json",
+      "agent_evidence": {
+        "index_entry": "TC-017",
+        "summary_sha256": "02d84cc4d15d66d111e5d14c4c332694ae99788ce8f740a662cb8d2bd996a617",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "参数变化产生IdempotencyConflict；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -660,7 +719,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-020.json",
+      "agent_evidence": {
+        "index_entry": "TC-020",
+        "summary_sha256": "a7d5448c7b1a21ab516bb64a48ca8a5f2695e68623d9894d9b68b5729a9fe3c8",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "材料变化拒绝旧评审；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -693,7 +756,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-021.json",
+      "agent_evidence": {
+        "index_entry": "TC-021",
+        "summary_sha256": "dc0e8706405c4dc4df229cd8fd4cde259c6229e77dd0d265dc6094d267106f98",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "拒绝作者自审；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -726,7 +793,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-022.json",
+      "agent_evidence": {
+        "index_entry": "TC-022",
+        "summary_sha256": "b65dd40ba15e5d1aa72e9588f94d3b1cf935daa8f89c96d7d75dffce3a06dc96",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "导入重放且不复制本地租约；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -759,7 +830,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-023.json",
+      "agent_evidence": {
+        "index_entry": "TC-023",
+        "summary_sha256": "d1f1a0ff979d0ca6fcdb19a0315b714f29b4fe4ff085960545140001ff19cc97",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "源分歧拒绝自动激活；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -856,7 +931,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-026.json",
+      "agent_evidence": {
+        "index_entry": "TC-026",
+        "summary_sha256": "1c9e5833af2f765e487ef91cc7ae73c784dfd444dbc103a3d37987d372580041",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "单条分页覆盖同revision的三个event_index；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -889,7 +968,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-027.json",
+      "agent_evidence": {
+        "index_entry": "TC-027",
+        "summary_sha256": "ab74f8fd7f8735d8805054d273af933f7bec81a7e6075836d22d743a0eaae463",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "事务只看本项目，提交后上下文不泄漏；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -922,7 +1005,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-028.json",
+      "agent_evidence": {
+        "index_entry": "TC-028",
+        "summary_sha256": "91e5e8e82e74b4e8857dba30e29b287a90e47573861079bb6c40bff76a76abbb",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "跨项目写入拒绝；所有关联外键组合未穷举；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -987,7 +1074,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-030.json",
+      "agent_evidence": {
+        "index_entry": "TC-030",
+        "summary_sha256": "3cebedf894b96ee950f7e2fa4e3dd10403d3a6a77286962cb49161f1a4f8c0de",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "缺goals返回incomplete和missing_goals；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1018,7 +1109,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-031.json",
+      "agent_evidence": {
+        "index_entry": "TC-031",
+        "summary_sha256": "9f0b94af79382e258c4d5cf0ec833b40d3efdc239f26c19300a4528552e46193",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "旧客户端缺协议被拒绝；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1083,7 +1178,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-033.json",
+      "agent_evidence": {
+        "index_entry": "TC-033",
+        "summary_sha256": "cf77fddd55b6c3676c8f98193f97f8b87bfcd182de77f7bae59b8ffe7c84fa0d",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "拒绝释放他人认领；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1180,7 +1279,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-036.json",
+      "agent_evidence": {
+        "index_entry": "TC-036",
+        "summary_sha256": "10506980b23c6738369cb9dfd2efadcf2119cff7ceccaf68c3602af73f835ee5",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "路径安全纯规则；完整包攻击矩阵待补；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1275,7 +1378,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-039.json",
+      "agent_evidence": {
+        "index_entry": "TC-039",
+        "summary_sha256": "d5327325dffd6f42b260b76512315c4e7b0fddf56d04a2e07a10b28da427d97c",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "真实CLI返回Unsupported且未连接；远端认证传输尚未实现；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1338,7 +1445,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-041.json",
+      "agent_evidence": {
+        "index_entry": "TC-041",
+        "summary_sha256": "00ab618a5b2d4085c8d2ebbc9d31433daf713555cf50460d6917d6aee6eaea46",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "依赖边界检查；个人模式业务回归不由本条证明；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1369,7 +1480,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-042.json",
+      "agent_evidence": {
+        "index_entry": "TC-042",
+        "summary_sha256": "2e8c481cb81bef94f167b0495476011c7f9c374ca7a88a733c1e1cfa7d64eff9",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "同语义忽略输入顺序得到稳定hash；版本转换另需证据；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1400,7 +1515,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-043.json",
+      "agent_evidence": {
+        "index_entry": "TC-043",
+        "summary_sha256": "14ab21fdb34e092c7008664579f2bbb83ed8d27a47e8b1fb0caec09a4e1d8856",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "缺少显式项目选择拒绝；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1433,7 +1552,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-044.json",
+      "agent_evidence": {
+        "index_entry": "TC-044",
+        "summary_sha256": "42ed662117c01b8d81fafd57bc87da1cb094c385b2661c0d005f2d0fea5b111c",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "路径段冲突拒绝且相似前缀允许；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1466,7 +1589,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-045.json",
+      "agent_evidence": {
+        "index_entry": "TC-045",
+        "summary_sha256": "9f529016d2676e971a3626474d7600662ed62e48c9f64faff925edcb41cafcd9",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "不支持scope明确报错；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1595,7 +1722,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-049.json",
+      "agent_evidence": {
+        "index_entry": "TC-049",
+        "summary_sha256": "ae36de39390a6bf0fad31e81fafc12448252f5f1c0ae46ecabb4b76246a5face",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "图预算超限拒绝；发布预算另需覆盖；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1628,7 +1759,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-050.json",
+      "agent_evidence": {
+        "index_entry": "TC-050",
+        "summary_sha256": "8d83482ea75b5684492ba3b88602307be765aefac696565053052c19b0054129",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "越界路径拒绝且不承诺无控制exactly-once；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1661,7 +1796,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-051.json",
+      "agent_evidence": {
+        "index_entry": "TC-051",
+        "summary_sha256": "df648a59f3ad46b54ffc72e2e03cf6fb52638c751fbf70d4875a38e4d1db31aa",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "禁止策略降级；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1694,7 +1833,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-052.json",
+      "agent_evidence": {
+        "index_entry": "TC-052",
+        "summary_sha256": "170eb019a4a7d03d7b0729a81262de03149abddb8d689b2b18d3a30c754873f4",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "子项完成不能替代父级证据；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1791,7 +1934,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-055.json",
+      "agent_evidence": {
+        "index_entry": "TC-055",
+        "summary_sha256": "a656c7699c85780b3845aea90efcacd6109580a393a747ac9dde85e98aeb913b",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "材料变化使旧批准失效；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1824,7 +1971,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-056.json",
+      "agent_evidence": {
+        "index_entry": "TC-056",
+        "summary_sha256": "762919f694e3fa23c6d602df7007e7a5eb483340ff1554ccd123a4fa16fd0a9f",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "按证据读取和重验字节；另一个报告替代的精确对照待补；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1889,7 +2040,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-058.json",
+      "agent_evidence": {
+        "index_entry": "TC-058",
+        "summary_sha256": "cea792b79aeb3a8e5afe894c76a088db7250d5cf13a7d685301a6ef6a891d36b",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "仅验证租约交接；私有会话恢复未验证；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -1920,7 +2075,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-059.json",
+      "agent_evidence": {
+        "index_entry": "TC-059",
+        "summary_sha256": "8fa88265f5e11709ff7fa87d35a890f69efac11ceb87fe53606cf49097b716f3",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "u64最大值字符串往返；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -2017,7 +2176,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-062.json",
+      "agent_evidence": {
+        "index_entry": "TC-062",
+        "summary_sha256": "f563d8c1e4a0bbd12f493d036a1a57e7dec27d1e0b6051d3a5f790de319d234f",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "上游合同变化使依赖绑定失效；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -2050,7 +2213,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-063.json",
+      "agent_evidence": {
+        "index_entry": "TC-063",
+        "summary_sha256": "d5efa4a67f5553c019570c4ab792596c175b9ab01c2527011b329b9b999bfeda",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "dirty状态缺字节拒绝；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -2083,7 +2250,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-064.json",
+      "agent_evidence": {
+        "index_entry": "TC-064",
+        "summary_sha256": "2a9c2fc42b129468e3824259f9d740b29f11a2cd2b2c50cd5d27eb0e242576a1",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "导入证据保持caller_asserted及无执行绑定；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
@@ -2242,7 +2413,11 @@
       "real_agent_clients": true,
       "status": "real_agent_accepted",
       "blocker": null,
-      "agent_evidence": "ledger/evidence/TEAM-P13/TC-069.json",
+      "agent_evidence": {
+        "index_entry": "TC-069",
+        "summary_sha256": "13bb47a5e620ff90221b346d31bcb1a8d19cfe8f38861ce32a7bfe503c05bfa4",
+        "review_state": "historical_pending_review"
+      },
       "automated_coverage": {
         "status": "partial",
         "gap": "仅共享函数标签一致；实际HTTP/MCP传输和Team域派发未实现；此映射未绑定本轮逐项执行回执，不能据此宣称完整场景覆盖。"
