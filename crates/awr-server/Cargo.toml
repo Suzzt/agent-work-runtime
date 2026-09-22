@@ -23,6 +23,8 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal
 
 [features]
 pg-tests = ["awr-team-pg/pg-tests"]
+# Production Team deploy: enable verified PostgreSQL TLS (sslmode=require).
+tls = ["awr-team-pg/tls"]
 
 [dev-dependencies]
 awr-core.workspace = true
