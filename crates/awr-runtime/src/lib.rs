@@ -24,6 +24,7 @@ pub use host_save::{
 };
 mod execution;
 mod explanation_chain;
+mod assessment_explain;
 mod fact_snapshot;
 mod fs_sync;
 mod management;
@@ -54,6 +55,13 @@ pub use explanation_chain::{
     ProbeSupport, UnresolvedSideEffect, compose_explanation_chain,
     explanation_chain_from_prepare_json, prior_explanation_still_valid,
 };
+pub use assessment_explain::{
+    ASSESSMENT_EXPLAIN_CAPABILITY, ASSESSMENT_EXPLAIN_FIELD, AssessmentExplanationView,
+    AttachExplanationOptions, ExplanationSideEffects, ExplanationWireMetrics,
+    attach_assessment_explanation, has_assessment_explanation,
+    normalize_receipt_for_explanation, wire_bytes,
+};
+
 pub use fact_snapshot::{
     PREPARE_FACT_MAX_BYTES, PREPARE_FACT_MAX_CANDIDATES, PREPARE_FACT_MAX_SCAN_OPS,
     PreparedFactView, fact_snapshot_from_prepared_view, prepared_view_from_prepare_json,

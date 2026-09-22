@@ -104,8 +104,8 @@ fn workflow_tools() -> Vec<Tool> {
     vec![
         tool(
             "awr_work_assess",
-            "Assess management from contracts and attributed observations. Unknowns stay unknown; no execution grant or completion-policy change.",
-            object(json!({"work":text(),"branch":branch()}), &["work"]),
+            "Assess management from contracts and attributed observations. Unknowns stay unknown; no execution grant or completion-policy change. Optional explain attaches assessment.explain without a new tool name.",
+            object(json!({"work":text(),"branch":branch(),"explain":{"type":"boolean","default":false,"description":"Opt-in assessment.explain field; default false preserves legacy shape."}}), &["work"]),
             true,
             false,
         ),
@@ -132,9 +132,9 @@ fn workflow_tools() -> Vec<Tool> {
         ),
         tool(
             "awr_work_prepare",
-            "Prepare readiness and required context. Consume context before checkpointing; no claim or completion-policy change.",
+            "Prepare readiness and required context. Consume context before checkpointing; no claim or completion-policy change. Optional explain attaches assessment.explain without a new tool name.",
             object(
-                json!({"work":text(),"session":optional(text()),"branch":branch(),"goals":strings(),"source_sha":optional(text()),"budget":{"type":"integer","minimum":1,"maximum":100000}}),
+                json!({"work":text(),"session":optional(text()),"branch":branch(),"goals":strings(),"source_sha":optional(text()),"budget":{"type":"integer","minimum":1,"maximum":100000},"explain":{"type":"boolean","default":false,"description":"Opt-in assessment.explain field; default false preserves legacy full/summary/action."}}),
                 &["work"],
             ),
             true,

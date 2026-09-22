@@ -1,4 +1,5 @@
 use awr_core::*;
+use awr_runtime::AttachExplanationOptions;
 use clap::Args;
 use std::path::{Path, PathBuf};
 #[derive(Debug, Args)]
@@ -6,6 +7,9 @@ pub struct AssessArgs {
     work: String,
     #[arg(long)]
     branch: Option<String>,
+    /// Opt-in DEC-021 assessment explanation (capability `assessment.explain`).
+    #[arg(long, default_value_t = false)]
+    explain: bool,
 }
 #[derive(Debug, Args)]
 pub struct ManageArgs {
@@ -27,6 +31,13 @@ pub fn assess(root: &Path, args: &AssessArgs) -> Result<()> {
     for (k, v) in query.metadata().as_object().unwrap() {
         value[k] = v.clone();
     }
+    value = awr_runtime::attach_assessment_explanation(
+        value,
+        &AttachExplanationOptions {
+            enabled: args.explain,
+            ..Default::default()
+        },
+    )?;
     println!("{}", serde_json::to_string_pretty(&value)?);
     Ok(())
 }

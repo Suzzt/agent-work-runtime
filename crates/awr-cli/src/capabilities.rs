@@ -465,6 +465,17 @@ fn catalog() -> Vec<Capability> {
             ],
         ),
         (
+            "assessment.explain",
+            true,
+            &["work prepare", "work assess"],
+            &[
+                "negotiated_field_only",
+                "default_off_preserves_legacy_views",
+                "read_only_no_claim_no_complete_no_auto_tools",
+                "reuses_prepare_explanation_chain",
+            ],
+        ),
+        (
             "work.graph",
             true,
             &["work graph"],

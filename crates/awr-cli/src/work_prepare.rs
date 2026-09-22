@@ -1,5 +1,5 @@
 use awr_core::*;
-use awr_runtime::{PrepareCompletionRequest, PrepareWorkRequest};
+use awr_runtime::{AttachExplanationOptions, PrepareCompletionRequest, PrepareWorkRequest};
 use clap::Args;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -20,6 +20,10 @@ pub struct PrepareArgs {
     /// Summary omits duplicate indexes; action adds one bounded conditional instruction.
     #[arg(long, default_value = "full", value_parser = ["full", "summary", "action"])]
     response_view: String,
+    /// Opt-in DEC-021 assessment explanation (capability `assessment.explain`).
+    /// Default off preserves legacy full/summary/action consumers.
+    #[arg(long, default_value_t = false)]
+    explain: bool,
 }
 #[derive(Debug, Args)]
 pub struct CompletionArgs {
@@ -64,6 +68,12 @@ fn output(mut value: Value, query: &crate::query::QueryProject, json_output: boo
             if let Some(management) = value.get("management") {
                 println!("Management: {}", serde_json::to_string_pretty(management)?);
             }
+            if let Some(explanation) = value.get(awr_runtime::ASSESSMENT_EXPLAIN_FIELD) {
+                println!(
+                    "Assessment explanation: {}",
+                    serde_json::to_string_pretty(explanation)?
+                );
+            }
         } else {
             println!("{}", serde_json::to_string_pretty(&value)?);
         }
@@ -104,6 +114,17 @@ pub fn prepare(root: &Path, args: &PrepareArgs, json_output: bool) -> Result<()>
             value["response_view"]["full_result"] = json!({"command":"work prepare","work":args.work,"session":args.session,"branch":args.branch,"goals":args.goal,"source_sha":args.source_sha,"budget":args.budget,"response_view":"full","basis":"fresh query; compare project_revision and context_hash"});
         }
     }
+    // Fold snapshot metadata before explain so CLI/MCP share stable as_of identity.
+    for (k, v) in query.metadata().as_object().unwrap() {
+        value[k] = v.clone();
+    }
+    value = awr_runtime::attach_assessment_explanation(
+        value,
+        &AttachExplanationOptions {
+            enabled: args.explain,
+            ..Default::default()
+        },
+    )?;
     output(value, &query, json_output)
 }
 pub fn completion(root: &Path, args: &CompletionArgs, json_output: bool) -> Result<()> {
