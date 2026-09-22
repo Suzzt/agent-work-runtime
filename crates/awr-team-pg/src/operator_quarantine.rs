@@ -71,9 +71,7 @@ pub(crate) enum ClaimDecision {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ExecutionDecision {
     QuarantineUnknown,
-    Refuse {
-        reason: &'static str,
-    },
+    Refuse { reason: &'static str },
 }
 
 /// Classify an inspected claim. Never invents actor/session identity.

@@ -269,9 +269,11 @@ fn migration_intersects_mixed_role_and_grant() {
         reader_write.granted_actions,
         BTreeSet::from([Action::WorkRead])
     );
-    assert!(!reader_write
-        .granted_actions
-        .contains(&Action::ClaimManageOwn));
+    assert!(
+        !reader_write
+            .granted_actions
+            .contains(&Action::ClaimManageOwn)
+    );
 
     let admin_read = preview_legacy_migration(
         Some(LegacyRole::Admin),
@@ -282,24 +284,32 @@ fn migration_intersects_mixed_role_and_grant() {
         admin_read.granted_actions,
         BTreeSet::from([Action::WorkRead])
     );
-    assert!(!admin_read
-        .granted_actions
-        .contains(&Action::PlanningPublish));
-    assert!(!admin_read
-        .granted_actions
-        .contains(&Action::AccessManageProject));
+    assert!(
+        !admin_read
+            .granted_actions
+            .contains(&Action::PlanningPublish)
+    );
+    assert!(
+        !admin_read
+            .granted_actions
+            .contains(&Action::AccessManageProject)
+    );
 
     let worker_write = preview_legacy_migration(
         Some(LegacyRole::Worker),
         Some(LegacyGrant::Write),
         PersonLinkStatus::Verified,
     );
-    assert!(worker_write
-        .granted_actions
-        .contains(&Action::ClaimManageOwn));
-    assert!(!worker_write
-        .granted_actions
-        .contains(&Action::PlanningPropose));
+    assert!(
+        worker_write
+            .granted_actions
+            .contains(&Action::ClaimManageOwn)
+    );
+    assert!(
+        !worker_write
+            .granted_actions
+            .contains(&Action::PlanningPropose)
+    );
 }
 
 #[test]
@@ -308,16 +318,20 @@ fn migration_handles_missing_role_or_grant_and_always_withholds_new() {
         preview_legacy_migration(Some(LegacyRole::Worker), None, PersonLinkStatus::Verified);
     assert!(role_only.granted_actions.contains(&Action::ClaimManageOwn));
     assert!(!role_only.granted_actions.contains(&Action::PlanningPropose));
-    assert!(role_only
-        .withheld_new_actions
-        .contains(&Action::PlanningPropose));
+    assert!(
+        role_only
+            .withheld_new_actions
+            .contains(&Action::PlanningPropose)
+    );
 
     let grant_only =
         preview_legacy_migration(None, Some(LegacyGrant::Write), PersonLinkStatus::Verified);
     assert!(grant_only.granted_actions.contains(&Action::ClaimManageOwn));
-    assert!(!grant_only
-        .granted_actions
-        .contains(&Action::AccessManageProject));
+    assert!(
+        !grant_only
+            .granted_actions
+            .contains(&Action::AccessManageProject)
+    );
 
     let neither = preview_legacy_migration(None, None, PersonLinkStatus::Verified);
     assert!(neither.granted_actions.is_empty());

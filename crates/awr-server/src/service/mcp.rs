@@ -183,7 +183,8 @@ impl ServerHandler for Endpoint {
         if super::reject_forged_authority_fields(&args).is_err() {
             return Ok(CallToolResult::structured_error(json!({
                 "code":"Forbidden","message":"access denied"
-            })).into());
+            }))
+            .into());
         }
         let result = tokio::time::timeout_at(access.deadline, async {
             match request.name.as_ref() {

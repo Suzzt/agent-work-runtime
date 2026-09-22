@@ -78,7 +78,10 @@ mod tests {
 
     #[test]
     fn shared_maps_match_pg_exports() {
-        assert_eq!(command_action_name("claim.acquire"), Some("claim.manage_own"));
+        assert_eq!(
+            command_action_name("claim.acquire"),
+            Some("claim.manage_own")
+        );
         assert_eq!(
             command_action_name("execution.report"),
             Some("execution.request_and_report_own")

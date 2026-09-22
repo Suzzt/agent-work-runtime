@@ -25,9 +25,7 @@ pub use completion::{
 };
 pub use contract::{WorkContract, WorkDefinitionState};
 pub use error::{TeamError, TeamResult};
-pub use ids::{
-    ActorId, ProjectId, RequestId, ScopeId, SessionId, TenantId, WorkId,
-};
+pub use ids::{ActorId, ProjectId, RequestId, ScopeId, SessionId, TenantId, WorkId};
 pub use permission::{
     Action, AuthorityScope, LegacyGrant, LegacyRole, MigrationPreview, PERMISSION_POLICY_ID,
     PERMISSION_POLICY_VERSION, PersonLinkStatus, ResourceRef, RoleTemplate, SpecialAuthority,

@@ -2,9 +2,9 @@
 //! The shared decision function lives in `workstream_auth`; this module keeps the
 //! command surface matrix explicit for HTTP/MCP/internal callers.
 
-use crate::workstream_auth::command_business_action;
 #[cfg(test)]
 use crate::workstream_auth::command_authority;
+use crate::workstream_auth::command_business_action;
 
 /// Every durable workstream command either maps to a TMCP-010 action or is a
 /// special authority (attest / reconcile) outside role templates.
@@ -47,9 +47,11 @@ mod tests {
         assert!(matrix.iter().any(|(op, action)| {
             *op == "session.start" && *action == Some("session.maintain_own")
         }));
-        assert!(matrix.iter().any(|(op, action)| {
-            *op == "execution.attest" && action.is_none()
-        }));
+        assert!(
+            matrix
+                .iter()
+                .any(|(op, action)| { *op == "execution.attest" && action.is_none() })
+        );
     }
 
     #[test]
