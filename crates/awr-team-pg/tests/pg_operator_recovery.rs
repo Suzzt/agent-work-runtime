@@ -5,10 +5,26 @@ mod fixture;
 use awr_team_pg::{
     ExecutionAttributionEntry, ExecutionAttributionPlan, OperatorBackup,
     OperatorExecutionAttribution, OperatorHistory, OperatorQuarantine, OperatorRecovery, PgError,
+    WorkstreamCommand, WorkstreamReadStore,
 };
 use fixture::*;
-use serde_json::Value;
+use serde_json::{Value, json};
 use tokio_postgres::Client;
+
+async fn acquire(store: &WorkstreamReadStore, request: &str) -> WorkstreamCommand {
+    let p = prepare(store, A, "a").await;
+    command(
+        &p,
+        request,
+        "claim.acquire",
+        json!({
+            "session_id":"session-a",
+            "expected_session_version":"1",
+            "expected_work_version":p["data"]["runtime"]["work_version"].as_str().unwrap_or("0"),
+            "ttl_seconds":60
+        }),
+    )
+}
 
 async fn seed_unattributed_history(admin: &Client) {
     // Safe subset for history-migration: inactive claim + session + work-bound event.
@@ -234,7 +250,7 @@ async fn history_migration_attributes_safe_subset_and_refuses_active_or_executio
 }
 
 #[tokio::test]
-async fn quarantine_attributes_or_releases_active_claims_and_cancels_unattributed_executions() {
+async fn quarantine_attributes_or_releases_active_claims_and_unknowns_unattributed_executions() {
     let (_g, mut admin, db, _) = setup().await;
     seed_unattributed_history(&admin).await;
     // Attribute the safe history first so quarantine focuses on active claim + execution.
@@ -266,7 +282,7 @@ async fn quarantine_attributes_or_releases_active_claims_and_cancels_unattribute
             && i["action"] == "attribute_and_release"
     }));
     assert!(actionable.iter().any(|i| {
-        i["kind"] == "execution" && i["id"] == "exec-u" && i["action"] == "quarantine_cancel"
+        i["kind"] == "execution" && i["id"] == "exec-u" && i["action"] == "quarantine_unknown"
     }));
 
     let applied = OperatorQuarantine::apply(
@@ -295,14 +311,28 @@ async fn quarantine_attributes_or_releases_active_claims_and_cancels_unattribute
     assert!(claim.get::<_, Option<String>>(1).is_some());
     let exec = admin
         .query_one(
-            "SELECT state,workstream_id,executor_client_id FROM awr_team.executions WHERE id='exec-u'",
+            "SELECT state,workstream_id,executor_client_id,cancel_requested,unknown_reason FROM awr_team.executions WHERE id='exec-u'",
             &[],
         )
         .await
         .unwrap();
-    assert_eq!(exec.get::<_, String>(0), "cancelled");
+    assert_eq!(exec.get::<_, String>(0), "unknown");
     assert_eq!(exec.get::<_, Option<String>>(1), None);
     assert_eq!(exec.get::<_, Option<String>>(2), None);
+    assert_eq!(exec.get::<_, bool>(3), true);
+    assert_eq!(
+        exec.get::<_, Option<String>>(4).as_deref(),
+        Some("operator_quarantine")
+    );
+    let blocked: bool = admin
+        .query_one(
+            "SELECT recovery_blocked FROM awr_team.work_runtime WHERE work_id='a'",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert!(blocked);
 
     assert_eq!(
         OperatorQuarantine::apply(
@@ -584,4 +614,118 @@ async fn backup_fencing_restore_and_bounded_rebuild_against_real_pg() {
         OperatorBackup::inspect(&mut app, TENANT, PROJECT, &backup_id).await,
         Err(PgError::Forbidden)
     ));
+}
+
+
+#[tokio::test]
+async fn quarantine_keeps_claim_acquire_recovery_blocked_for_false_and_true_barriers() {
+    let (_g, mut admin, _db, store) = setup().await;
+    enable_writes(&admin).await;
+    let commands = store.commands();
+
+    for (case, initial_blocked) in [("barrier_false", false), ("barrier_true", true)] {
+        let exec_id = format!("exec-q-{case}");
+        // Isolate work `a` to one legacy running unattributed execution.
+        admin
+            .batch_execute(
+                "UPDATE awr_team.claims SET state='released' WHERE work_id='a' AND state='active';
+                 DELETE FROM awr_team.executions WHERE work_id='a';
+                 DELETE FROM awr_team.resource_reservations WHERE work_id='a';",
+            )
+            .await
+            .unwrap();
+        admin
+            .execute(
+                "INSERT INTO awr_team.executions(
+                    tenant_id,project_id,id,work_id,session_id,claim_id,fence,contract_hash,
+                    executor_actor_id,state,scope_id)
+                 VALUES($1,$2,$3,'a','session-a',NULL,9,'contract','agent','running','main')",
+                &[&TENANT, &PROJECT, &exec_id],
+            )
+            .await
+            .unwrap();
+        admin
+            .execute(
+                "INSERT INTO awr_team.work_runtime(
+                    tenant_id,project_id,scope_id,work_id,state,work_version,last_fence,recovery_blocked)
+                 VALUES($1,$2,'main','a','running',1,9,$3)
+                 ON CONFLICT (tenant_id,project_id,scope_id,work_id) DO UPDATE
+                   SET recovery_blocked=EXCLUDED.recovery_blocked,
+                       last_fence=EXCLUDED.last_fence,
+                       work_version=GREATEST(awr_team.work_runtime.work_version, EXCLUDED.work_version),
+                       state='running',
+                       selected_completion_id=NULL",
+                &[&TENANT, &PROJECT, &initial_blocked],
+            )
+            .await
+            .unwrap();
+
+        assert!(
+            matches!(
+                commands
+                    .execute(TENANT, PROJECT, A, acquire(&store, &format!("pre-{case}")).await)
+                    .await,
+                Err(PgError::RecoveryBlocked)
+            ),
+            "{case}: pre-quarantine acquire must be RecoveryBlocked"
+        );
+
+        let preview = OperatorQuarantine::preview(&mut admin, TENANT, PROJECT, "release")
+            .await
+            .unwrap();
+        assert!(
+            preview["actionable"].as_array().unwrap().iter().any(|i| {
+                i["kind"] == "execution"
+                    && i["id"] == exec_id
+                    && i["action"] == "quarantine_unknown"
+                    && i["target_state"] == "unknown"
+            }),
+            "{case}: preview must plan quarantine_unknown"
+        );
+        OperatorQuarantine::apply(
+            &mut admin,
+            TENANT,
+            PROJECT,
+            &format!("q-{case}"),
+            preview["state_digest"].as_str().unwrap(),
+            preview["plan_digest"].as_str().unwrap(),
+            "release",
+        )
+        .await
+        .unwrap();
+
+        let state: String = admin
+            .query_one(
+                "SELECT state FROM awr_team.executions WHERE id=$1",
+                &[&exec_id],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(state, "unknown", "{case}");
+        let blocked: bool = admin
+            .query_one(
+                "SELECT recovery_blocked FROM awr_team.work_runtime WHERE work_id='a'",
+                &[],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert!(blocked, "{case}: recovery barrier must be set");
+
+        assert!(
+            matches!(
+                commands
+                    .execute(
+                        TENANT,
+                        PROJECT,
+                        A,
+                        acquire(&store, &format!("post-{case}")).await
+                    )
+                    .await,
+                Err(PgError::RecoveryBlocked)
+            ),
+            "{case}: post-quarantine acquire must stay RecoveryBlocked"
+        );
+    }
 }

@@ -70,7 +70,7 @@ pub(crate) enum ClaimDecision {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ExecutionDecision {
-    QuarantineCancel,
+    QuarantineUnknown,
     Refuse {
         reason: &'static str,
     },
@@ -130,7 +130,7 @@ pub(crate) fn classify_execution(
             reason: "terminal_unattributed_execution_requires_explicit_attribution_protocol",
         };
     }
-    ExecutionDecision::QuarantineCancel
+    ExecutionDecision::QuarantineUnknown
 }
 
 fn claim_decision_json(
@@ -186,14 +186,14 @@ fn execution_decision_json(
     d: &ExecutionDecision,
 ) -> Value {
     match d {
-        ExecutionDecision::QuarantineCancel => json!({
+        ExecutionDecision::QuarantineUnknown => json!({
             "kind": "execution",
             "id": id,
             "work_id": work_id,
             "state": state,
             "workstream_id": workstream_id,
-            "action": "quarantine_cancel",
-            "target_state": "cancelled",
+            "action": "quarantine_unknown",
+            "target_state": "unknown",
             "forges_identity": false,
             "executor_client_id_set": false
         }),
@@ -374,11 +374,13 @@ impl OperatorQuarantine {
                         return Err(PgError::PreconditionsChanged);
                     }
                 }
-                ("execution", "quarantine_cancel") => {
+                ("execution", "quarantine_unknown") => {
+                    // Keep an unknown/nonterminal outcome without stop evidence.
+                    // cancelled would let claim.acquire proceed while effects remain unresolved.
                     let n = tx
                         .execute(
                             "UPDATE awr_team.executions
-                            SET state='cancelled',
+                            SET state='unknown',
                                 cancel_requested=TRUE,
                                 unknown_reason='operator_quarantine',
                                 execution_version=execution_version+1
@@ -391,6 +393,27 @@ impl OperatorQuarantine {
                     if n != 1 {
                         return Err(PgError::PreconditionsChanged);
                     }
+                    // Transactional recovery barrier; explicit stop/reconcile clears it.
+                    tx.execute(
+                        "INSERT INTO awr_team.work_runtime(
+                            tenant_id,project_id,scope_id,work_id,state,work_version,last_fence,recovery_blocked)
+                         SELECT e.tenant_id,e.project_id,COALESCE(e.scope_id,'main'),e.work_id,
+                                'running',1,COALESCE(e.fence,0),TRUE
+                         FROM awr_team.executions e
+                         WHERE e.tenant_id=$1 AND e.project_id=$2 AND e.id=$3
+                         ON CONFLICT (tenant_id,project_id,scope_id,work_id) DO UPDATE
+                           SET recovery_blocked=TRUE,
+                               last_fence=CASE
+                                 WHEN awr_team.work_runtime.last_fence < 9223372036854775807
+                                 THEN awr_team.work_runtime.last_fence+1
+                                 ELSE awr_team.work_runtime.last_fence END,
+                               work_version=CASE
+                                 WHEN awr_team.work_runtime.work_version < 9223372036854775807
+                                 THEN awr_team.work_runtime.work_version+1
+                                 ELSE awr_team.work_runtime.work_version END",
+                        &[&tenant, &project, &id],
+                    )
+                    .await?;
                 }
                 _ => return Err(invalid()),
             }
@@ -425,6 +448,8 @@ impl OperatorQuarantine {
             "completion_receipts_modified": false,
             "execution_authorized": false,
             "automatic_resume": false,
+            "recovery_barrier_required": true,
+            "stop_or_reconcile_required": true,
             "state_basis": "at_commit"
         });
         tx.execute(
@@ -571,7 +596,7 @@ async fn build_plan(
         "claims_attribute_and_release": count_action(&actionable, "claim", "attribute_and_release"),
         "claims_release": count_action(&actionable, "claim", "release"),
         "claims_quarantine": count_action(&actionable, "claim", "quarantine"),
-        "executions_quarantine_cancel": count_action(&actionable, "execution", "quarantine_cancel"),
+        "executions_quarantine_unknown": count_action(&actionable, "execution", "quarantine_unknown"),
         "claims_refused": count_kind(&refused, "claim"),
         "executions_refused": count_kind(&refused, "execution")
     });
@@ -607,7 +632,7 @@ async fn build_plan(
             "active_claim_release",
             "active_claim_quarantine",
             "active_claim_attribute_and_release",
-            "unattributed_nonterminal_execution_quarantine_cancel"
+            "unattributed_nonterminal_execution_quarantine_unknown"
         ],
         "unsafe_excluded": [
             "silent_execution_attribution",
@@ -760,11 +785,11 @@ mod tests {
     fn unattributed_nonterminal_execution_quarantines_without_forging_client() {
         assert_eq!(
             classify_execution(None, "running", Some("s1"), Some("c1"), false),
-            ExecutionDecision::QuarantineCancel
+            ExecutionDecision::QuarantineUnknown
         );
         assert_eq!(
             classify_execution(None, "prepared", None, None, false),
-            ExecutionDecision::QuarantineCancel
+            ExecutionDecision::QuarantineUnknown
         );
     }
 
@@ -810,7 +835,7 @@ mod tests {
             "w1",
             "running",
             None,
-            &ExecutionDecision::QuarantineCancel,
+            &ExecutionDecision::QuarantineUnknown,
         );
         assert_eq!(e["executor_client_id_set"], false);
         assert_eq!(e["forges_identity"], false);
