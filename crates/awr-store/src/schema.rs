@@ -1,6 +1,6 @@
 //! Validate the owned schema against the shipped migrations without repairing it.
 use crate::{
-    AGENT_AUTHORIZATION_SQL, CATALOG_SQL, CONTENT_REVIEWS_SQL, DOMAIN_SQL, DRAFT_WORK_SQL, MigrationInfo, RESPONSIBILITY_SQL,
+    AGENT_AUTHORIZATION_SQL, CATALOG_SQL, CONTENT_REVIEWS_SQL, DOMAIN_SQL, DRAFT_WORK_SQL, MigrationInfo, RESPONSIBILITY_SQL, TEAM_HANDOFF_SQL,
     SCHEMA_VERSION, SEARCH_SQL, WORKSTREAM_SESSIONS_SQL, WORKSTREAM_SQL, db_error,
 };
 use awr_core::{Error, Result};
@@ -10,7 +10,7 @@ use std::{collections::BTreeMap, sync::OnceLock};
 type Definition = (String, String, String);
 type Objects = BTreeMap<String, Definition>;
 static EXPECTED: OnceLock<std::result::Result<Vec<Objects>, String>> = OnceLock::new();
-const MIGRATION_NAMES: [&str; 9] = [
+const MIGRATION_NAMES: [&str; 10] = [
     "catalog",
     "domain",
     "search",
@@ -20,6 +20,7 @@ const MIGRATION_NAMES: [&str; 9] = [
     "content_reviews",
     "responsibility",
     "agent_authorization",
+    "team_handoff",
 ];
 
 fn objects(conn: &Connection) -> rusqlite::Result<Objects> {
@@ -44,7 +45,9 @@ fn expected() -> Result<&'static Vec<Objects>> {
                     WORKSTREAM_SESSIONS_SQL,
                     CONTENT_REVIEWS_SQL,
                     RESPONSIBILITY_SQL,
-                    AGENT_AUTHORIZATION_SQL,] {
+                    AGENT_AUTHORIZATION_SQL,
+                    TEAM_HANDOFF_SQL,
+                ] {
                     conn.execute_batch(sql)?;
                     versions.push(objects(&conn)?);
                 }

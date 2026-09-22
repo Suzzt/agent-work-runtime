@@ -397,6 +397,7 @@ pub fn tools() -> Vec<Tool> {
     catalog.extend(workflow_tools());
     catalog.extend(change_tools());
     catalog.extend(compaction_tools());
+    catalog.push(crate::team_handoff::tool());
     for entry in &mut catalog {
         if matches!(
             entry.name.as_ref(),

@@ -12,6 +12,7 @@ mod requests;
 mod schema;
 mod waiting;
 mod workstreams;
+mod team_handoff;
 
 use hub::{Hub, Principal, ProjectService};
 use rmcp::{ErrorData, RoleServer, ServerHandler, model::*, service::RequestContext};
@@ -55,6 +56,7 @@ impl AwrServer {
                     catalog.insert(0, tool);
                 }
                 catalog.push(crate::workstreams::tool());
+                catalog.push(crate::team_handoff::tool());
             }
             catalog
         } else if shared {

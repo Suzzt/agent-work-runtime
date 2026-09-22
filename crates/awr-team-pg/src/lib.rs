@@ -15,6 +15,7 @@ mod operator_quarantine;
 mod operator_execution_attribution;
 mod responsibility;
 mod agent_authorization;
+mod team_handoff;
 mod path;
 mod pool;
 mod read;
@@ -45,6 +46,7 @@ pub use operator_quarantine::OperatorQuarantine;
 pub use operator_execution_attribution::{ExecutionAttributionEntry, ExecutionAttributionPlan, OperatorExecutionAttribution};
 pub use responsibility::ResponsibilityStore;
 pub use agent_authorization::AuthorizationStore;
+pub use team_handoff::HandoffStore;
 pub use path::{
     MAX_FILE_BYTES, MAX_PACKAGE_BYTES, MAX_SOURCE_FILES, validate_package, validate_source_path,
 };

@@ -275,6 +275,27 @@ pub enum AccessCommand {
         input: PathBuf,
     },
 
+    /// Inspect a confirmed Team handoff and its duty projection (owner connection).
+    HandoffInspect {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        handoff_id: String,
+        #[arg(long, default_value_t = 0)]
+        now_ms: i64,
+    },
+    /// List open handoff ids for a work item (owner connection).
+    HandoffListOpen {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        work_id: String,
+    },
+
 }
 
 pub type Error = (&'static str, &'static str);
@@ -670,6 +691,56 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
                 "received": value,
                 "note": "payload accepted; evaluate with AuthorizationStore::explain_claim in-process"
             }))
+        }
+        AccessCommand::HandoffInspect {
+            tenant_id,
+            project_id,
+            handoff_id,
+            now_ms,
+        } => {
+            let store = awr_team_pg::HandoffStore::new(std::env::var("AWR_TEAM_DATABASE_URL").map_err(|_| {
+                ("Unavailable", "AWR_TEAM_DATABASE_URL is required for operator access")
+            })?);
+            let handoff = store
+                .get(&tenant_id, &project_id, &handoff_id)
+                .await
+                .map_err(pg_error)?;
+            let duty = match &handoff {
+                Some(h) => Some(h.duty_at(if now_ms == 0 { h.updated_at_ms } else { now_ms }).map_err(|e| {
+                    pg_error(awr_team_pg::PgError::Protocol(e.to_string()))
+                })?),
+                None => None,
+            };
+            Ok(json!({"handoff": handoff, "duty": duty, "timeout_does_not_stop_execution": true}))
+        }
+        AccessCommand::HandoffListOpen {
+            tenant_id,
+            project_id,
+            work_id,
+        } => {
+            // Owner connection: list open handoff ids for a work item.
+            let rows = client
+                .query(
+                    "SELECT id, status, kind, version FROM awr_team.team_handoffs
+                     WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3
+                       AND status IN ('proposed','inspected')
+                     ORDER BY id",
+                    &[&tenant_id, &project_id, &work_id],
+                )
+                .await
+                .map_err(|e| pg_error(awr_team_pg::PgError::Db(e)))?;
+            let items: Vec<_> = rows
+                .iter()
+                .map(|r| {
+                    json!({
+                        "handoff_id": r.get::<_, String>(0),
+                        "status": r.get::<_, String>(1),
+                        "kind": r.get::<_, String>(2),
+                        "version": r.get::<_, i64>(3).to_string(),
+                    })
+                })
+                .collect();
+            Ok(json!({"work_id": work_id, "open_handoffs": items}))
         }
 
     }

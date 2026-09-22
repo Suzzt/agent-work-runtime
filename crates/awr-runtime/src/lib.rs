@@ -32,6 +32,7 @@ mod read;
 mod resume;
 mod responsibility;
 mod agent_authorization;
+mod team_handoff;
 mod work_action;
 mod work_create;
 mod work_edit;

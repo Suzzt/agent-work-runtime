@@ -68,6 +68,7 @@ pub(crate) fn is_read_only(name: &str) -> bool {
             | "awr_search"
             | "awr_projects_list"
             | "awr_workstream"
+            | "awr_team_handoff"
             | "awr_session_get"
             | "awr_session_list"
             | "awr_operation_get"
@@ -81,6 +82,9 @@ pub(crate) fn call_as(
     mut args: JsonObject,
     principal: Option<&str>,
 ) -> Result<CallToolResult> {
+    if name == "awr_team_handoff" {
+        return crate::team_handoff::handle(Value::Object(args));
+    }
     let view = args.remove("response_view");
     let supported = matches!(name, "awr_work_prepare" | "awr_work_transition");
     let action =

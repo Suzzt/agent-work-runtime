@@ -238,9 +238,10 @@ pub(crate) enum CommandAuthPhase {
 pub(crate) fn command_authority(op: &str) -> Option<DomainAuthority> {
     Some(match op {
         "session.checkpoint" | "session.end" | "claim.release" | "execution.cancel"
-        | "execution.report" => DomainAuthority::WritePreserve,
+        | "execution.report" | "handoff.reject" | "handoff.cancel" | "handoff.timeout"
+        | "handoff.inspect" => DomainAuthority::WritePreserve,
         "session.start" | "claim.acquire" | "claim.renew" | "execution.prepare"
-        | "execution.start" => DomainAuthority::WriteActive,
+        | "execution.start" | "handoff.propose" | "handoff.accept" => DomainAuthority::WriteActive,
         "execution.attest" => DomainAuthority::Attest,
         "execution.reconcile" => DomainAuthority::Reconcile,
         _ => return None,
