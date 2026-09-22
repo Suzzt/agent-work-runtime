@@ -149,6 +149,10 @@ pub struct TaskDraft {
     pub required_dependencies: Vec<String>,
     pub completion_policy: String,
     pub definition_state: DraftDefinitionState,
+    /// Owning workstream external key. Required for CreateTask writeback so
+    /// publish prep can bind the new task before authoritative source mutation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workstream: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub split_from: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -806,6 +810,7 @@ mod tests {
             required_dependencies: deps.iter().map(|s| (*s).into()).collect(),
             completion_policy: "independent_review".into(),
             definition_state: DraftDefinitionState::Draft,
+            workstream: None,
             split_from: None,
             split_children: vec![],
         }
