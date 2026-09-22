@@ -8,7 +8,13 @@ executions, resume agents or adopt cross-workstream deliveries. Use its live
 capabilities response to discover available operations.
 Unsupported capabilities are refused. Live authorization is enforced in PostgreSQL
 transactions shared by HTTP and MCP domain entries; clients must not treat UI
-filtering as an ACL. Team rows retain historical `scope_id=main` while
+filtering as an ACL. AWR-TMCP-011 maps each command/query onto the frozen
+TMCP-010 business action matrix at that same gate: verified bearer credentials
+supply identity, while request bodies, tool names and reconnects cannot forge
+actor, role or grants. Readers cannot claim or write; developers may maintain
+their own sessions/executions on authorized work but cannot edit/publish plans
+or manage project access. Exact receipt replay reuses the original result;
+changed intent or expired/revoked authority is refused without a business write. Team rows retain historical `scope_id=main` while
 `workstream_id` isolates streams. Legacy unscoped Team entrypoints refuse writes
 against enabled projects. An operator-local
 [reference runner](team-reference-runner.md) can consume scoped admissions for

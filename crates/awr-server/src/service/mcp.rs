@@ -131,11 +131,11 @@ fn catalog() -> Vec<Tool> {
     }});
     vec![
         Tool::new("awr_team_query",
-            "Scoped Team reads. Begin with capabilities, then workstreams.list or work.prepare. The endpoint binds the project; bearer grants bind the client. Re-prepare after relevant changes. No execution admission.",
+            "Scoped Team reads. Begin with capabilities, then workstreams.list or work.prepare. The endpoint binds the project; bearer grants bind the client. Tool discovery is navigation-only; each query rechecks work.read. Re-prepare after relevant changes. No execution admission.",
             query.as_object().unwrap().clone())
             .with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(false)),
         Tool::new("awr_team_command",
-            "Durable sessions, claims and caller-managed execution. Use work.prepare preconditions and a stable request_id. Only a fresh execution.start response with execution_authorized=true permits one run under the live lease. Preparation, inspection and replay grant no execution rights. On unknown outcome inspect command.inspect before an exact retry; never repeat effects from a receipt. Refresh after conflicts or lease/contract changes. Cancellation is a request after start. Reports remain caller_asserted. Attestation requires operator-issued system authority at admission and now. For unknown effects, execution.inspect then operator execution.reconcile; confirm current versions and latest receipt. Recheck on permission, receipt or work changes. Settlement is not work completion.",
+            "Durable sessions, claims and caller-managed execution under the shared TMCP action gate. Use work.prepare preconditions and a stable request_id. Readers cannot claim or write. Developers may maintain own session/execution on authorized work but cannot edit/publish plans or grant permissions. Only a fresh execution.start response with execution_authorized=true permits one run under the live lease. Exact replay reuses the original receipt; changed intent or expired/revoked authority is refused. Body fields cannot forge identity. Preparation, inspection and replay grant no execution rights. On unknown outcome inspect command.inspect before an exact retry. Attestation/reconcile require special operator grants, not role templates.",
             command.as_object().unwrap().clone())
             .with_annotations(ToolAnnotations::new().read_only(false).destructive(false).idempotent(true).open_world(false)),
     ]
@@ -180,6 +180,11 @@ impl ServerHandler for Endpoint {
             .cloned()
             .ok_or_else(|| ErrorData::invalid_params("authenticated request required", None))?;
         let args = Value::Object(request.arguments.unwrap_or_default());
+        if super::reject_forged_authority_fields(&args).is_err() {
+            return Ok(CallToolResult::structured_error(json!({
+                "code":"Forbidden","message":"access denied"
+            })).into());
+        }
         let result = tokio::time::timeout_at(access.deadline, async {
             match request.name.as_ref() {
                 "awr_team_query" => {
