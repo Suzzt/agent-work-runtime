@@ -569,7 +569,7 @@ async fn schema_thirteen_preserves_legacy_resources_and_grants_no_new_authority(
         .as_str()
         .unwrap()
         .to_string();
-    admin.batch_execute("DROP TABLE awr_team.access_changes;
+    admin.batch_execute("DROP TABLE IF EXISTS awr_team.execution_attributions; DROP TABLE IF EXISTS awr_team.operator_quarantines; DROP TABLE IF EXISTS awr_team.backup_operations; DROP TABLE IF EXISTS awr_team.history_migrations; DROP TABLE IF EXISTS awr_team.access_changes;
         ALTER TABLE awr_team.resource_reservations DROP COLUMN execution_id;
         ALTER TABLE awr_team.executions DROP CONSTRAINT executions_resource_identity;
         ALTER TABLE awr_team.executions DROP COLUMN attestation_grant_version;

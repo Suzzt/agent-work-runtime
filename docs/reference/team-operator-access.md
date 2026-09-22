@@ -88,8 +88,7 @@ awr-server access quarantine-outcome --tenant-id tenant-a --project-id project-a
 ```
 
 Use `--claim-disposition quarantine` to revoke active claims that cannot be
-attributed. Real PostgreSQL E2E for this protocol was not exercised when
-`AWR_TEAM_DATABASE_URL` / disposable PG was unavailable.
+attributed. Covered by `pg_operator_recovery` with `--features pg-tests`.
 
 Explicit execution attribution binds CHECK-safe unattributed executions
 (`session_id` and `claim_id` present) using a reviewed `executor_client_id` that
@@ -118,8 +117,10 @@ awr-server access execution-attribution-outcome --tenant-id tenant-a --project-i
   --request-id attrib-1
 ```
 
-Real PostgreSQL E2E for execution attribution was not exercised when
-`AWR_TEAM_DATABASE_URL` / disposable PG was unavailable.
+Real PostgreSQL integration coverage lives in
+`crates/awr-team-pg/tests/pg_operator_recovery.rs` (recovery-inspect, history
+migration, quarantine, execution attribution, backup/fencing restore/rebuild)
+and `pg_operator_access.rs`, run with `--features pg-tests`.
 
 
 Enabled-project logical backup metadata, guarded fencing restore, and a bounded
@@ -163,10 +164,10 @@ awr-server access backup-rebuild-outcome --tenant-id tenant-a --project-id proje
 
 Physical `pg_basebackup` and post-restore resource fencing remain operator
 responsibilities outside this CLI. Catalogs, contracts, snapshot ownership,
-completion receipts and grants are still outside this rebuild subset. This
-development branch has unit coverage for restore and rebuild planning; real
-PostgreSQL E2E for enabled-project backup/restore/rebuild was not exercised when
-`AWR_TEAM_DATABASE_URL` / disposable PG was unavailable.
+completion receipts and grants are still outside this rebuild subset. Unit
+tests cover restore/rebuild planning; `pg_operator_recovery` exercises
+enabled-project backup, fencing restore, and bounded rebuild against real
+PostgreSQL with `--features pg-tests`.
 
 Save an access plan as local JSON. Use an actual workstream ID and current authority
 version from inspection, and replace the hash placeholder with `access token`'s
