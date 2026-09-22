@@ -1,0 +1,103 @@
+{
+  "version": "1.0.0",
+  "status_authority": "live_trial_only",
+  "gates": {
+    "natural_client_initiation": {
+      "required_evidence": [
+        "live evidence paths proving natural_client_initiation"
+      ],
+      "not_sufficient": [
+        "fixture presence alone",
+        "same person self-review",
+        "SQL mutation of business state",
+        "seeded receipt or claim",
+        "single agent signing execution and review"
+      ]
+    },
+    "actual_tool_or_role_execution": {
+      "required_evidence": [
+        "live evidence paths proving actual_tool_or_role_execution"
+      ],
+      "not_sufficient": [
+        "fixture presence alone",
+        "same person self-review",
+        "SQL mutation of business state",
+        "seeded receipt or claim",
+        "single agent signing execution and review"
+      ]
+    },
+    "real_artifact": {
+      "required_evidence": [
+        "live evidence paths proving real_artifact"
+      ],
+      "not_sufficient": [
+        "fixture presence alone",
+        "same person self-review",
+        "SQL mutation of business state",
+        "seeded receipt or claim",
+        "single agent signing execution and review"
+      ]
+    },
+    "business_followup_1": {
+      "required_evidence": [
+        "live evidence paths proving business_followup_1"
+      ],
+      "not_sufficient": [
+        "fixture presence alone",
+        "same person self-review",
+        "SQL mutation of business state",
+        "seeded receipt or claim",
+        "single agent signing execution and review"
+      ]
+    },
+    "business_followup_2": {
+      "required_evidence": [
+        "live evidence paths proving business_followup_2"
+      ],
+      "not_sufficient": [
+        "fixture presence alone",
+        "same person self-review",
+        "SQL mutation of business state",
+        "seeded receipt or claim",
+        "single agent signing execution and review"
+      ]
+    },
+    "independent_review": {
+      "required_evidence": [
+        "live evidence paths proving independent_review"
+      ],
+      "not_sufficient": [
+        "fixture presence alone",
+        "same person self-review",
+        "SQL mutation of business state",
+        "seeded receipt or claim",
+        "single agent signing execution and review"
+      ]
+    },
+    "delivery": {
+      "required_evidence": [
+        "live evidence paths proving delivery"
+      ],
+      "not_sufficient": [
+        "fixture presence alone",
+        "same person self-review",
+        "SQL mutation of business state",
+        "seeded receipt or claim",
+        "single agent signing execution and review"
+      ]
+    },
+    "traceable_receipt": {
+      "required_evidence": [
+        "live evidence paths proving traceable_receipt"
+      ],
+      "not_sufficient": [
+        "fixture presence alone",
+        "same person self-review",
+        "SQL mutation of business state",
+        "seeded receipt or claim",
+        "single agent signing execution and review"
+      ]
+    }
+  },
+  "pass_policy": "all eight gates must be live-passed with evidence paths; 待验 is not pass"
+}

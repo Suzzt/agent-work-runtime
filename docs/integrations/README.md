@@ -113,3 +113,4 @@ Cursor MCP merge paths are an [L1 note](cursor.md).
 | Independent deploy + member handoff (TMCP-041) | [team-deploy-pack.md](../reference/team-deploy-pack.md) |
 | Team MCP · Codex `codex_cli` (TMCP-041) | [team-mcp-codex-cli.md](team-mcp-codex-cli.md) |
 | Team MCP · Claude Code `claude_code` (TMCP-041) | [team-mcp-claude-code.md](team-mcp-claude-code.md) |
+| Team MCP BIZ acceptance (TMCP-051) | [../reference/team-mcp-biz-acceptance.md](../reference/team-mcp-biz-acceptance.md) |
