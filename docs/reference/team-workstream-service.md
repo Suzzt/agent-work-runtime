@@ -18,7 +18,7 @@ not a server ACL or confidentiality sandbox.
 ## Start an operator-bound service
 
 Build `awr-server` from this source branch. Migrate the intended database to
-schema 15 explicitly as its owner, and apply application-role grants using the
+schema 16 explicitly as its owner, and apply application-role grants using the
 [PostgreSQL setup](team-postgres.md). `serve` checks the schema without migrating
 it. Run the listener using the application connection, not an owner or superuser
 connection.
@@ -501,8 +501,8 @@ operator provisioning CLI and its immutable receipts without granting existing
 clients new rights. The [scoped reference runner](team-reference-runner.md)
 integrates bounded local file writes and saved-fact reporting, but does not adopt
 or backfill existing in-flight execution history. Generic agent dispatch and
-enabled-project backup/restore remain outside the available workflow; enabled-project
-history still requires explicit migration.
+full logical rebuild-from-manifest restore remains outside the available workflow;
+enabled-project history still requires explicit migration before backup.
 
 ## Limits and errors
 
@@ -556,6 +556,8 @@ executor authority, operator settlement, receipt preservation, rollback and
 explicit old-epoch review over PostgreSQL, HTTP and MCP. A local runner test also
 installs a new generation barrier and rejects a delayed old-generation write;
 the database boundary in that test is synthetic, not a physical backup/restore.
-Generic agent dispatch and enabled-project backup/restore remain unavailable
-through this surface. Bounded owner-only history migration is a separate CLI
-(`awr-server access history-*`), not an HTTP/MCP client capability.
+Generic agent dispatch remains unavailable through this surface. Bounded
+owner-only history migration and enabled-project logical backup/fencing restore
+are separate schema-owner CLI flows (`awr-server access history-*` /
+`backup-*`), not HTTP/MCP client capabilities. Physical database basebackup
+stays an external operator responsibility.

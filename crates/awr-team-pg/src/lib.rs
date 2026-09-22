@@ -10,6 +10,7 @@ mod migrate;
 mod operator_access;
 mod operator_recovery;
 mod operator_history;
+mod operator_backup;
 mod path;
 mod pool;
 mod read;
@@ -35,6 +36,7 @@ pub use migrate::{EXPECTED_SCHEMA_VERSION, check_schema, migrate};
 pub use operator_access::{AccessActor, AccessCredential, AccessGrant, AccessPlan, OperatorAccess};
 pub use operator_recovery::OperatorRecovery;
 pub use operator_history::OperatorHistory;
+pub use operator_backup::OperatorBackup;
 pub use path::{
     MAX_FILE_BYTES, MAX_PACKAGE_BYTES, MAX_SOURCE_FILES, validate_package, validate_source_path,
 };
@@ -74,6 +76,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 15);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 16);
     }
 }

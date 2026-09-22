@@ -9,8 +9,8 @@ Database operations require the schema owner's PostgreSQL privileges through
 `AWR_TEAM_DATABASE_URL`. Ordinary service application credentials and HTTP/MCP
 bearers cannot use this operator interface. The running service continues to use
 its separate application connection. Upgrade explicitly with
-`awr-server migrate --app-role <service-role>` as owner; schema 15 adds operator access
-and history-migration receipts; bootstrap denies the application role all access to those tables.
+`awr-server migrate --app-role <service-role>` as owner; schema 16 adds operator access,
+history-migration, and backup-operation receipts; bootstrap denies the application role all access to those tables.
 
 ## Register a client
 
@@ -66,6 +66,26 @@ awr-server access history-apply --tenant-id tenant-a --project-id project-a \
   --request-id migrate-1 --expected-state <state_digest> --expected-plan <plan_digest>
 awr-server access history-outcome --tenant-id tenant-a --project-id project-a \
   --request-id migrate-1
+```
+
+Enabled-project logical backup metadata and guarded fencing restore are owner-only.
+Legacy `ImportStore` backup/restore already refuse enabled workstreams. This CLI
+records an `awr-team-enabled-backup-v1` manifest (projection digests, ownership,
+completion-receipt digests, source/artifact digests). Physical `pg_basebackup`
+remains external. Restore preview refuses projection/receipt/inventory drift,
+unattributed history, and outbox replay. Apply performs verified fencing only:
+it never rewrites completion receipts, forges credentials/grants, copies table
+rows from the manifest, or treats local files as a server ACL:
+
+```sh
+awr-server access backup-create --tenant-id tenant-a --project-id project-a
+awr-server access backup-inspect --tenant-id tenant-a --project-id project-a \
+  --backup-id <id>
+awr-server access backup-restore-preview --tenant-id tenant-a --project-id project-a \
+  --backup-id <id>
+awr-server access backup-restore-apply --tenant-id tenant-a --project-id project-a \
+  --backup-id <id> --request-id restore-1 \
+  --expected-state <state_digest> --expected-plan <plan_digest>
 ```
 
 Save an access plan as local JSON. Use an actual workstream ID and current authority

@@ -188,8 +188,11 @@ explicit operator review and preserves original attribution. Owner-only read-onl
 history migration (`history-preview` / `history-apply`) can attribute sessions,
 inactive claims and work-bound events from current ownership; it refuses
 executions and active claims and does not forge identity or completion receipts.
-Enabled-project backup/restore, remaining manual recovery cases and real-client
-acceptance remain outstanding; the current legacy import/restore APIs refuse
+Owner-only enabled-project logical backup manifests and verified fencing restore
+are available via `awr-server access backup-*` (physical basebackup remains
+external; completion receipts are never rewritten). Remaining gaps include
+full logical row rebuild from manifests, active-claim/execution attribution,
+and real-client acceptance. Legacy import/restore APIs continue to refuse
 enabled projects. The shared personal MCP read boundary described elsewhere does not
 provide Team access.
 

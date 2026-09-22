@@ -1,4 +1,4 @@
-use awr_team_pg::{AccessPlan, OperatorAccess, OperatorHistory, OperatorRecovery, PgError};
+use awr_team_pg::{AccessPlan, OperatorAccess, OperatorBackup, OperatorHistory, OperatorRecovery, PgError};
 use clap::Subcommand;
 use serde_json::{Value, json};
 use std::io::{Read, Write};
@@ -86,6 +86,55 @@ pub enum AccessCommand {
         #[arg(long)]
         request_id: String,
     },
+    /// Record a versioned enabled-project logical backup manifest (owner only).
+    BackupCreate {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+    },
+    /// Inspect a recorded enabled-project backup manifest.
+    BackupInspect {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        backup_id: String,
+    },
+    /// Preview guarded fencing restore against a backup (no writes).
+    BackupRestorePreview {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        backup_id: String,
+    },
+    /// Apply verified fencing restore using exact preview digests.
+    BackupRestoreApply {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        backup_id: String,
+        #[arg(long)]
+        request_id: String,
+        #[arg(long)]
+        expected_state: String,
+        #[arg(long)]
+        expected_plan: String,
+    },
+    /// Inspect a backup restore-apply request outcome before retrying.
+    BackupRestoreOutcome {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        request_id: String,
+    },
 }
 
 pub type Error = (&'static str, &'static str);
@@ -103,7 +152,15 @@ fn pg_error(e: PgError) -> Error {
         ),
         PgError::Unsupported(_) => (
             "Unsupported",
-            "operation requires an enabled workstream project",
+            "operation unsupported for this project state or refused by restore plan",
+        ),
+        PgError::RestoreIncomplete => (
+            "RestoreIncomplete",
+            "backup missing, inventory incomplete, or physical/logical artifacts not verified",
+        ),
+        PgError::ProjectNotAvailable => (
+            "ProjectNotAvailable",
+            "project is not active or not available for operator backup/restore",
         ),
         _ => (
             "Unavailable",
@@ -245,6 +302,45 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
             project_id,
             request_id,
         } => OperatorHistory::outcome(&mut client, &tenant_id, &project_id, &request_id).await,
+        AccessCommand::BackupCreate {
+            tenant_id,
+            project_id,
+        } => OperatorBackup::backup(&mut client, &tenant_id, &project_id).await,
+        AccessCommand::BackupInspect {
+            tenant_id,
+            project_id,
+            backup_id,
+        } => OperatorBackup::inspect(&mut client, &tenant_id, &project_id, &backup_id).await,
+        AccessCommand::BackupRestorePreview {
+            tenant_id,
+            project_id,
+            backup_id,
+        } => OperatorBackup::restore_preview(&mut client, &tenant_id, &project_id, &backup_id).await,
+        AccessCommand::BackupRestoreApply {
+            tenant_id,
+            project_id,
+            backup_id,
+            request_id,
+            expected_state,
+            expected_plan,
+        } => {
+            OperatorBackup::restore_apply(
+                &mut client,
+                &tenant_id,
+                &project_id,
+                &backup_id,
+                &request_id,
+                &expected_state,
+                &expected_plan,
+            )
+            .await
+        }
+        AccessCommand::BackupRestoreOutcome {
+            tenant_id,
+            project_id,
+            request_id,
+        } => OperatorBackup::restore_outcome(&mut client, &tenant_id, &project_id, &request_id)
+            .await,
     }
     .map_err(pg_error)
 }
