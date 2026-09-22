@@ -263,22 +263,33 @@ pub(crate) async fn read(
     }
     q.validate()?;
     if q.op == "capabilities" {
-        return Ok(
-            json!({"protocol":"awr-team-workstream","protocol_version":1,"queries":QUERIES,
-        "commands":crate::workstream_command::COMMANDS,"scope_id":"main","authentication":"bearer_per_request","authorization":"transactional_workstream_grants",
-        "command_preconditions":"project_revision_v1","command_status_query":"command.inspect",
-        "claim_semantics":"coordination_only","lease_ttl_seconds":{"min":1,"max":3600},
-        "execution_intents":true,"execution_dispatch":false,"execution_start":true,"execution_reports":true,
-        "execution_modes":["caller_managed","reference_write_v1"],"execution_report_authority":"caller_asserted",
-        "reference_runner":{"transport":"operator_local_cli_or_library","effects":"bounded_file_writes",
-            "requires":"system_actor_with_explicit_attestation_grant","fencing_class":"uncontrolled","max_plan_bytes":1048576},
-        "execution_reconciliation":true,"trusted_execution_results":true,
-        "previous_epoch_reconciliation":true,"unattributed_history_adoption":false,
-        "execution_trust_authority":"explicit_operator_grant_and_actor_kind",
-        "dependency_exports":false,"execution_admission":true,
-        "execution_admission_scope":"same_client_current_lease_lexical_project_resources",
-        "artifact_content":false}),
-        );
+        let mut caps = json!({
+            "protocol":"awr-team-workstream","protocol_version":1,"queries":QUERIES,
+            "commands":crate::workstream_command::COMMANDS,
+            "authentication":"bearer_per_request",
+            "command_preconditions":"project_revision_v1","command_status_query":"command.inspect",
+            "claim_semantics":"coordination_only","lease_ttl_seconds":{"min":1,"max":3600},
+            "execution_intents":true,"execution_dispatch":false,"execution_start":true,"execution_reports":true,
+            "execution_modes":["caller_managed","reference_write_v1"],"execution_report_authority":"caller_asserted",
+            "reference_runner":{"transport":"operator_local_cli_or_library","effects":"bounded_file_writes",
+                "requires":"system_actor_with_explicit_attestation_grant","fencing_class":"uncontrolled","max_plan_bytes":1048576},
+            "execution_reconciliation":true,"trusted_execution_results":true,
+            "previous_epoch_reconciliation":true,"unattributed_history_adoption":false,
+            "execution_trust_authority":"explicit_operator_grant_and_actor_kind",
+            "dependency_exports":false,"execution_admission":true,
+            "execution_admission_scope":"same_client_current_lease_lexical_project_resources",
+            "artifact_content":false
+        });
+        // WS-014: explicit scope=main / old-client / local-file boundaries.
+        if let Some(obj) = caps.as_object_mut() {
+            obj.extend(
+                crate::workstream_auth::workstream_boundary_capabilities()
+                    .as_object()
+                    .cloned()
+                    .unwrap_or_default(),
+            );
+        }
+        return Ok(caps);
     }
     if q.op == "workstreams.list" {
         let binding = hash(

@@ -173,10 +173,14 @@ progress. Historical data is never reassigned just to unblock enablement.
 `SourceStore` remains a trusted coordinator API, not a client authorization
 boundary. Source bundles cannot carry grants and activation grants no reader or
 writer permissions. The [Team HTTP service](team-workstream-service.md)
-checks live credentials, actor/membership and grants transactionally. Session
+checks live credentials, actor/membership and grants transactionally through a
+shared command-domain authorization gate (admission write grant, then
+active-stream or attest/reconcile effect checks after idempotent replay). Session
 creation, checkpoints, closure, claims, execution intents/admission, result
 reporting and authorized reconciliation are supported through HTTP and MCP.
-The [reference runner](team-reference-runner.md) performs bounded local file
+Capabilities advertise `scope_id=main` historical semantics, refuse unsupported
+operations, and state that local file access is not a server ACL. The
+[reference runner](team-reference-runner.md) performs bounded local file
 writes with explicit executor authority. Old-epoch reconciliation requires an
 explicit operator review and preserves original attribution. Enabled-project
 backup/restore, migration of unattributed history and real-client acceptance

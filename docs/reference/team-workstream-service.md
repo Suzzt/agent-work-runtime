@@ -6,8 +6,14 @@ PostgreSQL. This is not a release
 announcement or a complete Team execution service. It does not dispatch
 executions, resume agents or adopt cross-workstream deliveries. Use its live
 capabilities response to discover available operations.
-An operator-local [reference runner](team-reference-runner.md) can consume scoped
-admissions for bounded file writes and attest their results.
+Unsupported capabilities are refused. Live authorization is enforced in PostgreSQL
+transactions shared by HTTP and MCP domain entries; clients must not treat UI
+filtering as an ACL. Team rows retain historical `scope_id=main` while
+`workstream_id` isolates streams. Legacy unscoped Team entrypoints refuse writes
+against enabled projects. An operator-local
+[reference runner](team-reference-runner.md) can consume scoped admissions for
+bounded file writes and attest their results; those local filesystem effects are
+not a server ACL or confidentiality sandbox.
 
 ## Start an operator-bound service
 
