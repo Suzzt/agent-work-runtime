@@ -41,6 +41,7 @@ mod work_create;
 mod work_edit;
 pub use work_edit::edit_work;
 mod selective_invalidation;
+mod workstream_accounting;
 mod work_graph;
 pub use selective_invalidation::{
     AdoptedConsumerEdge, BoundaryDecision, BoundaryRevalidation, BoundarySnapshot,
@@ -53,6 +54,12 @@ pub use selective_invalidation::{
 pub use work_graph::{
     SharedOutcomeRef, WorkGraphRequest, necessary_dependencies_ready, reference_shared_outcome,
     unique_shared_work_keys, validate_cross_stream_work_graph, work_graph,
+};
+pub use workstream_accounting::{
+    ApprovedContractSnapshot, ContractAccountingReport, GoalQueryResult, GoalQueryView,
+    OwnershipTransfer, ScopeAccountingError, TransferAccountingOutcome, VerifiedStageObservation,
+    VerifiedWorkObservation, account_approved_scope, goal_query_view,
+    refuse_goal_query_as_contract_rate, transfer_work_preserving_history, unique_owned_work_keys,
 };
 mod response_view;
 mod workflow;
