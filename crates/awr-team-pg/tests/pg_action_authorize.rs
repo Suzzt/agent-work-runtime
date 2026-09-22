@@ -44,13 +44,15 @@ async fn reader_cannot_claim_or_start_session_via_any_command_variant() {
         ),
     ] {
         let err = commands
-            .execute(TENANT, PROJECT, A, command(&prepared, &format!("r-{op}"), op, args))
+            .execute(
+                TENANT,
+                PROJECT,
+                A,
+                command(&prepared, &format!("r-{op}"), op, args),
+            )
             .await
             .unwrap_err();
-        assert!(
-            matches!(err, PgError::Forbidden),
-            "{op} => {err:?}"
-        );
+        assert!(matches!(err, PgError::Forbidden), "{op} => {err:?}");
     }
 }
 
@@ -88,22 +90,17 @@ async fn worker_may_maintain_session_but_planning_ops_stay_unsupported() {
     // Planning/access are not workstream commands yet; shared gate still maps them
     // and the command dispatcher refuses unsupported capabilities with no write.
     let err = commands
-        .execute(
-            TENANT,
-            PROJECT,
-            A,
-            {
-                let mut c = command(
-                    &prepared,
-                    "worker-publish",
-                    "session.start",
-                    json!({"conversation_id":"other"}),
-                );
-                // Force an unsupported op through deserialization bypass by rebuilding.
-                c.op = "planning.publish".into();
-                c
-            },
-        )
+        .execute(TENANT, PROJECT, A, {
+            let mut c = command(
+                &prepared,
+                "worker-publish",
+                "session.start",
+                json!({"conversation_id":"other"}),
+            );
+            // Force an unsupported op through deserialization bypass by rebuilding.
+            c.op = "planning.publish".into();
+            c
+        })
         .await
         .unwrap_err();
     assert!(
@@ -155,7 +152,9 @@ async fn revoked_credential_cannot_mutate_and_search_stays_scoped() {
         .await
         .unwrap();
     admin
-        .batch_execute("UPDATE awr_team.credentials SET revoked_at=clock_timestamp() WHERE id='reader-a'")
+        .batch_execute(
+            "UPDATE awr_team.credentials SET revoked_at=clock_timestamp() WHERE id='reader-a'",
+        )
         .await
         .unwrap();
     let err = commands
@@ -203,10 +202,7 @@ async fn changed_intent_on_same_request_id_is_conflict_not_new_write() {
         "session.start",
         json!({"conversation_id":"conv-a"}),
     );
-    commands
-        .execute(TENANT, PROJECT, A, first)
-        .await
-        .unwrap();
+    commands.execute(TENANT, PROJECT, A, first).await.unwrap();
     let changed = command(
         &prepared,
         "intent-1",

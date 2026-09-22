@@ -1244,7 +1244,6 @@ fn replay_execution(result: &Value) -> PgResult<ExecutionRecord> {
     })
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

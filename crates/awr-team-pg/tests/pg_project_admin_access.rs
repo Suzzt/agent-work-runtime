@@ -37,19 +37,19 @@ fn admin_plan_member() -> AdminAccessPlan {
 #[tokio::test]
 async fn project_admin_mcp_path_preview_apply_outcome_and_denies_non_admin() {
     let (_g, owner, db, store) = setup().await;
-    let access = ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let access =
+        ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     // Token A is actor=agent role=admin — project admin.
     let plan = admin_plan_member();
-    let preview = access
-        .preview(TENANT, PROJECT, A, &plan)
-        .await
-        .unwrap();
+    let preview = access.preview(TENANT, PROJECT, A, &plan).await.unwrap();
     assert_eq!(preview["applied"], false);
     assert_eq!(preview["raw_secrets_in_response"], false);
     assert!(!preview.to_string().contains(NEW_TOKEN));
-    assert!(!preview
-        .to_string()
-        .contains(plan.credential.as_ref().unwrap().secret_hash.as_str()));
+    assert!(
+        !preview
+            .to_string()
+            .contains(plan.credential.as_ref().unwrap().secret_hash.as_str())
+    );
     assert_eq!(
         preview["credential_revocation_scope"],
         "refused_for_project_admin_use_project_grant_revoke"
@@ -101,7 +101,7 @@ async fn project_admin_mcp_path_preview_apply_outcome_and_denies_non_admin() {
     // Non-admin (reader-b / reviewer membership) cannot manage access.
     // B is actor=agent? No - reader-b is also actor agent with cli-b. Same admin role!
     // Use NONE (no-grants) which still has membership admin... fixture gives agent admin.
-    // Create a worker-only subject and use a separate non-admin token after demoting... 
+    // Create a worker-only subject and use a separate non-admin token after demoting...
     // Instead: register a reader-only member and try with their token.
     let reader_token =
         "awr1.reader-only.ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
@@ -125,7 +125,10 @@ async fn project_admin_mcp_path_preview_apply_outcome_and_denies_non_admin() {
         "revoke_tenant_credentials":[]
     }))
     .unwrap();
-    let p2 = access.preview(TENANT, PROJECT, A, &reader_plan).await.unwrap();
+    let p2 = access
+        .preview(TENANT, PROJECT, A, &reader_plan)
+        .await
+        .unwrap();
     access
         .apply(
             TENANT,
@@ -163,7 +166,8 @@ async fn project_admin_mcp_path_preview_apply_outcome_and_denies_non_admin() {
 #[tokio::test]
 async fn tenant_credential_revoke_refused_project_revoke_preserves_other_projects_and_last_admin() {
     let (_g, mut owner, db, _) = setup().await;
-    let access = ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let access =
+        ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     // Seed a grant in another project for the same actor to prove project revoke is scoped.
     owner
         .batch_execute(
@@ -199,7 +203,10 @@ async fn tenant_credential_revoke_refused_project_revoke_preserves_other_project
         .preview(TENANT, PROJECT, A, &revoke_tenant)
         .await
         .unwrap();
-    assert_eq!(preview["impact"]["project_grant_revoke_preserves_other_projects"], true);
+    assert_eq!(
+        preview["impact"]["project_grant_revoke_preserves_other_projects"],
+        true
+    );
     access
         .apply(
             TENANT,
@@ -311,7 +318,9 @@ async fn tenant_credential_revoke_refused_project_revoke_preserves_other_project
         "revoke_credentials":[]
     }))
     .unwrap();
-    let op = OperatorAccess::preview(&mut owner, &owner_plan).await.unwrap();
+    let op = OperatorAccess::preview(&mut owner, &owner_plan)
+        .await
+        .unwrap();
     OperatorAccess::apply(
         &mut owner,
         &owner_plan,
@@ -344,10 +353,12 @@ async fn tenant_credential_revoke_refused_project_revoke_preserves_other_project
 #[tokio::test]
 async fn concurrent_admin_applies_serialize_and_owner_receipts_stay_separate() {
     let (_g, owner, db, _) = setup().await;
-    let access = ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let access =
+        ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     let plan = admin_plan_member();
     let preview = access.preview(TENANT, PROJECT, A, &plan).await.unwrap();
-    let access2 = ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let access2 =
+        ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     let (a, b) = tokio::join!(
         access.apply(
             TENANT,
@@ -371,7 +382,10 @@ async fn concurrent_admin_applies_serialize_and_owner_receipts_stay_separate() {
     assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
     let err = a.err().or(b.err()).unwrap();
     assert!(
-        matches!(err, PgError::PreconditionsChanged | PgError::IdempotencyConflict | PgError::Db(_)),
+        matches!(
+            err,
+            PgError::PreconditionsChanged | PgError::IdempotencyConflict | PgError::Db(_)
+        ),
         "unexpected concurrent error: {err:?}"
     );
     // Owner OperatorAccess still cannot be called by app role.

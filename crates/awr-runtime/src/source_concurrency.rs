@@ -6,10 +6,10 @@
 use crate::mutation_apply::{SourceReplacement, directory, named_lock, new_file, recovery_root};
 use awr_core::*;
 use awr_source::{
-    Locator, Manifest, ShardCandidate, ShardObservation, ShardWrite, document_path_registration,
-    fingerprint, form_shard_candidate, index_project, inspect_registered_source, observe_candidate,
-    observe_shard, open_file_exact, prepare_yaml_mutation, refuse_stale_whole_file,
-    require_write_mode, source_write_mode, SourceWriteMode,
+    Locator, Manifest, ShardCandidate, ShardObservation, ShardWrite, SourceWriteMode,
+    document_path_registration, fingerprint, form_shard_candidate, index_project,
+    inspect_registered_source, observe_candidate, observe_shard, open_file_exact,
+    prepare_yaml_mutation, refuse_stale_whole_file, require_write_mode, source_write_mode,
 };
 use awr_store::Store;
 use cap_fs_ext::DirExt;
@@ -168,7 +168,10 @@ pub fn activate_precise_patch(
                 actual,
             });
         }
-        let live = awr_source::read_capped(&prepared.path, awr_source::source_read_cap(&source.adapter)?)?;
+        let live = awr_source::read_capped(
+            &prepared.path,
+            awr_source::source_read_cap(&source.adapter)?,
+        )?;
         let live_fp = fingerprint(&live);
         // Stale whole-file: refuse rather than overwrite another writer's change.
         refuse_stale_whole_file(&prepared.plan.before_fingerprint, &live_fp)?;
@@ -239,7 +242,6 @@ pub fn activate_precise_patch(
     }
 }
 
-
 /// Bind every shard path to its Store-registered source before any journal or filesystem write.
 ///
 /// Rejects forged path+fingerprint pairs against unregistered siblings, adapter mismatches,
@@ -260,9 +262,7 @@ fn bind_registered_shard_paths(
     require_write_mode(adapter, SourceWriteMode::ShardedFiles)?;
     for shard in &candidate.shards {
         let source = store.source(project_id, shard.source_id).map_err(|_| {
-            Error::SourceConflict(
-                "shard source_id is not registered in the project Store".into(),
-            )
+            Error::SourceConflict("shard source_id is not registered in the project Store".into())
         })?;
         if source.adapter != adapter {
             return Err(Error::SourceConflict(
@@ -281,9 +281,9 @@ fn bind_registered_shard_paths(
                 "sharded writes require local file sources".into(),
             ));
         };
-        let relative = registered.strip_prefix(&root).map_err(|_| {
-            Error::RuleViolation("shard source path escapes project root".into())
-        })?;
+        let relative = registered
+            .strip_prefix(&root)
+            .map_err(|_| Error::RuleViolation("shard source path escapes project root".into()))?;
         if relative.as_os_str().is_empty()
             || relative
                 .components()
@@ -491,7 +491,9 @@ fn activate_shard_candidate_locked(
                 let path = root.join(&shard.path);
                 let permissions = open_file_exact(&path)?.metadata()?.permissions();
                 if permissions.readonly() {
-                    return Err(Error::RuleViolation("shard destination is read-only".into()));
+                    return Err(Error::RuleViolation(
+                        "shard destination is read-only".into(),
+                    ));
                 }
                 let after = match dir.open(format!("{i}.after")) {
                     Ok(file) => {
@@ -613,9 +615,8 @@ pub fn recover_shard_candidate(
         .open_dir_nofollow(&owner)
         .map_err(|e| Error::SourceUnavailable(format!("missing shard recovery journal: {e}")))?;
     let _lock = named_lock(&root, &format!("{owner}.lock"))?;
-    let receipt: ShardReceipt = load_json(&dir, "receipt.json")?.ok_or_else(|| {
-        Error::NotFound("shard concurrency receipt".into())
-    })?;
+    let receipt: ShardReceipt = load_json(&dir, "receipt.json")?
+        .ok_or_else(|| Error::NotFound("shard concurrency receipt".into()))?;
     if receipt.project_id != project_id {
         return Err(Error::SourceConflict(
             "shard recovery receipt belongs to another project".into(),
@@ -635,22 +636,11 @@ pub fn recover_shard_candidate(
         });
     }
     // Resume under the lock we already hold; do not re-enter activate_shard_candidate.
-    activate_shard_candidate_locked(
-        store,
-        &root,
-        &dir,
-        &owner,
-        receipt,
-        expected_revision,
-        true,
-    )
+    activate_shard_candidate_locked(store, &root, &dir, &owner, receipt, expected_revision, true)
 }
 
 /// Classify whether a live observation blocks a stale whole-file install.
-pub fn classify_whole_file_gate(
-    expected_before: &str,
-    observed: &str,
-) -> Result<&'static str> {
+pub fn classify_whole_file_gate(expected_before: &str, observed: &str) -> Result<&'static str> {
     match refuse_stale_whole_file(expected_before, observed) {
         Ok(()) => Ok("installable"),
         Err(Error::SourceConflict(_)) => Ok("refuse_stale"),

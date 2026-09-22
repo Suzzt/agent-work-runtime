@@ -14,7 +14,6 @@ use workstreams::SourceProjection;
 #[path = "source_planning.rs"]
 pub mod planning;
 
-
 /// Sole authoritative source location bound for Team publish preparation
 /// (AWR-TMCP-020). Developers do not need author-laptop files or ledger write
 /// access; the server directory or private management repo is the only source.
@@ -133,7 +132,9 @@ impl SourceStore {
             .iter()
             .find(|f| f.path == SOURCE_BINDING_FILE)
             .ok_or_else(|| {
-                PgError::Protocol("first publish requires source_binding.json as the sole source location".into())
+                PgError::Protocol(
+                    "first publish requires source_binding.json as the sole source location".into(),
+                )
             })?;
         let binding: SoleSourceBinding = serde_json::from_slice(&binding_file.bytes)
             .map_err(|e| PgError::Protocol(format!("invalid source_binding.json: {e}")))?;
@@ -154,7 +155,8 @@ impl SourceStore {
                     || binding.locator.starts_with("ssh://"))
                 {
                     return Err(PgError::Protocol(
-                        "private management repo locator must be git://, https://, or ssh://".into(),
+                        "private management repo locator must be git://, https://, or ssh://"
+                            .into(),
                     ));
                 }
             }
@@ -200,7 +202,6 @@ impl SourceStore {
         let candidate = self.ingest(request).await?;
         Ok((candidate, binding))
     }
-
 
     pub async fn ingest(&self, request: IngestRequest) -> PgResult<CandidateRecord> {
         if request.parser_version.trim().is_empty() {
@@ -804,7 +805,6 @@ pub(crate) fn files_from_ref(source_ref: &Value) -> PgResult<Vec<(String, Vec<u8
         })
         .collect()
 }
-
 
 #[cfg(test)]
 mod publish_prep_tests {
