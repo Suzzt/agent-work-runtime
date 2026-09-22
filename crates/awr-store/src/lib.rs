@@ -15,6 +15,7 @@ mod handoff;
 mod management;
 mod mcp;
 mod team_handoff;
+mod workstream_usage;
 pub use mcp::with_mcp_operation;
 mod mutation;
 mod mutation_apply;
@@ -60,15 +61,17 @@ use serde::Serialize;
 pub use source_changes::{ProjectionChange, SourceState};
 use std::{path::Path, time::Duration};
 pub use work::{ScopedDependencyGraph, UnavailableDependency};
+pub use workstream_usage::UsageIngestReceipt;
 
 const APPLICATION_ID: i64 = 0x41575231;
 /// Schema written by this build. Exposed for offline host compatibility negotiation.
-pub const SCHEMA_VERSION: i64 = 11;
+pub const SCHEMA_VERSION: i64 = 12;
 const CONTENT_REVIEWS_SQL: &str = include_str!("../migrations/007_content_reviews.sql");
 const RESPONSIBILITY_SQL: &str = include_str!("../migrations/008_responsibility.sql");
 const AGENT_AUTHORIZATION_SQL: &str = include_str!("../migrations/009_agent_authorization.sql");
 const TEAM_HANDOFF_SQL: &str = include_str!("../migrations/010_team_handoff.sql");
 const DELIVERY_DEPS_SQL: &str = include_str!("../migrations/011_delivery_deps.sql");
+const USAGE_TIME_SQL: &str = include_str!("../migrations/012_usage_time.sql");
 const CATALOG_SQL: &str = include_str!("../migrations/001_catalog.sql");
 const DOMAIN_SQL: &str = include_str!("../migrations/002_domain.sql");
 const SEARCH_SQL: &str = include_str!("../migrations/003_search.sql");
@@ -451,6 +454,10 @@ impl Store {
             if version < 11 {
                 tx.execute_batch(DELIVERY_DEPS_SQL).map_err(db_error)?;
                 tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(11,'delivery_deps',?1)",[now_millis()?]).map_err(db_error)?;
+            }
+            if version < 12 {
+                tx.execute_batch(USAGE_TIME_SQL).map_err(db_error)?;
+                tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(12,'usage_time',?1)",[now_millis()?]).map_err(db_error)?;
             }
             tx.pragma_update(None, "user_version", SCHEMA_VERSION)
                 .map_err(db_error)?;

@@ -41,8 +41,9 @@ mod work_create;
 mod work_edit;
 pub use work_edit::edit_work;
 mod selective_invalidation;
-mod workstream_accounting;
 mod work_graph;
+mod workstream_accounting;
+mod workstream_usage;
 pub use selective_invalidation::{
     AdoptedConsumerEdge, BoundaryDecision, BoundaryRevalidation, BoundarySnapshot,
     CancelSplitRelation, DiscoverDependencyRequest, ExecutionBoundary, PlanningChangeApplication,
@@ -60,6 +61,12 @@ pub use workstream_accounting::{
     OwnershipTransfer, ScopeAccountingError, TransferAccountingOutcome, VerifiedStageObservation,
     VerifiedWorkObservation, account_approved_scope, goal_query_view,
     refuse_goal_query_as_contract_rate, transfer_work_preserving_history, unique_owned_work_keys,
+};
+pub use workstream_usage::{
+    AttestedUsageProject, UsageRuntimeError, ingest_usage_receipt, query_usage_cost_totals,
+    query_usage_occurrence_bindings, query_usage_time_totals, record_usage_allocation,
+    record_usage_correction, record_usage_counter_snapshot, record_usage_execution_interval,
+    refuse_eta_from_cumulative_duration, usage_observation_for_ws043,
 };
 mod response_view;
 mod workflow;

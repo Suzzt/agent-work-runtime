@@ -2,7 +2,7 @@
 use crate::{
     AGENT_AUTHORIZATION_SQL, CATALOG_SQL, CONTENT_REVIEWS_SQL, DELIVERY_DEPS_SQL, DOMAIN_SQL,
     DRAFT_WORK_SQL, MigrationInfo, RESPONSIBILITY_SQL, SCHEMA_VERSION, SEARCH_SQL,
-    TEAM_HANDOFF_SQL, WORKSTREAM_SESSIONS_SQL, WORKSTREAM_SQL, db_error,
+    TEAM_HANDOFF_SQL, USAGE_TIME_SQL, WORKSTREAM_SESSIONS_SQL, WORKSTREAM_SQL, db_error,
 };
 use awr_core::{Error, Result};
 use rusqlite::Connection;
@@ -11,7 +11,7 @@ use std::{collections::BTreeMap, sync::OnceLock};
 type Definition = (String, String, String);
 type Objects = BTreeMap<String, Definition>;
 static EXPECTED: OnceLock<std::result::Result<Vec<Objects>, String>> = OnceLock::new();
-const MIGRATION_NAMES: [&str; 11] = [
+const MIGRATION_NAMES: [&str; 12] = [
     "catalog",
     "domain",
     "search",
@@ -23,6 +23,7 @@ const MIGRATION_NAMES: [&str; 11] = [
     "agent_authorization",
     "team_handoff",
     "delivery_deps",
+    "usage_time",
 ];
 
 fn objects(conn: &Connection) -> rusqlite::Result<Objects> {
@@ -50,6 +51,7 @@ fn expected() -> Result<&'static Vec<Objects>> {
                     AGENT_AUTHORIZATION_SQL,
                     TEAM_HANDOFF_SQL,
                     DELIVERY_DEPS_SQL,
+                    USAGE_TIME_SQL,
                 ] {
                     conn.execute_batch(sql)?;
                     versions.push(objects(&conn)?);

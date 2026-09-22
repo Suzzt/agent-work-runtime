@@ -137,6 +137,14 @@ must not be charged twice. Unknown usage is not zero. Shared costs require an
 explicit allocation rule; allocations sum to the original charge. Parallel
 wall time is distinct from summed execution time.
 
+WS-041 persists and queries these as real usage + time accounting: deduped
+receipts bind to execution / task / occurrence-time mainline; actual cost,
+API-equivalent estimate, unknown, and coverage stay separate columns;
+cumulative provider counters convert to incremental deltas; corrections and
+cross-stream allocations are append-only and auditable. Measured time/usage
+with coverage is handed to WS-043 as historical observation only —
+cumulative-duration fields must never be presented as estimated remaining time.
+
 Legacy projects retain one compatible default scope and existing identities.
 Existing project, work and session identifiers remain opaque strings, including
 Team identifiers that are not ULIDs. Tenant adapters must obtain catalog and
