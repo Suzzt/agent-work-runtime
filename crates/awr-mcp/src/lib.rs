@@ -10,10 +10,10 @@ mod operations;
 mod project;
 mod requests;
 mod schema;
-mod waiting;
-mod workstreams;
 mod team_handoff;
 mod team_review;
+mod waiting;
+mod workstreams;
 
 use hub::{Hub, Principal, ProjectService};
 use rmcp::{ErrorData, RoleServer, ServerHandler, model::*, service::RequestContext};

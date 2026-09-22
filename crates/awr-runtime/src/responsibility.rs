@@ -1,11 +1,11 @@
 //! Runtime façade for task responsibility and execution-instance assignment.
 //! Personal mode may default owner=self while retaining the same underlying ops.
+use crate::Runtime;
 use awr_core::{
     AcceptResponsibilityRequest, AssignResponsibilityRequest, ClaimExecutionRequest,
-    ExecutionInstance, PersonAgentBinding, PersonId, ResponsibilityPending,
-    ResponsibilityReceipt, Result, TaskResponsibility, TransferOwnerRequest,
+    ExecutionInstance, PersonAgentBinding, PersonId, ResponsibilityPending, ResponsibilityReceipt,
+    Result, TaskResponsibility, TransferOwnerRequest,
 };
-use crate::Runtime;
 
 impl Runtime<'_> {
     pub fn task_responsibility(&self, work_item_id: &str) -> Result<TaskResponsibility> {
@@ -40,7 +40,9 @@ impl Runtime<'_> {
                 authorized_by: self_person.clone(),
             };
             // If versions match and we would no-op bump, prefer idempotent receipt path:
-            return self.store.assign_responsibility(self.project, work_item_id, &req);
+            return self
+                .store
+                .assign_responsibility(self.project, work_item_id, &req);
         }
         let req = AssignResponsibilityRequest {
             request_key: request_key.into(),
