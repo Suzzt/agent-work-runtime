@@ -72,7 +72,16 @@ pub(crate) async fn authenticate(
     project: &str,
     token: &str,
 ) -> PgResult<ReaderAuthority> {
-    authenticate_inner(tx, tenant, project, token, false).await
+    authenticate_inner(tx, tenant, project, token, false, ProjectLockMode::Share).await
+}
+
+/// How writers lock the project row during admission.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ProjectLockMode {
+    /// Source/admin and ordinary task writers serialize the project (audit order).
+    Exclusive,
+    /// Reserved for narrower task interleaving once audit cursors use a sequence.
+    Share,
 }
 
 pub(crate) async fn authenticate_writer(
@@ -81,7 +90,17 @@ pub(crate) async fn authenticate_writer(
     project: &str,
     token: &str,
 ) -> PgResult<ReaderAuthority> {
-    authenticate_inner(tx, tenant, project, token, true).await
+    authenticate_inner(tx, tenant, project, token, true, ProjectLockMode::Exclusive).await
+}
+
+#[allow(dead_code)]
+pub(crate) async fn authenticate_task_writer(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    token: &str,
+) -> PgResult<ReaderAuthority> {
+    authenticate_inner(tx, tenant, project, token, true, ProjectLockMode::Share).await
 }
 
 async fn authenticate_inner(
@@ -90,6 +109,7 @@ async fn authenticate_inner(
     project: &str,
     token: &str,
     write: bool,
+    lock: ProjectLockMode,
 ) -> PgResult<ReaderAuthority> {
     let credential_id = token_id(token)?;
     let hash = workstream_credential_hash(token)?;
@@ -102,11 +122,10 @@ async fn authenticate_inner(
         )
         .await?
         .ok_or(PgError::Forbidden)?;
-    // Lock the project before identity/policy records; source/admin protocols
-    // use the same admission -> project order.
-    // Writers keep the existing project serialization barrier until the
-    // operation-read-set protocol replaces it. Never upgrade a shared lock.
-    let project_query = if write {
+    // Lock the project before identity/policy records; source/admin and ordinary
+    // task writers use Exclusive for a total audit order. Never upgrade a shared
+    // lock inside the same transaction.
+    let project_query = if write && lock == ProjectLockMode::Exclusive {
         "SELECT active_snapshot_id,coordinator_epoch,project_revision,status FROM awr_team.projects
         WHERE tenant_id=$1 AND id=$2 FOR UPDATE"
     } else {
