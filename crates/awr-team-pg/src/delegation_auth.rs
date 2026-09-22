@@ -5,8 +5,8 @@
 use crate::workstream_auth::ReaderAuthority;
 use crate::{PgError, PgResult};
 use awr_core::{
-    AgentAuthorization, AuthorizationStatus, AuthorizedAction,
-    ExecutionSubjectKind, bind_runtime_identity,
+    AgentAuthorization, AuthorizationStatus, AuthorizedAction, ExecutionSubjectKind,
+    bind_runtime_identity,
 };
 use awr_team::{Action, RoleTemplate, template_actions};
 use std::collections::BTreeSet;
@@ -42,9 +42,7 @@ pub fn tmcp_actions_for_authorized(action: AuthorizedAction) -> BTreeSet<Action>
     out
 }
 
-pub fn tmcp_actions_for_authorized_set(
-    actions: &BTreeSet<AuthorizedAction>,
-) -> BTreeSet<Action> {
+pub fn tmcp_actions_for_authorized_set(actions: &BTreeSet<AuthorizedAction>) -> BTreeSet<Action> {
     let mut out = BTreeSet::new();
     for action in actions {
         out.extend(tmcp_actions_for_authorized(*action));
@@ -102,9 +100,8 @@ pub(crate) async fn resolve_agent_delegation(
 
     for row in rows {
         let body: serde_json::Value = row.get(0);
-        let grant: AgentAuthorization = serde_json::from_value(body).map_err(|e| {
-            PgError::Protocol(format!("corrupt agent authorization: {e}"))
-        })?;
+        let grant: AgentAuthorization = serde_json::from_value(body)
+            .map_err(|e| PgError::Protocol(format!("corrupt agent authorization: {e}")))?;
         if !matches!(grant.subject_kind, ExecutionSubjectKind::Agent) {
             continue;
         }
@@ -164,8 +161,9 @@ pub(crate) async fn resolve_agent_delegation(
 pub(crate) fn execution_side_effect_permitted(auth: &ReaderAuthority) -> bool {
     match &auth.delegated_actions {
         Some(actions) => actions.contains(&Action::ExecutionRequestAndReportOwn),
-        None => template_actions(auth.role_template)
-            .contains(&Action::ExecutionRequestAndReportOwn),
+        None => {
+            template_actions(auth.role_template).contains(&Action::ExecutionRequestAndReportOwn)
+        }
     }
 }
 
@@ -180,8 +178,7 @@ mod tests {
             AuthorizedAction::ClaimCoordination,
             AuthorizedAction::StartWork,
         ]));
-        let effective =
-            intersect_delegation_with_template(RoleTemplate::ProjectAdmin, &delegated);
+        let effective = intersect_delegation_with_template(RoleTemplate::ProjectAdmin, &delegated);
         assert!(effective.contains(&Action::ClaimManageOwn));
         assert!(effective.contains(&Action::ExecutionRequestAndReportOwn));
         assert!(effective.contains(&Action::SessionMaintainOwn));
@@ -206,8 +203,7 @@ mod tests {
             AuthorizedAction::ManageAuthorization,
         ]));
         assert!(delegated.is_empty());
-        let effective =
-            intersect_delegation_with_template(RoleTemplate::ProjectAdmin, &delegated);
+        let effective = intersect_delegation_with_template(RoleTemplate::ProjectAdmin, &delegated);
         assert!(effective.is_empty());
     }
 

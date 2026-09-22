@@ -280,5 +280,8 @@ async fn planning_draft_create_via_mcp_uses_business_entrypoint() {
         false,
     )
     .await;
-    assert!(preview.get("diff").is_some() || preview.get("candidate_id").is_some(), "{preview}");
+    assert!(
+        preview.get("diff").is_some() || preview.get("candidate_id").is_some(),
+        "{preview}"
+    );
 }

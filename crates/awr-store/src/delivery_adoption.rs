@@ -1,18 +1,20 @@
 //! SQLite persistence for versioned delivery dependencies and adoption credentials (WS-030).
 use crate::{Store, db_error};
 use awr_core::{
-    AdoptDeliveryRequest, AdoptionCredential, DeliveryCredentialReceipt, DeliveryError,
+    AdoptDeliveryRequest, AdoptionCredential, DeliveryCredentialReceipt, DeliveryError, Error,
     ExportAuthorization, GrantExportAuthorizationRequest, HardDeliveryDependency, Id,
     RegisterHardDependencyRequest, Result, RevokeExportAuthorizationRequest,
     RevokeHardDependencyRequest, adopt_delivery_credential as core_adopt_delivery_credential,
     apply_export_revoke, apply_hard_dependency_revoke, validate_export_grant,
-    validate_hard_dependency_registration, Error,
+    validate_hard_dependency_registration,
 };
 use rusqlite::{OptionalExtension, params};
 
 fn map_delivery(err: DeliveryError) -> Error {
     match err {
-        DeliveryError::InvalidDefinition => Error::InvalidInput("invalid delivery definition".into()),
+        DeliveryError::InvalidDefinition => {
+            Error::InvalidInput("invalid delivery definition".into())
+        }
         DeliveryError::BindingMismatch => Error::InvalidInput("delivery binding mismatch".into()),
         DeliveryError::InvalidTime => Error::InvalidInput("invalid delivery time".into()),
         DeliveryError::NotSatisfied(a) => Error::RuleViolation(format!(
@@ -22,7 +24,11 @@ fn map_delivery(err: DeliveryError) -> Error {
     }
 }
 
-fn load_dep(conn: &rusqlite::Connection, project: &str, id: &str) -> Result<Option<HardDeliveryDependency>> {
+fn load_dep(
+    conn: &rusqlite::Connection,
+    project: &str,
+    id: &str,
+) -> Result<Option<HardDeliveryDependency>> {
     let row = conn
         .query_row(
             "SELECT body_json FROM hard_delivery_dependencies WHERE project_id=?1 AND id=?2",
@@ -39,7 +45,11 @@ fn load_dep(conn: &rusqlite::Connection, project: &str, id: &str) -> Result<Opti
     }
 }
 
-fn persist_dep(conn: &rusqlite::Connection, project: &str, dep: &HardDeliveryDependency) -> Result<()> {
+fn persist_dep(
+    conn: &rusqlite::Connection,
+    project: &str,
+    dep: &HardDeliveryDependency,
+) -> Result<()> {
     let body = serde_json::to_string(dep).map_err(|e| Error::Storage(e.to_string()))?;
     let policy = match dep.policy {
         awr_core::DeliveryVersionPolicy::FixedDelivery => "fixed_delivery",
@@ -80,7 +90,11 @@ fn persist_dep(conn: &rusqlite::Connection, project: &str, dep: &HardDeliveryDep
     Ok(())
 }
 
-fn load_export(conn: &rusqlite::Connection, project: &str, id: &str) -> Result<Option<ExportAuthorization>> {
+fn load_export(
+    conn: &rusqlite::Connection,
+    project: &str,
+    id: &str,
+) -> Result<Option<ExportAuthorization>> {
     let row = conn
         .query_row(
             "SELECT body_json FROM export_authorizations WHERE project_id=?1 AND id=?2",
@@ -97,7 +111,11 @@ fn load_export(conn: &rusqlite::Connection, project: &str, id: &str) -> Result<O
     }
 }
 
-fn persist_export(conn: &rusqlite::Connection, project: &str, auth: &ExportAuthorization) -> Result<()> {
+fn persist_export(
+    conn: &rusqlite::Connection,
+    project: &str,
+    auth: &ExportAuthorization,
+) -> Result<()> {
     let body = serde_json::to_string(auth).map_err(|e| Error::Storage(e.to_string()))?;
     let status = match auth.status {
         awr_core::ExportAuthorizationStatus::Granted => "granted",
@@ -132,7 +150,11 @@ fn persist_export(conn: &rusqlite::Connection, project: &str, auth: &ExportAutho
     Ok(())
 }
 
-fn load_credential(conn: &rusqlite::Connection, project: &str, id: &str) -> Result<Option<AdoptionCredential>> {
+fn load_credential(
+    conn: &rusqlite::Connection,
+    project: &str,
+    id: &str,
+) -> Result<Option<AdoptionCredential>> {
     let row = conn
         .query_row(
             "SELECT body_json FROM adoption_credentials WHERE project_id=?1 AND id=?2",
@@ -149,7 +171,11 @@ fn load_credential(conn: &rusqlite::Connection, project: &str, id: &str) -> Resu
     }
 }
 
-fn persist_credential(conn: &rusqlite::Connection, project: &str, cred: &AdoptionCredential) -> Result<()> {
+fn persist_credential(
+    conn: &rusqlite::Connection,
+    project: &str,
+    cred: &AdoptionCredential,
+) -> Result<()> {
     let body = serde_json::to_string(cred).map_err(|e| Error::Storage(e.to_string()))?;
     let status = match cred.status {
         awr_core::AdoptionCredentialStatus::Active => "active",
@@ -273,9 +299,12 @@ impl Store {
                 "delivery dependency project must match store project".into(),
             ));
         }
-        if let Some(receipt) =
-            load_receipt(&self.conn, &project_s, &req.request_key, "register_dependency")?
-        {
+        if let Some(receipt) = load_receipt(
+            &self.conn,
+            &project_s,
+            &req.request_key,
+            "register_dependency",
+        )? {
             let dep = load_dep(&self.conn, &project_s, &receipt.subject_id)?
                 .ok_or_else(|| Error::Storage("dependency missing for receipt".into()))?;
             return Ok((
@@ -304,9 +333,12 @@ impl Store {
         req: &RevokeHardDependencyRequest,
     ) -> Result<(HardDeliveryDependency, DeliveryCredentialReceipt)> {
         let project_s = project.to_string();
-        if let Some(receipt) =
-            load_receipt(&self.conn, &project_s, &req.request_key, "revoke_dependency")?
-        {
+        if let Some(receipt) = load_receipt(
+            &self.conn,
+            &project_s,
+            &req.request_key,
+            "revoke_dependency",
+        )? {
             let dep = load_dep(&self.conn, &project_s, &receipt.subject_id)?
                 .ok_or_else(|| Error::Storage("dependency missing for receipt".into()))?;
             return Ok((
@@ -350,7 +382,9 @@ impl Store {
                 "export authorization project must match store project".into(),
             ));
         }
-        if let Some(receipt) = load_receipt(&self.conn, &project_s, &req.request_key, "grant_export")? {
+        if let Some(receipt) =
+            load_receipt(&self.conn, &project_s, &req.request_key, "grant_export")?
+        {
             let auth = load_export(&self.conn, &project_s, &receipt.subject_id)?
                 .ok_or_else(|| Error::Storage("export authorization missing for receipt".into()))?;
             return Ok((
@@ -379,7 +413,9 @@ impl Store {
         req: &RevokeExportAuthorizationRequest,
     ) -> Result<(ExportAuthorization, DeliveryCredentialReceipt)> {
         let project_s = project.to_string();
-        if let Some(receipt) = load_receipt(&self.conn, &project_s, &req.request_key, "revoke_export")? {
+        if let Some(receipt) =
+            load_receipt(&self.conn, &project_s, &req.request_key, "revoke_export")?
+        {
             let auth = load_export(&self.conn, &project_s, &receipt.subject_id)?
                 .ok_or_else(|| Error::Storage("export authorization missing for receipt".into()))?;
             return Ok((

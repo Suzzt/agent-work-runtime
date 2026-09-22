@@ -11,11 +11,11 @@
 //! or enterprise non-repudiation / WORM storage.
 
 use crate::tx::new_id;
-use std::sync::Arc;
 use crate::workstream_auth::{ReaderAuthority, authenticate, authorize_domain_action};
 use crate::{PgError, PgPool, PgResult};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
 use tokio_postgres::Transaction;
 
 /// Soft capacity for deny rows retained per project (oldest pruned).
@@ -324,13 +324,8 @@ impl OpsAuditStore {
         crate::check_schema(&client).await?;
         let tx = client.transaction().await?;
         let auth = authenticate(&tx, tenant_id, project_id, bearer).await?;
-        let project_wide = authorize_domain_action(
-            &auth,
-            awr_team::Action::AuditReadProject,
-            None,
-            None,
-        )
-        .is_ok();
+        let project_wide =
+            authorize_domain_action(&auth, awr_team::Action::AuditReadProject, None, None).is_ok();
         if !project_wide {
             authorize_domain_action(&auth, awr_team::Action::WorkRead, None, None)?;
             if let Some(ref m) = filter.member_actor_id {
@@ -365,8 +360,15 @@ impl OpsAuditStore {
             }));
         }
 
-        let records =
-            list_records(&tx, tenant_id, project_id, actor_scope.as_deref(), filter, limit).await?;
+        let records = list_records(
+            &tx,
+            tenant_id,
+            project_id,
+            actor_scope.as_deref(),
+            filter,
+            limit,
+        )
+        .await?;
         let denies = if filter.include_denies {
             list_denies(
                 &tx,

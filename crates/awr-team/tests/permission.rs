@@ -53,15 +53,16 @@ fn migration_preview_fixture_cases() {
     let doc = fixture("migration_preview.json");
     for case in doc["cases"].as_array().unwrap() {
         let id = case["id"].as_str().unwrap();
-        let role = case.get("legacy_role").and_then(|v| v.as_str()).map(|s| {
-            match s {
+        let role = case
+            .get("legacy_role")
+            .and_then(|v| v.as_str())
+            .map(|s| match s {
                 "reader" => LegacyRole::Reader,
                 "reviewer" => LegacyRole::Reviewer,
                 "worker" => LegacyRole::Worker,
                 "admin" => LegacyRole::Admin,
                 other => panic!("{id}: bad role {other}"),
-            }
-        });
+            });
         let grant = match case.get("legacy_grant") {
             None | Some(Value::Null) => None,
             Some(Value::String(s)) => Some(match s.as_str() {
@@ -98,13 +99,19 @@ fn migration_preview_fixture_cases() {
                 .collect();
             assert_eq!(got, exp, "{id}");
         }
-        if let Some(arr) = case.get("expect_actions_contains").and_then(|v| v.as_array()) {
+        if let Some(arr) = case
+            .get("expect_actions_contains")
+            .and_then(|v| v.as_array())
+        {
             for v in arr {
                 let a = Action::parse(v.as_str().unwrap()).unwrap();
                 assert!(preview.granted_actions.contains(&a), "{id} missing {v}");
             }
         }
-        if let Some(arr) = case.get("expect_actions_excludes").and_then(|v| v.as_array()) {
+        if let Some(arr) = case
+            .get("expect_actions_excludes")
+            .and_then(|v| v.as_array())
+        {
             for v in arr {
                 let a = Action::parse(v.as_str().unwrap()).unwrap();
                 assert!(!preview.granted_actions.contains(&a), "{id} has {v}");
@@ -244,6 +251,9 @@ fn project_admin_does_not_inherit_special_or_cross_project() {
     let err = authorize_action(&scope, Action::WorkRead, &other, 10).unwrap_err();
     assert!(matches!(err, TeamError::PermissionDenied(_)));
     for special in SpecialAuthority::all() {
-        assert!(!template_grants_special(RoleTemplate::ProjectAdmin, special));
+        assert!(!template_grants_special(
+            RoleTemplate::ProjectAdmin,
+            special
+        ));
     }
 }

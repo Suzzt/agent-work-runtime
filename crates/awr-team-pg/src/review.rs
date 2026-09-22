@@ -770,7 +770,9 @@ impl ReviewStore {
         });
         let dependency_binding_hash = sha256_hex(json!(dependency_links).to_string().as_bytes());
         let receipt_id = new_id();
-        let author_actor = pr_author.clone().unwrap_or_else(|| evidence.created_by.clone());
+        let author_actor = pr_author
+            .clone()
+            .unwrap_or_else(|| evidence.created_by.clone());
         let executor_actor = pr_executor
             .clone()
             .unwrap_or_else(|| evidence.created_by.clone());
@@ -904,7 +906,6 @@ impl ReviewStore {
         })
     }
 
-
     /// Register a PR delivery binding after authorized human GitHub verification.
     /// Does not claim webhook auto-sync; requires fact_source + observed_at.
     pub async fn register_pr_delivery(
@@ -1005,7 +1006,8 @@ impl ReviewStore {
         )
         .await?;
         // Head change invalidates open review rounds for mismatched bundle/contract.
-        invalidate_open_rounds_for_contract(&tx, tenant_id, project_id, work_id, contract_hash).await?;
+        invalidate_open_rounds_for_contract(&tx, tenant_id, project_id, work_id, contract_hash)
+            .await?;
         crate::tx::emit_event(
             &tx,
             tenant_id,
@@ -1136,8 +1138,14 @@ impl ReviewStore {
             )
             .await?;
             // Mismatched head invalidates open AWR review approvals for this work.
-            invalidate_open_rounds_for_contract(&tx, tenant_id, project_id, &work_id, &contract_hash)
-                .await?;
+            invalidate_open_rounds_for_contract(
+                &tx,
+                tenant_id,
+                project_id,
+                &work_id,
+                &contract_hash,
+            )
+            .await?;
             tx.commit().await?;
             return Err(PgError::PreconditionsChanged);
         }
@@ -1150,8 +1158,14 @@ impl ReviewStore {
                 &[&tenant_id, &project_id, &delivery_id],
             )
             .await?;
-            invalidate_open_rounds_for_contract(&tx, tenant_id, project_id, &work_id, &contract_hash)
-                .await?;
+            invalidate_open_rounds_for_contract(
+                &tx,
+                tenant_id,
+                project_id,
+                &work_id,
+                &contract_hash,
+            )
+            .await?;
             tx.commit().await?;
             return Err(PgError::PreconditionsChanged);
         }
@@ -1653,7 +1667,6 @@ async fn current_review(
     }
 }
 
-
 /// Resolve the responsible person for an actor.
 /// Humans map to a persons row with the same id (created if needed).
 /// Agents require an active person_agent_bindings row — another agent of the
@@ -1702,9 +1715,10 @@ pub(crate) fn self_review_permitted(completion_policy: &str) -> bool {
     )
 }
 
-
 fn is_git_sha(s: &str) -> bool {
-    s.len() == 40 && s.bytes().all(|b| b.is_ascii_hexdigit()) && s.bytes().all(|b| !b.is_ascii_uppercase())
+    s.len() == 40
+        && s.bytes().all(|b| b.is_ascii_hexdigit())
+        && s.bytes().all(|b| !b.is_ascii_uppercase())
 }
 
 fn validate_observed_at(raw: &str) -> PgResult<&str> {

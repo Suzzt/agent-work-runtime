@@ -67,7 +67,8 @@ fn reader_plan() -> AdminAccessPlan {
 #[tokio::test]
 async fn access_apply_binds_ops_audit_same_tx_and_export_authorized() {
     let (_g, _admin, db, _store) = setup().await;
-    let access = ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let access =
+        ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     let plan = admin_plan_member();
     let preview = access.preview(TENANT, PROJECT, A, &plan).await.unwrap();
     let applied = access
@@ -215,7 +216,8 @@ async fn deny_is_capacity_bounded_redacted_and_non_mutating() {
 #[tokio::test]
 async fn member_history_count_cannot_cross_scope() {
     let (_g, _admin, db, store) = setup().await;
-    let access = ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let access =
+        ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     // Add a reader member via admin.
     let plan = reader_plan();
     let preview = access.preview(TENANT, PROJECT, A, &plan).await.unwrap();
@@ -273,10 +275,7 @@ async fn member_history_count_cannot_cross_scope() {
     let mut q = query("audit.history");
     q.include_denies = Some(true);
     q.limit = Some(50);
-    let hist = store
-        .query(TENANT, PROJECT, READER_TOKEN, q)
-        .await
-        .unwrap();
+    let hist = store.query(TENANT, PROJECT, READER_TOKEN, q).await.unwrap();
     assert_eq!(hist["scope"], "self");
     let denies = hist["denies"].as_array().unwrap();
     assert!(denies.iter().all(|d| d["actor_id"] == "reader-human"));

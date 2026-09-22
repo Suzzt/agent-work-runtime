@@ -173,27 +173,27 @@ fn catalog() -> Vec<Tool> {
         "required":["protocol_version","plan"],
         "properties":{"protocol_version":{"type":"integer","const":1},"plan":access_plan}});
     let access_apply = json!({"type":"object","additionalProperties":false,
-        "required":["protocol_version","request_id","expected_state","expected_plan","plan"],
-        "properties":{
-            "protocol_version":{"type":"integer","const":1},
-            "request_id":{"type":"string","maxLength":128},
-            "expected_state":{"type":"string","pattern":"^[0-9a-f]{64}$"},
-            "expected_plan":{"type":"string","pattern":"^[0-9a-f]{64}$"},
-            "plan":access_plan
-        }});
+    "required":["protocol_version","request_id","expected_state","expected_plan","plan"],
+    "properties":{
+        "protocol_version":{"type":"integer","const":1},
+        "request_id":{"type":"string","maxLength":128},
+        "expected_state":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "expected_plan":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "plan":access_plan
+    }});
     let access_outcome = json!({"type":"object","additionalProperties":false,
-        "required":["protocol_version","request_id"],
-        "properties":{
-            "protocol_version":{"type":"integer","const":1},
-            "request_id":{"type":"string","maxLength":128}
-        }});
+    "required":["protocol_version","request_id"],
+    "properties":{
+        "protocol_version":{"type":"integer","const":1},
+        "request_id":{"type":"string","maxLength":128}
+    }});
     let access_inspect = json!({"type":"object","additionalProperties":false,
-        "required":["protocol_version","subject_actor_id","subject_client_id"],
-        "properties":{
-            "protocol_version":{"type":"integer","const":1},
-            "subject_actor_id":{"type":"string","maxLength":128},
-            "subject_client_id":{"type":"string","maxLength":128}
-        }});
+    "required":["protocol_version","subject_actor_id","subject_client_id"],
+    "properties":{
+        "protocol_version":{"type":"integer","const":1},
+        "subject_actor_id":{"type":"string","maxLength":128},
+        "subject_client_id":{"type":"string","maxLength":128}
+    }});
     let planning_suggest = json!({
         "type":"object","additionalProperties":false,
         "required":["protocol_version","request_id","rationale","affected_work_keys"],

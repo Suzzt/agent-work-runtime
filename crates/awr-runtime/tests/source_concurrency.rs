@@ -5,8 +5,8 @@ use awr_runtime::{
     recover_shard_candidate,
 };
 use awr_source::{
-    Manifest, ShardWrite, fingerprint, form_shard_candidate, index_project, observe_candidate,
-    refuse_stale_whole_file, require_write_mode, source_write_mode, SourceWriteMode,
+    Manifest, ShardWrite, SourceWriteMode, fingerprint, form_shard_candidate, index_project,
+    observe_candidate, refuse_stale_whole_file, require_write_mode, source_write_mode,
 };
 use awr_store::Store;
 use serde_json::json;
@@ -28,7 +28,8 @@ impl LedgerFixture {
         )
         .unwrap();
         let mut store = Store::open(&root.join(".awr/state.db")).unwrap();
-        let report = index_project(&mut store, &root, &Manifest::load(&root).unwrap(), false).unwrap();
+        let report =
+            index_project(&mut store, &root, &Manifest::load(&root).unwrap(), false).unwrap();
         assert!(report.ok, "{:?}", report.issues);
         Self {
             root,
@@ -100,10 +101,14 @@ impl ShardFixture {
         )
         .unwrap();
         let mut store = Store::open(&root.join(".awr/state.db")).unwrap();
-        let report = index_project(&mut store, &root, &Manifest::load(&root).unwrap(), false).unwrap();
+        let report =
+            index_project(&mut store, &root, &Manifest::load(&root).unwrap(), false).unwrap();
         assert!(report.ok, "{:?}", report.issues);
         let sources = store.sources(report.project_id).unwrap();
-        assert!(sources.len() >= 2, "directory shards register per file: {sources:?}");
+        assert!(
+            sources.len() >= 2,
+            "directory shards register per file: {sources:?}"
+        );
         Self {
             root,
             store,
@@ -162,14 +167,8 @@ fn precise_patch_apply_and_stale_whole_file_refuse() {
     let mut f = LedgerFixture::new(text);
     let proposal = f.proposal(json!({"next_action": "After"}));
     let revision = f.store.project(f.project).unwrap().project_revision;
-    let report = activate_precise_patch(
-        &mut f.store,
-        &f.root,
-        &proposal,
-        "precise-1",
-        revision,
-    )
-    .unwrap();
+    let report =
+        activate_precise_patch(&mut f.store, &f.root, &proposal, "precise-1", revision).unwrap();
     assert_eq!(report.value["ok"], true, "{}", report.value);
     assert_eq!(report.value["mode"], "precise_patch");
     assert!(
@@ -210,10 +209,7 @@ fn shard_candidate_atomic_activate_and_external_change_recovery() {
     let mut f = ShardFixture::new();
     let a_after = "---\nid: A\ntitle: Alpha\nstatus: accepted\n---\n# Alpha\n\nAccepted A.\n";
     let b_after = "---\nid: B\ntitle: Beta\nstatus: accepted\n---\n# Beta\n\nAccepted B.\n";
-    let shards = vec![
-        f.shard("docs/a.md", a_after),
-        f.shard("docs/b.md", b_after),
-    ];
+    let shards = vec![f.shard("docs/a.md", a_after), f.shard("docs/b.md", b_after)];
     let candidate = form_shard_candidate("markdown-directory-v1", shards.clone()).unwrap();
     assert!(candidate.candidate_digest.starts_with("sha256:"));
 
@@ -237,12 +233,16 @@ fn shard_candidate_atomic_activate_and_external_change_recovery() {
             awr_source::ShardObservation::After
         ]
     );
-    assert!(fs::read_to_string(f.root.join("docs/a.md"))
-        .unwrap()
-        .contains("Accepted A."));
-    assert!(fs::read_to_string(f.root.join("docs/b.md"))
-        .unwrap()
-        .contains("Accepted B."));
+    assert!(
+        fs::read_to_string(f.root.join("docs/a.md"))
+            .unwrap()
+            .contains("Accepted A.")
+    );
+    assert!(
+        fs::read_to_string(f.root.join("docs/b.md"))
+            .unwrap()
+            .contains("Accepted B.")
+    );
 
     // External change on one shard: recovery must preserve it and refuse overwrite.
     let external = format!(
@@ -255,18 +255,14 @@ fn shard_candidate_atomic_activate_and_external_change_recovery() {
         ShardWrite::from_bytes(
             f.source_for("docs/a.md"),
             PathBuf::from("docs/a.md"),
-            fingerprint(
-                b"---\nid: A\ntitle: Alpha\nstatus: proposed\n---\n# Alpha\n\nDraft A.\n",
-            ),
+            fingerprint(b"---\nid: A\ntitle: Alpha\nstatus: proposed\n---\n# Alpha\n\nDraft A.\n"),
             a_after.as_bytes().to_vec(),
         )
         .unwrap(),
         ShardWrite::from_bytes(
             f.source_for("docs/b.md"),
             PathBuf::from("docs/b.md"),
-            fingerprint(
-                b"---\nid: B\ntitle: Beta\nstatus: proposed\n---\n# Beta\n\nDraft B.\n",
-            ),
+            fingerprint(b"---\nid: B\ntitle: Beta\nstatus: proposed\n---\n# Beta\n\nDraft B.\n"),
             b_after.as_bytes().to_vec(),
         )
         .unwrap(),
@@ -302,13 +298,15 @@ fn shard_candidate_atomic_activate_and_external_change_recovery() {
 fn unsupported_adapter_cannot_form_or_activate_shards() {
     let err = form_shard_candidate(
         "yaml-workstream-ledger-v1",
-        vec![ShardWrite::from_bytes(
-            Id::new(),
-            PathBuf::from("docs/a.md"),
-            fingerprint(b"before"),
-            b"after body\n".to_vec(),
-        )
-        .unwrap()],
+        vec![
+            ShardWrite::from_bytes(
+                Id::new(),
+                PathBuf::from("docs/a.md"),
+                fingerprint(b"before"),
+                b"after body\n".to_vec(),
+            )
+            .unwrap(),
+        ],
     )
     .unwrap_err();
     assert!(matches!(err, Error::MutationUnsupported(_)), "{err:?}");
@@ -377,10 +375,7 @@ fn recover_pending_shard_receipt_resumes_under_lock() {
     let mut f = ShardFixture::new();
     let a_after = "---\nid: A\ntitle: Alpha\nstatus: accepted\n---\n# Alpha\n\nAccepted A.\n";
     let b_after = "---\nid: B\ntitle: Beta\nstatus: accepted\n---\n# Beta\n\nAccepted B.\n";
-    let shards = vec![
-        f.shard("docs/a.md", a_after),
-        f.shard("docs/b.md", b_after),
-    ];
+    let shards = vec![f.shard("docs/a.md", a_after), f.shard("docs/b.md", b_after)];
     let revision = f.store.project(f.project).unwrap().project_revision;
     // Journal + durable after artifacts are written before the revision gate, so a
     // conflicting expected revision leaves a pending receipt to recover.
@@ -443,4 +438,3 @@ fn recover_pending_shard_receipt_resumes_under_lock() {
     assert_eq!(again.value["ok"], true, "{}", again.value);
     assert_eq!(again.value["already_recorded"], true);
 }
-

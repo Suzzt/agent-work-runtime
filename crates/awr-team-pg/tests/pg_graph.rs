@@ -595,7 +595,6 @@ async fn removed_claimed_child_blocks_activation_but_expired_claim_does_not() {
         .expect("expired claim must not block activation");
 }
 
-
 // WS-031: concurrent edge mutations serialize; a cyclic union cannot commit,
 // and dangling endpoints are refused against authoritative contracts.
 #[tokio::test]
@@ -620,8 +619,16 @@ async fn concurrent_edge_mutations_cannot_form_a_cycle_or_dangling_ref() {
     let outcomes = [a, b];
     let oks: Vec<_> = outcomes.iter().filter(|r| r.is_ok()).collect();
     let errs: Vec<_> = outcomes.iter().filter(|r| r.is_err()).collect();
-    assert_eq!(oks.len(), 1, "exactly one mutation may commit: {outcomes:?}");
-    assert_eq!(errs.len(), 1, "the other must refuse the cyclic union: {outcomes:?}");
+    assert_eq!(
+        oks.len(),
+        1,
+        "exactly one mutation may commit: {outcomes:?}"
+    );
+    assert_eq!(
+        errs.len(),
+        1,
+        "the other must refuse the cyclic union: {outcomes:?}"
+    );
     match errs[0].as_ref().unwrap_err() {
         PgError::DependencyCycle(path) => {
             assert_eq!(path.first(), path.last());
@@ -741,9 +748,13 @@ async fn replace_edges_rejects_cycle_with_explainable_path() {
             assert_eq!(path.first(), path.last());
             assert!(
                 path.windows(2).all(|w| {
-                    [("work-a", "work-b"), ("work-b", "work-c"), ("work-c", "work-a")]
-                        .iter()
-                        .any(|(a, b)| w[0] == *a && w[1] == *b)
+                    [
+                        ("work-a", "work-b"),
+                        ("work-b", "work-c"),
+                        ("work-c", "work-a"),
+                    ]
+                    .iter()
+                    .any(|(a, b)| w[0] == *a && w[1] == *b)
                 }),
                 "path must follow real edges: {path:?}"
             );
