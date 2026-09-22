@@ -409,10 +409,9 @@ pub(crate) async fn read(
             let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
             let _ = work_binding(tx, tenant, project, auth, work).await?;
             let handoff_id = q.handoff_id.as_deref().ok_or(PgError::Forbidden)?;
-            let value = crate::workstream_command::handoffs::inspect_query(
-                tx, tenant, project, handoff_id,
-            )
-            .await?;
+            let value =
+                crate::workstream_command::handoffs::inspect_query(tx, tenant, project, handoff_id)
+                    .await?;
             // Scope: handoff must belong to the selected work.
             if value["handoff"]["work_item_id"] != work {
                 return Err(PgError::Forbidden);
@@ -424,7 +423,10 @@ pub(crate) async fn read(
             let _ = work_binding(tx, tenant, project, auth, work).await?;
             let evidence_id = q.evidence_id.as_deref().ok_or(PgError::Forbidden)?;
             let value = crate::workstream_command::reviews::inspect_evidence(
-                tx, tenant, project, evidence_id,
+                tx,
+                tenant,
+                project,
+                evidence_id,
             )
             .await?;
             if value["evidence"]["work_id"] != work {
@@ -436,10 +438,9 @@ pub(crate) async fn read(
             let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
             let _ = work_binding(tx, tenant, project, auth, work).await?;
             let round_id = q.review_round_id.as_deref().ok_or(PgError::Forbidden)?;
-            let value = crate::workstream_command::reviews::inspect_review(
-                tx, tenant, project, round_id,
-            )
-            .await?;
+            let value =
+                crate::workstream_command::reviews::inspect_review(tx, tenant, project, round_id)
+                    .await?;
             if value["review"]["work_id"] != work {
                 return Err(PgError::Forbidden);
             }
@@ -448,7 +449,8 @@ pub(crate) async fn read(
         "completion.inspect" => {
             let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
             let _ = work_binding(tx, tenant, project, auth, work).await?;
-            crate::workstream_command::reviews::inspect_completion(tx, tenant, project, work).await?
+            crate::workstream_command::reviews::inspect_completion(tx, tenant, project, work)
+                .await?
         }
         "command.inspect" => {
             let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;

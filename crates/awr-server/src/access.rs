@@ -3,7 +3,7 @@ use awr_team_pg::{
     OperatorExecutionAttribution, OperatorHistory, OperatorQuarantine, OperatorRecovery, PgError,
 };
 use clap::Subcommand;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
@@ -295,7 +295,6 @@ pub enum AccessCommand {
         #[arg(long)]
         work_id: String,
     },
-
 }
 
 pub type Error = (&'static str, &'static str);

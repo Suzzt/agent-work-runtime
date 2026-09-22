@@ -76,7 +76,10 @@ pub(crate) fn handle(args: Value) -> Result<CallToolResult, awr_core::Error> {
                     .ok_or_else(|| awr_core::Error::InvalidInput("handoff required".into()))?,
             )
             .map_err(|e| awr_core::Error::InvalidInput(e.to_string()))?;
-            let now = args.get("now_ms").and_then(|v| v.as_i64()).unwrap_or(handoff.updated_at_ms);
+            let now = args
+                .get("now_ms")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(handoff.updated_at_ms);
             let duty = handoff.duty_at(now)?;
             Ok(CallToolResult::structured(json!({
                 "status": match handoff.status {

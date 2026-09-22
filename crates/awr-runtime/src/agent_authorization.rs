@@ -1,11 +1,11 @@
 //! Runtime façade for authorized agents and explainable claim eligibility (WS-016).
+use crate::Runtime;
 use awr_core::{
     AgentAuthorization, ClaimEligibilityExplanation, ClaimEvaluationInput,
     DelegateAuthorizationRequest, IssueAuthorizationRequest, PersonId, Result,
     RevokeAuthorizationRequest,
 };
 use awr_store::agent_authorization::AuthorizationReceipt;
-use crate::Runtime;
 
 impl Runtime<'_> {
     pub fn get_agent_authorization(

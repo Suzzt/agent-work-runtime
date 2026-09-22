@@ -9,7 +9,11 @@ use std::sync::MutexGuard;
 const TENANT: &str = "tenant-a";
 const PROJECT: &str = "project-a";
 
-async fn setup() -> (MutexGuard<'static, ()>, AuthorizationStore, ResponsibilityStore) {
+async fn setup() -> (
+    MutexGuard<'static, ()>,
+    AuthorizationStore,
+    ResponsibilityStore,
+) {
     let (guard, admin, db) = fresh_team_schema().await;
     admin
         .batch_execute(
