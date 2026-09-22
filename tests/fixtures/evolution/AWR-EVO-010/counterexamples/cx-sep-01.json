@@ -1,0 +1,15 @@
+{
+  "id": "CX-SEP-01",
+  "layer": "separation",
+  "title": "Context complete but dependencies incomplete",
+  "scenario": {
+    "context_completeness.complete": true,
+    "work_readiness.missing_dependencies": [
+      "DEP-1"
+    ],
+    "mixed_flag_forbidden": "ready_because_context_complete"
+  },
+  "expect": {
+    "expressible_without_mixing": true
+  }
+}

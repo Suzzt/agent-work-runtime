@@ -792,3 +792,59 @@ and subsequent projection refresh are separate durable steps. If refresh fails,
 the retained receipt identifies the possible saved source; source history records
 the refreshed fingerprint. Repeated completed requests return the historical receipt
 without applying the metadata again. Private receipts live under `.awr/mutations`.
+
+
+## Five-layer result semantics and host integration modes (AWR-EVO-010)
+
+This section **freezes** contract semantics for AWR-EVO-010. It does not claim new
+runtime commands beyond what existing surfaces already expose. Machine-checkable
+companions:
+
+- `.local/awr-evolution-20260919/semantic-contract-matrix.json` (local working copy)
+- `tests/fixtures/evolution/AWR-EVO-010/` (checked-in mirror + counterexamples)
+- `scripts/evolution/verify_evo_010_semantic_contract.py`
+
+### Five result layers
+
+Layers reuse existing objects. They are **not** five independently advancing state
+machines. Unknown never defaults to success. Readable never implies writable.
+
+| Layer id | Meaning | Tip authority (reuse) | Independent counterexample |
+| --- | --- | --- | --- |
+| `work_readiness` | 工作准备 — structure/deps/claim eligibility | status/ready/prepare diagnostics | `CX-WR-01` |
+| `execution_admission` | 执行准入 — session/claim/write authority | claim/session/revision gates; management never grants | `CX-EA-01` |
+| `context_completeness` | 上下文完整 — required context under budget | context compile completeness | `CX-CC-01` |
+| `delivery_observation` | 投递 — host-attested delivery/ack/report | client progress, execution report, continuity waits | `CX-DO-01` |
+| `completion_validity` | 完成有效性 — evidence/acceptance gates | work complete / evidence / ordinary vs verified | `CX-CV-01` |
+
+**Separations that must remain expressible:**
+
+1. Context may be complete while dependencies are incomplete (`CX-SEP-01`).
+2. Results may be readable without write/admission rights (`CX-SEP-02`).
+3. Entry points must not mix layer semantics (`CX-MIX-01`).
+
+### Two host integration modes
+
+| Mode id | Unique write owner | May create Work/Run/owner? | Independent counterexample |
+| --- | --- | --- | --- |
+| `runtime_delegated` | `awr_runtime` | AWR projections/sessions/claims/executions via domain actions | `CX-HM-RD-01` |
+| `component_only` | `embedding_host` | **No** — must not create host Work/Run/owner or hold a second work state | `CX-HM-CO-01` |
+
+Component mode may read/verify/project and may perform **explicit** host-requested
+AWR writes. It must not open a shadow claim lifecycle or treat component checks as
+completion.
+
+### Compatibility and negotiation
+
+Keep old outputs. New fields/views require explicit capability or protocol
+negotiation. Missing required capabilities fail closed
+(`CapabilityUnavailable` / `ProtocolUnsupported`). Silent degrade when a required
+capability is missing is forbidden (`CX-COMPAT-01`). Defaulting an unknown layer
+status to success is forbidden.
+
+Validate:
+
+```sh
+python3 scripts/evolution/verify_evo_010_semantic_contract.py
+python3 scripts/check_public_tree.py
+```

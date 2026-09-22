@@ -1,0 +1,23 @@
+{
+  "id": "CX-HM-CO-01",
+  "layer": "host_mode",
+  "host_mode": "component_only",
+  "title": "Component creates second work state",
+  "scenario": {
+    "component_attempt": {
+      "create_host_work": true,
+      "create_host_run": true,
+      "create_host_owner": true,
+      "shadow_claim_lifecycle": true
+    }
+  },
+  "expect": {
+    "rejected": true,
+    "must_not_create": [
+      "host_work",
+      "host_run",
+      "host_owner",
+      "shadow_claim_lifecycle"
+    ]
+  }
+}

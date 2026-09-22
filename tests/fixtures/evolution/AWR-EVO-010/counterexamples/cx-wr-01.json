@@ -1,0 +1,33 @@
+{
+  "id": "CX-WR-01",
+  "layer": "work_readiness",
+  "title": "Context complete while readiness blocked",
+  "scenario": {
+    "context_completeness": {
+      "complete": true,
+      "context_hash": "sha256:demo-complete"
+    },
+    "work_readiness": {
+      "ready": false,
+      "missing_dependencies": [
+        "AWR-EVO-000"
+      ],
+      "queue": "waiting"
+    },
+    "execution_admission": {
+      "active_claims": []
+    },
+    "false_inference_forbidden": [
+      "treat_as_admitted",
+      "treat_as_completed"
+    ]
+  },
+  "expect": {
+    "work_readiness.ready": false,
+    "context_completeness.complete": true,
+    "must_not_promote_to": [
+      "execution_admission.granted",
+      "completion_validity.pass"
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": "CX-MIX-01",
+  "layer": "entry_isolation",
+  "title": "Entry mixes readiness success as completion",
+  "scenario": {
+    "entry": "awr_work_ready",
+    "primary_layer": "work_readiness",
+    "illegal_reinterpretation": "completion_validity.pass",
+    "result": "rejected_by_contract"
+  },
+  "expect": {
+    "rejected_or_flagged": true
+  }
+}

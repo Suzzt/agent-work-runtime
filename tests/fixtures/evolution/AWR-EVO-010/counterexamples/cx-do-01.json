@@ -1,0 +1,26 @@
+{
+  "id": "CX-DO-01",
+  "layer": "delivery_observation",
+  "title": "Emitted context unacknowledged",
+  "scenario": {
+    "delivery_observation": {
+      "emitted": true,
+      "consumed_hash_acked": false,
+      "phase": "unknown",
+      "note": "hash alone does not prove model receipt"
+    },
+    "completion_validity": {
+      "status": "not_evaluated"
+    },
+    "false_inference_forbidden": [
+      "completion_pass",
+      "model_comprehension"
+    ]
+  },
+  "expect": {
+    "delivery_observation.consumed_hash_acked": false,
+    "must_not_promote_to": [
+      "completion_validity.pass"
+    ]
+  }
+}
