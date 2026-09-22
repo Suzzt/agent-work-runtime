@@ -538,7 +538,17 @@ async fn persist(tx: &Transaction<'_>, tenant: &str, project: &str, h: &TeamHand
             &body,
         ],
     )
-    .await?;
+    .await
+    .map_err(|e| {
+        if e.code()
+            .map(|c| *c == tokio_postgres::error::SqlState::UNIQUE_VIOLATION)
+            .unwrap_or(false)
+        {
+            PgError::PreconditionsChanged
+        } else {
+            PgError::Db(e)
+        }
+    })?;
     Ok(())
 }
 
