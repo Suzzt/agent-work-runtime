@@ -12,8 +12,8 @@ GitHub PR facts visually and mechanically separate from AWR acceptance.
 
 | Business action | Command ops | Who |
 | --- | --- | --- |
-| `delivery.submit_and_request_review` | `evidence.submit`, `review.open`, `delivery.submit_and_request_review`, `delivery.register_pr`, `delivery.observe_pr` | developer / maintainer / project_admin (template) |
-| `review.decide` | `review.accept`, `review.return`, `review.decide`, `work.rework` | **explicit** `independent_review` membership grant on an eligible template (developer / maintainer / project_admin). Never implied by role name, admin, or agent delegation. |
+| `delivery.submit_and_request_review` | `evidence.submit`, `review.open`, `delivery.submit_and_request_review`, `delivery.register_pr`, `delivery.observe_pr`, `work.rework` | developer / maintainer / project_admin (template). `work.rework` is author acknowledgment of a return, not independent review. |
+| `review.decide` | `review.accept`, `review.return`, `review.decide` | **explicit** `independent_review` membership grant on an eligible template (developer / maintainer / project_admin). Never implied by role name, admin, or agent delegation. |
 | `delivery.finalize` | `work.complete`, `delivery.finalize` | maintainer / project_admin |
 
 Legacy membership label `reviewer` maps to the reader template and **cannot**
