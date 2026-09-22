@@ -1,0 +1,149 @@
+{
+  "schema": "awr-evolution-fixture-manifest/v1",
+  "work": "AWR-EVO-001",
+  "recorded_at": "2026-09-23T06:56:54+08:00",
+  "timezone": "Asia/Taipei",
+  "plan_hash": "sha256:9c2565ea067d332b549420b75d36fc22b7567d28a0f70e9b75673386f4e37958",
+  "plan_ref": ".local/awr-evolution-20260919/evaluation-plan.json",
+  "mirror_plan_ref": "tests/fixtures/evolution/AWR-EVO-001/evaluation-plan.json",
+  "subject_fixtures": [
+    {
+      "id": "SX-TOK-01",
+      "path": "synthetic/sx-tokenizer-change.json",
+      "role": "semantic_counterexample",
+      "enters_subject_context": true,
+      "checker": "scripts/evolution/verify_evo_001_plan.py"
+    },
+    {
+      "id": "SX-BILL-01",
+      "path": "synthetic/sx-billing-unknown.json",
+      "role": "semantic_counterexample",
+      "enters_subject_context": true,
+      "checker": "scripts/evolution/verify_evo_001_plan.py"
+    },
+    {
+      "id": "SX-REF-01",
+      "path": "synthetic/sx-referee-isolation.json",
+      "role": "semantic_counterexample",
+      "enters_subject_context": true,
+      "checker": "scripts/evolution/verify_evo_001_plan.py"
+    },
+    {
+      "id": "SX-MISS-01",
+      "path": "synthetic/sx-missing-duplicate-trials.json",
+      "role": "semantic_counterexample",
+      "enters_subject_context": true,
+      "checker": "scripts/evolution/verify_evo_001_plan.py"
+    },
+    {
+      "id": "CI-LEGACY-FULL",
+      "path": "synthetic/ci-legacy-full-summary.json",
+      "role": "compatibility_input",
+      "enters_subject_context": true,
+      "checker": "scripts/evolution/verify_evo_001_plan.py"
+    },
+    {
+      "id": "CI-CLI-MCP-ERR",
+      "path": "synthetic/ci-cli-mcp-errors.json",
+      "role": "compatibility_input",
+      "enters_subject_context": true,
+      "checker": "scripts/evolution/verify_evo_001_plan.py"
+    },
+    {
+      "id": "CI-LEGACY-HASH",
+      "path": "synthetic/ci-legacy-render-hash.json",
+      "role": "compatibility_input",
+      "enters_subject_context": true,
+      "checker": "scripts/evolution/verify_evo_001_plan.py"
+    },
+    {
+      "id": "CI-SOURCE-FIRST",
+      "path": "synthetic/ci-source-first.json",
+      "role": "compatibility_input",
+      "enters_subject_context": true,
+      "checker": "scripts/evolution/verify_evo_001_plan.py"
+    },
+    {
+      "id": "VC-01",
+      "path": "synthetic/vc-01.json",
+      "role": "value_case_subject_synthetic",
+      "enters_subject_context": true,
+      "paid_required": false,
+      "native_required": false,
+      "checker": "independent_result_checkers.value_case_schema"
+    },
+    {
+      "id": "VC-02",
+      "path": "synthetic/vc-02.json",
+      "role": "value_case_subject_synthetic",
+      "enters_subject_context": true,
+      "paid_required": false,
+      "native_required": false,
+      "checker": "independent_result_checkers.value_case_schema"
+    },
+    {
+      "id": "VC-03",
+      "path": "synthetic/vc-03.json",
+      "role": "value_case_subject_synthetic",
+      "enters_subject_context": true,
+      "paid_required": false,
+      "native_required": false,
+      "checker": "independent_result_checkers.value_case_schema"
+    },
+    {
+      "id": "VC-04",
+      "path": "synthetic/vc-04.json",
+      "role": "value_case_subject_synthetic",
+      "enters_subject_context": true,
+      "paid_required": false,
+      "native_required": false,
+      "checker": "independent_result_checkers.value_case_schema"
+    },
+    {
+      "id": "VC-05",
+      "path": "synthetic/vc-05.json",
+      "role": "value_case_subject_synthetic",
+      "enters_subject_context": true,
+      "paid_required": false,
+      "native_required": false,
+      "checker": "independent_result_checkers.value_case_schema"
+    },
+    {
+      "id": "VC-06",
+      "path": "synthetic/vc-06.json",
+      "role": "value_case_subject_synthetic",
+      "enters_subject_context": true,
+      "paid_required": false,
+      "native_required": false,
+      "checker": "independent_result_checkers.value_case_schema"
+    }
+  ],
+  "referee_materials": [
+    {
+      "id": "REF-VALUE-RUBRIC",
+      "path": "referees/value-rubric.json",
+      "enters_subject_context": false,
+      "purpose": "Independent scoring rubric; must never be injected into subject agent context"
+    },
+    {
+      "id": "REF-HARD-CONSTRAINTS",
+      "path": "referees/hard-constraints.json",
+      "enters_subject_context": false,
+      "purpose": "Zero-tolerance list for post-hoc checking only"
+    }
+  ],
+  "referee_isolation_rule": "Referee paths must not appear in subject context packets; verifier asserts enters_subject_context=false for all referee materials.",
+  "independent_result_checkers": {
+    "value_case_schema": "Each VC-*.json has id, title, synthetic=true, expected_axes listing AX-CORRECTNESS/AX-PERF/AX-VALUE separately",
+    "counterexample_schema": "Each SX-*.json has id, class, expect, forbidden",
+    "compat_schema": "Each CI-*.json has id, kind, expect_compat_preserved"
+  },
+  "real_materials": {
+    "status": "blocked_without_separate_authorization",
+    "note": "Real private materials require separate auth; not inferred from API key presence.",
+    "authorization_doc": ".local/awr-evolution-20260919/authorization-requirements.md"
+  },
+  "synthetic_only_for_this_item": true,
+  "paid_models_invoked": false,
+  "native_agents_started": false
+}

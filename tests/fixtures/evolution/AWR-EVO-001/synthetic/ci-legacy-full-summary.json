@@ -1,0 +1,6 @@
+{
+  "id": "CI-LEGACY-FULL",
+  "kind": "legacy_full_summary_defaults",
+  "synthetic": true,
+  "expect_compat_preserved": true
+}

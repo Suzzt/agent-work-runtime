@@ -1,0 +1,13 @@
+{
+  "id": "VC-06",
+  "title": "unknown_execution_safe_recovery",
+  "synthetic": true,
+  "expected_axes": [
+    "AX-CORRECTNESS",
+    "AX-PERF",
+    "AX-VALUE"
+  ],
+  "axes_may_substitute": false,
+  "paid_run_status": "blocked_until_authorization",
+  "native_run_status": "blocked_until_authorization"
+}

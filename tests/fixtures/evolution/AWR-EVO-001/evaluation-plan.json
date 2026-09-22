@@ -1,0 +1,1045 @@
+{
+  "schema": "awr-evolution-evaluation-plan/v1",
+  "work": "AWR-EVO-001",
+  "title": "冻结验收矩阵、基线工作负载与费用授权规则",
+  "recorded_at": "2026-09-23T06:56:54+08:00",
+  "timezone": "Asia/Taipei",
+  "recorder": {
+    "agent_id": "grok-bot-evo-001",
+    "session_id": "01M35NAEBCMGY2JDJHF1VTJ22P",
+    "claim_id": "01M35NAEBDD27BXD0A8JJPQC96",
+    "branch": "codex/awr-evo-001-acceptance-matrix-cost-auth",
+    "worktree": "/workspace/awr-evo001-wt"
+  },
+  "depends_on": [
+    "AWR-EVO-000"
+  ],
+  "base": {
+    "pr": 154,
+    "branch": "codex/awr-evo-000-execution-baseline",
+    "sha": "31a029cebfcf6ec15962650b03658e3366a32906",
+    "tree_sha_at_plan_freeze": "b88d33f5730a519e54537a691d189cf3e6603994"
+  },
+  "scope": {
+    "formulates_experiment_only": true,
+    "calls_paid_models": false,
+    "starts_native_agents": false,
+    "live_optimization_run": false,
+    "thresholds_locked_before_results": true
+  },
+  "acceptance_criteria": [
+    "基线与全部检查组已有固定输入、断言、输出身份、变化轴和结果分母，在优化前封存。",
+    "性能与非退化阈值、样本和缺测处理预先登记，不在看到结果后改阈值。",
+    "原生和付费验证有独立授权字段，未授权不会启动；模拟、协议和原生证据分层。",
+    "实现正确性、性能收益和完整工作增量价值分别评价，不能互相代替。"
+  ],
+  "check_groups": [
+    {
+      "id": "CHK-SEM",
+      "scope_items": [
+        "010",
+        "011",
+        "012",
+        "013"
+      ],
+      "must_cover": [
+        "minimal_vs_standard",
+        "bad_rules",
+        "full_context_but_not_executable",
+        "old_receipt_vs_current_conditions"
+      ],
+      "change_axes": [
+        "rule_quality",
+        "context_completeness",
+        "receipt_currency"
+      ],
+      "output_identity": [
+        "semantic_judgment_id",
+        "source_revision",
+        "policy_as_of"
+      ],
+      "result_denominator": "all_registered_CHK-SEM_cases",
+      "fixed_inputs": [
+        "synthetic/sx-tokenizer-change.json",
+        "synthetic/ci-source-first.json"
+      ],
+      "assertions": [
+        "tokenizer_id_declared",
+        "no_cross_tokenizer_silent_compare",
+        "source_first_semantics_preserved"
+      ]
+    },
+    {
+      "id": "CHK-COMP",
+      "scope_items": [
+        "020",
+        "021",
+        "022",
+        "023",
+        "050",
+        "051"
+      ],
+      "must_cover": [
+        "no_store",
+        "group_complete_partition",
+        "conflict_or_overflow",
+        "two_consumers",
+        "real_packaging_metering"
+      ],
+      "change_axes": [
+        "store_presence",
+        "partition_integrity",
+        "consumer_count",
+        "packaging"
+      ],
+      "output_identity": [
+        "component_contract_version",
+        "consumer_id",
+        "payload_hash"
+      ],
+      "result_denominator": "all_registered_CHK-COMP_cases",
+      "fixed_inputs": [
+        "synthetic/ci-legacy-full-summary.json",
+        "synthetic/ci-cli-mcp-errors.json"
+      ],
+      "assertions": [
+        "legacy_defaults_preserved",
+        "error_surface_unchanged",
+        "no_silent_drop_required_groups"
+      ]
+    },
+    {
+      "id": "CHK-READ",
+      "scope_items": [
+        "030",
+        "031",
+        "032"
+      ],
+      "must_cover": [
+        "sql_or_batch_counts",
+        "copy_bytes",
+        "rss",
+        "p50_p95",
+        "cold_hot_concurrency",
+        "source_db_no_write"
+      ],
+      "change_axes": [
+        "work_scale",
+        "event_scale",
+        "concurrency",
+        "cache_temperature"
+      ],
+      "output_identity": [
+        "env_id",
+        "scale_point_id",
+        "sample_run_id"
+      ],
+      "result_denominator": "all_registered_scale_points_x_repeats",
+      "fixed_inputs": [
+        "scale_matrix"
+      ],
+      "assertions": [
+        "no_post_hoc_sample_deletion",
+        "source_db_readonly",
+        "report_p50_and_p95"
+      ]
+    },
+    {
+      "id": "CHK-CACHE",
+      "scope_items": [
+        "032",
+        "033"
+      ],
+      "must_cover": [
+        "related_vs_unrelated_change",
+        "stable_prefix",
+        "three_hashes",
+        "actual_cache_vs_cost_separated"
+      ],
+      "change_axes": [
+        "relatedness",
+        "prefix_stability",
+        "hash_family",
+        "billing_visibility"
+      ],
+      "output_identity": [
+        "semantic_hash",
+        "payload_hash",
+        "request_hash",
+        "renderer_encoding_version"
+      ],
+      "result_denominator": "all_registered_CHK-CACHE_cases",
+      "fixed_inputs": [
+        "synthetic/sx-billing-unknown.json"
+      ],
+      "assertions": [
+        "prefix_bytes_not_invented_hit_rate",
+        "cached_usage_null_if_absent",
+        "cost_null_if_bill_unknown"
+      ]
+    },
+    {
+      "id": "CHK-NAV",
+      "scope_items": [
+        "034"
+      ],
+      "must_cover": [
+        "correct_owner",
+        "four_queues",
+        "duplicate_or_mute",
+        "continuous_arrival_and_visibility"
+      ],
+      "change_axes": [
+        "owner_binding",
+        "queue_id",
+        "mute_state",
+        "arrival_rate"
+      ],
+      "output_identity": [
+        "nav_snapshot_id",
+        "owner_id",
+        "queue_fingerprint"
+      ],
+      "result_denominator": "all_registered_CHK-NAV_cases",
+      "fixed_inputs": [
+        "synthetic/ci-legacy-render-hash.json"
+      ],
+      "assertions": [
+        "owner_binding_correct",
+        "mute_does_not_drop_denominator"
+      ]
+    },
+    {
+      "id": "CHK-LIFE",
+      "scope_items": [
+        "040",
+        "041",
+        "042"
+      ],
+      "must_cover": [
+        "reopen_or_followup",
+        "old_acceptance_invalidated",
+        "goal_not_met",
+        "experience_withdraw_or_out_of_domain"
+      ],
+      "change_axes": [
+        "lifecycle_transition",
+        "acceptance_validity",
+        "goal_status",
+        "experience_scope"
+      ],
+      "output_identity": [
+        "lifecycle_event_id",
+        "acceptance_revision",
+        "goal_id"
+      ],
+      "result_denominator": "all_registered_CHK-LIFE_cases",
+      "fixed_inputs": [
+        "synthetic/vc-05.json"
+      ],
+      "assertions": [
+        "old_acceptance_not_reused_after_invalidate",
+        "out_of_domain_experience_rejected"
+      ]
+    },
+    {
+      "id": "CHK-DEL",
+      "scope_items": [
+        "043",
+        "052",
+        "054"
+      ],
+      "must_cover": [
+        "wrong_window_or_hash_or_late_ack",
+        "L0_without_hook",
+        "real_host_consumption"
+      ],
+      "change_axes": [
+        "delivery_channel",
+        "ack_timing",
+        "host_presence"
+      ],
+      "output_identity": [
+        "delivery_receipt_id",
+        "window_or_hash",
+        "host_version"
+      ],
+      "result_denominator": "all_registered_CHK-DEL_cases",
+      "native_gate": "AWR-EVO-054",
+      "fixed_inputs": [
+        "synthetic/vc-06.json"
+      ],
+      "assertions": [
+        "native_blocked_without_authorization",
+        "late_ack_does_not_advance_new_work"
+      ]
+    },
+    {
+      "id": "CHK-FAULT",
+      "scope_items": [
+        "053"
+      ],
+      "must_cover": [
+        "lost_response",
+        "unknown_execution",
+        "old_fence",
+        "source_change",
+        "recovery_and_cache_combo"
+      ],
+      "change_axes": [
+        "fault_class",
+        "fence_generation",
+        "source_currency",
+        "cache_state"
+      ],
+      "output_identity": [
+        "fault_case_id",
+        "fence_id",
+        "recovery_path_id"
+      ],
+      "result_denominator": "all_registered_CHK-FAULT_cases",
+      "fixed_inputs": [
+        "synthetic/sx-missing-duplicate-trials.json"
+      ],
+      "assertions": [
+        "unknown_execution_not_auto_resume",
+        "old_fence_cannot_advance_new_work"
+      ]
+    },
+    {
+      "id": "CHK-VALUE",
+      "scope_items": [
+        "001",
+        "060",
+        "061"
+      ],
+      "must_cover": [
+        "optimized_native_baseline",
+        "full_denominator",
+        "paired_results",
+        "cost_failure_human_intervention"
+      ],
+      "change_axes": [
+        "mode_A_B_C",
+        "case_id",
+        "repeat_index"
+      ],
+      "output_identity": [
+        "trial_slot_id",
+        "mode",
+        "case_id",
+        "repeat_index"
+      ],
+      "result_denominator": "all_registered_trial_slots_including_unrun",
+      "paid_gate": "AWR-EVO-060",
+      "fixed_inputs": [
+        "synthetic/vc-01.json",
+        "synthetic/vc-02.json",
+        "synthetic/vc-03.json",
+        "synthetic/vc-04.json",
+        "synthetic/vc-05.json",
+        "synthetic/vc-06.json"
+      ],
+      "assertions": [
+        "axes_independent",
+        "paid_blocked_without_authorization",
+        "unrun_slots_remain_in_denominator"
+      ]
+    },
+    {
+      "id": "CHK-GOV",
+      "scope_items": [
+        "000",
+        "002",
+        "062",
+        "063"
+      ],
+      "must_cover": [
+        "old_records_preserved",
+        "new_scope_bounded",
+        "real_evidence",
+        "public_tree_and_release_permission"
+      ],
+      "change_axes": [
+        "record_generation",
+        "scope_boundary",
+        "evidence_layer",
+        "release_auth"
+      ],
+      "output_identity": [
+        "gov_check_id",
+        "denominator_fingerprint",
+        "permission_state"
+      ],
+      "result_denominator": "all_registered_CHK-GOV_cases",
+      "fixed_inputs": [
+        "referees/hard-constraints.json"
+      ],
+      "assertions": [
+        "team_v1_denominators_not_rewritten",
+        "public_tree_clean",
+        "layers_non_substituting"
+      ]
+    }
+  ],
+  "semantic_counterexamples": [
+    {
+      "id": "SX-TOK-01",
+      "class": "tokenizer_change",
+      "fixture": "synthetic/sx-tokenizer-change.json",
+      "assertion": "token_counts_must_declare_tokenizer_id; cross_tokenizer_compare_forbidden"
+    },
+    {
+      "id": "SX-BILL-01",
+      "class": "billing_unknown",
+      "fixture": "synthetic/sx-billing-unknown.json",
+      "assertion": "missing_usage_or_cost_is_null_with_gap_note; savings_claim_forbidden"
+    },
+    {
+      "id": "SX-REF-01",
+      "class": "referee_isolation",
+      "fixture": "synthetic/sx-referee-isolation.json",
+      "assertion": "referee_materials_must_not_enter_subject_context"
+    },
+    {
+      "id": "SX-MISS-01",
+      "class": "missing_or_duplicate_trials",
+      "fixture": "synthetic/sx-missing-duplicate-trials.json",
+      "assertion": "missing_and_duplicate_slots_remain_in_denominator; cherry_pick_forbidden"
+    }
+  ],
+  "compatibility_inputs": [
+    {
+      "id": "CI-LEGACY-FULL",
+      "kind": "legacy_full_summary_defaults",
+      "fixture": "synthetic/ci-legacy-full-summary.json"
+    },
+    {
+      "id": "CI-CLI-MCP-ERR",
+      "kind": "cli_mcp_error_surface",
+      "fixture": "synthetic/ci-cli-mcp-errors.json"
+    },
+    {
+      "id": "CI-LEGACY-HASH",
+      "kind": "legacy_render_hash",
+      "fixture": "synthetic/ci-legacy-render-hash.json"
+    },
+    {
+      "id": "CI-SOURCE-FIRST",
+      "kind": "source_first_semantics",
+      "fixture": "synthetic/ci-source-first.json"
+    }
+  ],
+  "scale_matrix": {
+    "works": [
+      100,
+      1000,
+      10000
+    ],
+    "events": [
+      0,
+      10000,
+      100000
+    ],
+    "concurrency": [
+      1,
+      4,
+      8
+    ],
+    "cache_temperature": [
+      "cold",
+      "hot"
+    ],
+    "warmup_runs": 3,
+    "timed_samples_per_point": 30,
+    "note": "Frozen before any candidate optimization. Cannot delete slow samples after runs."
+  },
+  "comparison_groups": [
+    {
+      "id": "CG-A",
+      "label": "optimized_native_baseline",
+      "role": "baseline_for_incremental",
+      "description": "Reasonable search/summary/native compression; not forced full-doc each round"
+    },
+    {
+      "id": "CG-B",
+      "label": "same_host_model_tools_budget_with_awr",
+      "role": "candidate_for_incremental",
+      "description": "Same host, model, tools, budget, interrupt conditions as A, plus AWR"
+    },
+    {
+      "id": "CG-C",
+      "label": "fixed_second_host_handoff",
+      "role": "scheme_interpretation_only",
+      "description": "Includes host change; explains whole scheme only, not A/B incremental delta"
+    }
+  ],
+  "env_ids": [
+    {
+      "id": "ENV-BOX-LINUX-SHARED",
+      "os": "linux",
+      "role": "protocol_fixture_verifier",
+      "paid_ok": false,
+      "native_agent_ok": false
+    },
+    {
+      "id": "ENV-MAC-AUTHORITATIVE",
+      "os": "macos",
+      "role": "ledger_and_optional_native",
+      "paid_ok": "requires_authorization",
+      "native_agent_ok": "requires_authorization",
+      "presence_on_box": "absent"
+    }
+  ],
+  "repeat_counts": {
+    "read_perf_warmups": 3,
+    "read_perf_timed_samples": 30,
+    "value_trial_repeats_per_case_mode": 2,
+    "value_cases": 6,
+    "value_modes": 3,
+    "value_registered_slots": 36,
+    "value_slots_note": "36 slots = 6 cases × 3 modes × 2 repeats. Registered denominator suggestion for EVO-060; not 36 independent problems; must not auto-expand into RET-006."
+  },
+  "value_cases": [
+    {
+      "id": "VC-01",
+      "title": "minimal_rule_fix"
+    },
+    {
+      "id": "VC-02",
+      "title": "api_behavior_revision"
+    },
+    {
+      "id": "VC-03",
+      "title": "continue_after_source_change"
+    },
+    {
+      "id": "VC-04",
+      "title": "research_report_with_citations"
+    },
+    {
+      "id": "VC-05",
+      "title": "acceptance_after_supplemental_evidence"
+    },
+    {
+      "id": "VC-06",
+      "title": "unknown_execution_safe_recovery"
+    }
+  ],
+  "value_trial_slots": [
+    {
+      "slot_id": "VC-01-MA-R1",
+      "case_id": "VC-01",
+      "mode": "A",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-01-MA-R2",
+      "case_id": "VC-01",
+      "mode": "A",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-01-MB-R1",
+      "case_id": "VC-01",
+      "mode": "B",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-01-MB-R2",
+      "case_id": "VC-01",
+      "mode": "B",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-01-MC-R1",
+      "case_id": "VC-01",
+      "mode": "C",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-01-MC-R2",
+      "case_id": "VC-01",
+      "mode": "C",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-02-MA-R1",
+      "case_id": "VC-02",
+      "mode": "A",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-02-MA-R2",
+      "case_id": "VC-02",
+      "mode": "A",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-02-MB-R1",
+      "case_id": "VC-02",
+      "mode": "B",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-02-MB-R2",
+      "case_id": "VC-02",
+      "mode": "B",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-02-MC-R1",
+      "case_id": "VC-02",
+      "mode": "C",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-02-MC-R2",
+      "case_id": "VC-02",
+      "mode": "C",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-03-MA-R1",
+      "case_id": "VC-03",
+      "mode": "A",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-03-MA-R2",
+      "case_id": "VC-03",
+      "mode": "A",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-03-MB-R1",
+      "case_id": "VC-03",
+      "mode": "B",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-03-MB-R2",
+      "case_id": "VC-03",
+      "mode": "B",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-03-MC-R1",
+      "case_id": "VC-03",
+      "mode": "C",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-03-MC-R2",
+      "case_id": "VC-03",
+      "mode": "C",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-04-MA-R1",
+      "case_id": "VC-04",
+      "mode": "A",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-04-MA-R2",
+      "case_id": "VC-04",
+      "mode": "A",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-04-MB-R1",
+      "case_id": "VC-04",
+      "mode": "B",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-04-MB-R2",
+      "case_id": "VC-04",
+      "mode": "B",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-04-MC-R1",
+      "case_id": "VC-04",
+      "mode": "C",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-04-MC-R2",
+      "case_id": "VC-04",
+      "mode": "C",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-05-MA-R1",
+      "case_id": "VC-05",
+      "mode": "A",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-05-MA-R2",
+      "case_id": "VC-05",
+      "mode": "A",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-05-MB-R1",
+      "case_id": "VC-05",
+      "mode": "B",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-05-MB-R2",
+      "case_id": "VC-05",
+      "mode": "B",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-05-MC-R1",
+      "case_id": "VC-05",
+      "mode": "C",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-05-MC-R2",
+      "case_id": "VC-05",
+      "mode": "C",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-06-MA-R1",
+      "case_id": "VC-06",
+      "mode": "A",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-06-MA-R2",
+      "case_id": "VC-06",
+      "mode": "A",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-06-MB-R1",
+      "case_id": "VC-06",
+      "mode": "B",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-06-MB-R2",
+      "case_id": "VC-06",
+      "mode": "B",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-06-MC-R1",
+      "case_id": "VC-06",
+      "mode": "C",
+      "repeat": 1,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    },
+    {
+      "slot_id": "VC-06-MC-R2",
+      "case_id": "VC-06",
+      "mode": "C",
+      "repeat": 2,
+      "status": "registered_blocked_until_EVO-060_authorization"
+    }
+  ],
+  "thresholds": {
+    "preregistered": true,
+    "may_change_after_seeing_results": false,
+    "change_requires": [
+      "user_confirmation",
+      "written_rationale",
+      "new_plan_hash"
+    ],
+    "performance": {
+      "representative_small_project_p95_vs_baseline_max_ratio": 1.1,
+      "representative_small_project_peak_rss_vs_baseline_max_ratio": 1.1,
+      "status": "proposal_frozen_for_EVO-001",
+      "noise_handling": "Use pre-registered sample count; do not drop slow samples; report p50 and p95 nearest-rank."
+    },
+    "non_degradation": {
+      "hard_constraint_failures_allowed": 0,
+      "zero_tolerance_classes": [
+        "hard_constraint_loss",
+        "cross_scope_leak",
+        "unauthorized_action",
+        "unknown_effect_auto_resend",
+        "wrong_completion",
+        "old_fence_advances_new_work"
+      ],
+      "on_zero_tolerance_hit": "stop_affected_candidate_promotion; retain_failure_and_reverify_on_new_version; never_rewrite_old_results"
+    },
+    "samples": {
+      "warmup": 3,
+      "timed_per_scale_point": 30,
+      "value_repeats_per_case_mode": 2,
+      "ret006_r0_repeats": 1,
+      "ret006_r1_repeats": 2,
+      "ret006_r2_repeats": 2
+    },
+    "missing_measurement_handling": {
+      "skip": "must_not_mark_passed",
+      "fault_not_hit": "must_not_mark_passed",
+      "no_host_observation": "must_not_mark_passed",
+      "missing_cost_or_usage": "record_null_with_gap_note; savings_claim_forbidden",
+      "unknown_vs_known_failure": "separate_fields; never_coalesce_to_pass",
+      "unrun_authorized_blocked_slots": "remain_in_denominator_as_blocked_or_unrun"
+    }
+  },
+  "evaluation_axes": {
+    "rule": "Axes are independent; none may substitute for another.",
+    "axes": [
+      {
+        "id": "AX-CORRECTNESS",
+        "name": "implementation_correctness",
+        "measures": [
+          "protocol_behavior",
+          "hard_constraints",
+          "compatibility",
+          "semantic_counterexamples"
+        ],
+        "cannot_be_replaced_by": [
+          "AX-PERF",
+          "AX-VALUE"
+        ],
+        "passing_alone_implies": "not_performance_gain_and_not_full_workflow_value"
+      },
+      {
+        "id": "AX-PERF",
+        "name": "performance_gain",
+        "measures": [
+          "background_compute",
+          "response_bytes",
+          "stable_prefix_bytes",
+          "actual_cached_usage",
+          "full_bill",
+          "latency_p50_p95",
+          "peak_rss",
+          "sql_or_batch_counts"
+        ],
+        "cannot_be_replaced_by": [
+          "AX-CORRECTNESS",
+          "AX-VALUE"
+        ],
+        "passing_alone_implies": "not_correctness_and_not_full_workflow_value",
+        "separate_measurements": {
+          "background_compute": "cpu_time_and_sql_batch_counts_outside_subject_response",
+          "response_bytes": "returned_or_rendered_bytes",
+          "stable_prefix": "common_prefix_and_stable_bytes_not_hit_rate",
+          "actual_cached_usage": "only_from_host_or_provider_usage_fields",
+          "full_bill": "provider_invoice_or_receipt; null_if_absent"
+        },
+        "note": "Do not mechanically sum input/cached/reasoning/output; follow real pricing contract."
+      },
+      {
+        "id": "AX-VALUE",
+        "name": "full_workflow_incremental_value",
+        "measures": [
+          "paired_A_vs_B_outcomes",
+          "full_denominator_including_failures",
+          "actual_fees",
+          "human_active_intervention_time",
+          "critical_safety_stops"
+        ],
+        "cannot_be_replaced_by": [
+          "AX-CORRECTNESS",
+          "AX-PERF"
+        ],
+        "passing_alone_implies": "not_correctness_and_not_isolated_perf",
+        "requires_authorization_gate": "AWR-EVO-060"
+      }
+    ]
+  },
+  "evidence_layers": {
+    "rule": "Layers cannot substitute for each other.",
+    "layers": [
+      {
+        "id": "L-SIM",
+        "name": "simulated",
+        "allowed_without_auth": true,
+        "proves": "fixture_and_plan_structure",
+        "does_not_prove": [
+          "native_host_consumption",
+          "paid_model_savings"
+        ]
+      },
+      {
+        "id": "L-PROTO",
+        "name": "protocol",
+        "allowed_without_auth": true,
+        "proves": "fixed_program_behavior_and_counterexamples",
+        "does_not_prove": [
+          "named_host_handoff",
+          "real_invoice_savings"
+        ]
+      },
+      {
+        "id": "L-NATIVE",
+        "name": "native",
+        "allowed_without_auth": false,
+        "requires_authorization_block": "native_verification",
+        "proves": "named_host_version_consume_or_handoff",
+        "does_not_prove": [
+          "full_studio_integration_without_product"
+        ]
+      },
+      {
+        "id": "L-PAID",
+        "name": "paid",
+        "allowed_without_auth": false,
+        "requires_authorization_block": "paid_verification",
+        "proves": "authorized_model_trials_with_real_fees",
+        "does_not_prove": [
+          "unlimited_budget_or_cherry_picked_best"
+        ]
+      }
+    ]
+  },
+  "measurement_separation": {
+    "background_compute": "Record separately from subject response latency.",
+    "response_bytes": "Returned/rendered bytes; distinct from stable prefix and cached usage.",
+    "stable_prefix": "Report common prefix length and stable bytes; do not invent hit-rate.",
+    "actual_cached_usage": "Only host/provider usage.cached_input (or equivalent); null if absent.",
+    "full_bill": "Full provider bill/receipt fields; null with gap note if unknown; never infer from key presence."
+  },
+  "ret_amd_001": {
+    "work": "AWR-RET-006",
+    "note": "RET-AMD-001: freeze independent R0/R1/R2 matrix for RET-006 using EVO-001 pre-registration frame; old 36-trial proposal/budget does NOT auto-expand.",
+    "auto_expand_old_36_trial_proposal": false,
+    "tiers": [
+      {
+        "id": "R0",
+        "label": "protocol_and_fixture_only",
+        "evidence_layer": "simulated_or_protocol",
+        "paid_models": false,
+        "native_hosts": false,
+        "cases": [
+          "RET6-R0-schema",
+          "RET6-R0-isolation",
+          "RET6-R0-denominator"
+        ],
+        "repeats": 1,
+        "authorization_required": false,
+        "status": "frozen_runnable_offline"
+      },
+      {
+        "id": "R1",
+        "label": "component_with_synthetic_materials",
+        "evidence_layer": "protocol",
+        "paid_models": false,
+        "native_hosts": false,
+        "cases": [
+          "RET6-R1-cache-boundary",
+          "RET6-R1-fault-combo",
+          "RET6-R1-delivery-ack"
+        ],
+        "repeats": 2,
+        "authorization_required": false,
+        "status": "frozen_runnable_offline"
+      },
+      {
+        "id": "R2",
+        "label": "authorized_native_or_paid_if_separately_approved",
+        "evidence_layer": "native_or_paid",
+        "paid_models": true,
+        "native_hosts": true,
+        "cases": [
+          "RET6-R2-native-handoff",
+          "RET6-R2-paid-value-pair"
+        ],
+        "repeats": 2,
+        "authorization_required": true,
+        "authorization_fields": [
+          "fee_ceiling_total",
+          "fee_ceiling_per_trial",
+          "client_or_host_id",
+          "account_id",
+          "window_ops_allowed",
+          "reviewer_id",
+          "evidence_publication_scope"
+        ],
+        "status": "blocked_until_explicit_authorization"
+      }
+    ],
+    "denominator_rule": "Count registered R0+R1+R2 slots; unrun authorized-blocked R2 slots stay in denominator as blocked/unrun, never dropped to improve rates."
+  },
+  "gates": {
+    "AWR-EVO-054": {
+      "kind": "native_handoff",
+      "initial_status": "blocked",
+      "starts_without_authorization": false
+    },
+    "AWR-EVO-060": {
+      "kind": "paid_full_workflow",
+      "initial_status": "blocked",
+      "starts_without_authorization": false,
+      "budget_empty_means": "not_unlimited"
+    }
+  },
+  "authorization_state_at_freeze": {
+    "native_verification": {
+      "authorized": false,
+      "starts_allowed": false,
+      "fields_present": {}
+    },
+    "paid_verification": {
+      "authorized": false,
+      "starts_allowed": false,
+      "fields_present": {}
+    },
+    "key_availability_is_approval": false,
+    "real_materials_authorized": false
+  },
+  "invariants": [
+    "freeze_inputs_assertions_output_ids_axes_denominators_before_optimization",
+    "no_threshold_change_after_seeing_results",
+    "native_and_paid_require_independent_authorization_fields",
+    "key_availability_is_not_approval",
+    "simulated_protocol_native_paid_layers_do_not_substitute",
+    "correctness_perf_value_axes_do_not_substitute",
+    "ret006_r0_r1_r2_independent_no_auto_expand_36",
+    "missing_duplicate_trials_stay_in_denominator",
+    "referee_materials_isolated_from_subject_context"
+  ],
+  "evo_002_started": false,
+  "dec_040_started": false,
+  "dec_041_started": false,
+  "plan_hash": "sha256:9c2565ea067d332b549420b75d36fc22b7567d28a0f70e9b75673386f4e37958"
+}
