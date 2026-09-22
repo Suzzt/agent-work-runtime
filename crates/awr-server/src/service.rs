@@ -5,11 +5,12 @@ mod mcp;
 
 pub use action_auth::{
     action_authorization_capabilities, command_action_name, query_action_name,
-    reject_forged_authority_fields,
+    reject_access_management_forgeries, reject_forged_authority_fields,
 };
 
 use awr_team_pg::{
-    PgError, WorkstreamCommand, WorkstreamCommandStore, WorkstreamQuery, WorkstreamReadStore,
+    AdminAccessPlan, PgError, WorkstreamCommand, WorkstreamCommandStore, WorkstreamQuery,
+    WorkstreamReadStore,
 };
 use axum::{
     Router,
@@ -128,6 +129,10 @@ pub fn router(
     let mut router = Router::new()
         .route("/v1/projects/{project}/query", post(query))
         .route("/v1/projects/{project}/command", post(command))
+        .route("/v1/projects/{project}/access/inspect", post(access_inspect))
+        .route("/v1/projects/{project}/access/preview", post(access_preview))
+        .route("/v1/projects/{project}/access/apply", post(access_apply))
+        .route("/v1/projects/{project}/access/outcome", post(access_outcome))
         .layer(DefaultBodyLimit::max(65536))
         .with_state(state.clone());
     for project in state.projects.values() {
@@ -228,6 +233,182 @@ async fn dispatch(
                 state
                     .commands
                     .execute(&project.tenant_id, &project.project_id, token, c)
+                    .await
+            }
+        }
+    })
+    .await;
+    match result {
+        Ok(Ok(value)) => response(StatusCode::OK, value),
+        Ok(Err(error)) => error_response(error),
+        Err(_) => unavailable(),
+    }
+}
+
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccessInspectBody {
+    protocol_version: u32,
+    subject_actor_id: String,
+    subject_client_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccessPreviewBody {
+    protocol_version: u32,
+    plan: AdminAccessPlan,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccessApplyBody {
+    protocol_version: u32,
+    request_id: String,
+    expected_state: String,
+    expected_plan: String,
+    plan: AdminAccessPlan,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccessOutcomeBody {
+    protocol_version: u32,
+    request_id: String,
+}
+
+async fn access_inspect(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    access_dispatch(state, key, headers, body, AccessOp::Inspect).await
+}
+async fn access_preview(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    access_dispatch(state, key, headers, body, AccessOp::Preview).await
+}
+async fn access_apply(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    access_dispatch(state, key, headers, body, AccessOp::Apply).await
+}
+async fn access_outcome(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    access_dispatch(state, key, headers, body, AccessOp::Outcome).await
+}
+
+enum AccessOp {
+    Inspect,
+    Preview,
+    Apply,
+    Outcome,
+}
+
+async fn access_dispatch(
+    state: Arc<StateData>,
+    key: String,
+    headers: HeaderMap,
+    body: Bytes,
+    op: AccessOp,
+) -> Response {
+    if !allowed_request(&state, &headers) {
+        return denied();
+    }
+    let Some(token) = bearer(&headers) else {
+        return denied();
+    };
+    let Some(project) = state.projects.get(&key) else {
+        return denied();
+    };
+    if let Ok(raw) = serde_json::from_slice::<Value>(&body) {
+        if reject_access_management_forgeries(&raw).is_err() {
+            return denied();
+        }
+    }
+    let Ok(_permit) = state.permits.try_acquire() else {
+        return response(StatusCode::SERVICE_UNAVAILABLE, json!({"code":"Busy"}));
+    };
+    let result = tokio::time::timeout(Duration::from_secs(30), async {
+        match op {
+            AccessOp::Inspect => {
+                let req: AccessInspectBody = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid access inspect".into()))?;
+                if req.protocol_version != 1 {
+                    return Err(PgError::Protocol("invalid access inspect".into()));
+                }
+                state
+                    .store
+                    .project_access()
+                    .inspect(
+                        &project.tenant_id,
+                        &project.project_id,
+                        token,
+                        &req.subject_actor_id,
+                        &req.subject_client_id,
+                    )
+                    .await
+            }
+            AccessOp::Preview => {
+                let req: AccessPreviewBody = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid access preview".into()))?;
+                if req.protocol_version != 1 {
+                    return Err(PgError::Protocol("invalid access preview".into()));
+                }
+                state
+                    .store
+                    .project_access()
+                    .preview(&project.tenant_id, &project.project_id, token, &req.plan)
+                    .await
+            }
+            AccessOp::Apply => {
+                let req: AccessApplyBody = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid access apply".into()))?;
+                if req.protocol_version != 1 {
+                    return Err(PgError::Protocol("invalid access apply".into()));
+                }
+                state
+                    .store
+                    .project_access()
+                    .apply(
+                        &project.tenant_id,
+                        &project.project_id,
+                        token,
+                        &req.plan,
+                        &req.request_id,
+                        &req.expected_state,
+                        &req.expected_plan,
+                    )
+                    .await
+            }
+            AccessOp::Outcome => {
+                let req: AccessOutcomeBody = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid access outcome".into()))?;
+                if req.protocol_version != 1 {
+                    return Err(PgError::Protocol("invalid access outcome".into()));
+                }
+                state
+                    .store
+                    .project_access()
+                    .outcome(
+                        &project.tenant_id,
+                        &project.project_id,
+                        token,
+                        &req.request_id,
+                    )
                     .await
             }
         }
