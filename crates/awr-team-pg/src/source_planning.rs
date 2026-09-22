@@ -92,7 +92,14 @@ impl SourceStore {
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
             .start()
             .await?;
-        let auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
+        let mut auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        crate::delegation_auth::resolve_agent_delegation(
+            &tx, &mut auth, project_id, None, None, None, now_ms,
+        ).await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningPropose, None, None)?;
         let scope = crate::workstream_auth::authority_scope(&auth, None, None);
         refuse_reader_suggestion_write(&scope).map_err(map_team)?;
@@ -183,7 +190,14 @@ impl SourceStore {
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
             .start()
             .await?;
-        let auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
+        let mut auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        crate::delegation_auth::resolve_agent_delegation(
+            &tx, &mut auth, project_id, None, None, None, now_ms,
+        ).await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningEditDraft, None, None)?;
         let (baseline_digest, baseline_epoch) = current_baseline(&tx, tenant_id, project_id).await?;
         let known = known_work(&tx, tenant_id, project_id).await?;
@@ -316,7 +330,14 @@ impl SourceStore {
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
             .start()
             .await?;
-        let auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
+        let mut auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        crate::delegation_auth::resolve_agent_delegation(
+            &tx, &mut auth, project_id, None, None, None, now_ms,
+        ).await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningEditDraft, None, None)?;
         let mut candidate = load_candidate(&tx, tenant_id, project_id, candidate_id).await?;
         let (baseline_digest, baseline_epoch) = current_baseline(&tx, tenant_id, project_id).await?;
@@ -449,7 +470,14 @@ impl SourceStore {
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
             .start()
             .await?;
-        let auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
+        let mut auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        crate::delegation_auth::resolve_agent_delegation(
+            &tx, &mut auth, project_id, None, None, None, now_ms,
+        ).await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningApprove, None, None)?;
         let row = tx
             .query_one(
@@ -559,7 +587,14 @@ impl SourceStore {
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
             .start()
             .await?;
-        let auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
+        let mut auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        crate::delegation_auth::resolve_agent_delegation(
+            &tx, &mut auth, project_id, None, None, None, now_ms,
+        ).await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningPublish, None, None)?;
         let mut candidate = load_candidate(&tx, tenant_id, project_id, candidate_id).await?;
         let (live_digest, live_epoch) = current_baseline(&tx, tenant_id, project_id).await?;

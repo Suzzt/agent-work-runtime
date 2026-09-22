@@ -55,6 +55,12 @@ pub(crate) struct ReaderAuthority {
     pub revision: i64,
     pub binding: String,
     pub grant_versions: BTreeMap<Id, i64>,
+    /// When `Some`, TMCP actions are this set (membership ∩ WS-016 delegation).
+    /// Agents always carry `Some` after resolution (empty = deny). Humans/system
+    /// keep `None` and use the membership template unchanged.
+    pub delegated_actions: Option<std::collections::BTreeSet<awr_team::Action>>,
+    /// Covering WS-016 authorization id when `delegated_actions` is populated.
+    pub delegation_id: Option<String>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -235,6 +241,8 @@ async fn authenticate_inner(
         project_status: p.get(3),
         binding,
         grant_versions,
+        delegated_actions: None,
+        delegation_id: None,
     })
 }
 
@@ -346,6 +354,12 @@ pub(crate) fn authority_scope(
         }
     }
     scope.execution_identity = Some(auth.actor_id.clone());
+    if let Some(actions) = &auth.delegated_actions {
+        // Agents: never inherit the full membership template (TMCP-030).
+        scope.allowed_actions = actions.clone();
+        // Delegation alone never confers independent review.
+        scope.independent_review_grant = false;
+    }
     scope.policy_version = awr_team::PERMISSION_POLICY_VERSION;
     scope.revoked = false;
     scope
@@ -361,6 +375,14 @@ pub(crate) fn authorize_domain_action(
 ) -> PgResult<()> {
     // Re-derive from the live membership label so stale template caches cannot drift.
     let live = map_membership_role(&auth.role).ok_or(PgError::Forbidden)?;
+    if crate::delegation_auth::actor_requires_explicit_delegation(&auth.actor_kind) {
+        match &auth.delegated_actions {
+            None => return Err(PgError::Forbidden),
+            Some(actions) if actions.is_empty() => return Err(PgError::Forbidden),
+            Some(actions) if !actions.contains(&action) => return Err(PgError::Forbidden),
+            Some(_) => {}
+        }
+    }
     if live != auth.role_template || auth.membership_version < 1 {
         return Err(PgError::Forbidden);
     }
@@ -467,20 +489,26 @@ pub(crate) fn authorize_command(
             Ok(())
         }
         DomainAuthority::Attest => {
-            if !auth
-                .execution_access
-                .get(&stream)
-                .is_some_and(|access| access.attest)
+            if auth.actor_kind == "agent" || auth.actor_kind == "human" && auth.role_template != auth.role_template {
+                // agents never attest; product-role humans also never auto-upgrade
+                // (attest bit requires actor_kind==system in authenticate).
+            }
+            if auth.actor_kind != "system"
+                || !auth
+                    .execution_access
+                    .get(&stream)
+                    .is_some_and(|access| access.attest)
             {
                 return Err(PgError::Forbidden);
             }
             Ok(())
         }
         DomainAuthority::Reconcile => {
-            if !auth
-                .execution_access
-                .get(&stream)
-                .is_some_and(|access| access.reconcile)
+            if auth.actor_kind == "agent"
+                || !auth
+                    .execution_access
+                    .get(&stream)
+                    .is_some_and(|access| access.reconcile)
             {
                 return Err(PgError::Forbidden);
             }
@@ -513,6 +541,8 @@ pub(crate) fn workstream_boundary_capabilities() -> serde_json::Value {
         "authorization": "transactional_workstream_grants",
         "domain_entry_authorization": "shared_command_gate",
         "action_authorization": "tmcp_010_shared_decision",
+        "delegation_action_intersection": "tmcp_030_ws016_intersect",
+        "trusted_executor_upgrade": "never_from_product_roles",
         "permission_policy_id": awr_team::PERMISSION_POLICY_ID,
         "permission_policy_version": awr_team::PERMISSION_POLICY_VERSION,
         "write_authorization_phases": ["admission_write_grant", "effect_active_or_special"],
@@ -618,6 +648,8 @@ mod tests {
             revision: 1,
             binding: "binding".into(),
             grant_versions: BTreeMap::from([(stream, 1)]),
+            delegated_actions: None,
+            delegation_id: None,
         }
     }
 

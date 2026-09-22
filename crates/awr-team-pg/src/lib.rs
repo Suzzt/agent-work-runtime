@@ -27,6 +27,7 @@ mod runner;
 mod scoped_runner;
 mod source;
 mod tx;
+mod delegation_auth;
 mod workstream_auth;
 mod workstream_command;
 mod workstream_read;
@@ -85,6 +86,10 @@ pub use source::planning::{DraftCandidateCreate, SuggestionSubmit};
 pub use source::planning_ops::{PlanningApproveRequest, PlanningDraftRequest, PlanningPublishRequest, PlanningSuggestRequest};
 pub use source::writeback::{ActivationImpactGate, WritebackActivateRequest};
 pub use tx::{CommandOutcome, CommandRequest, TeamStore};
+pub use delegation_auth::{
+    actor_requires_explicit_delegation, intersect_delegation_with_template,
+    tmcp_actions_for_authorized, tmcp_actions_for_authorized_set,
+};
 pub use workstream_auth::{
     command_business_action, map_membership_role, query_business_action, workstream_credential_hash,
 };
