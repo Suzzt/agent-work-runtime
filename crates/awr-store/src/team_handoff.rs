@@ -1,11 +1,10 @@
 //! SQLite persistence for confirmed Team handoffs (WS-017).
 use crate::{Store, db_error};
 use awr_core::{
-    AcceptHandoffRequest, CancelHandoffRequest, HandoffReceipt, HandoffStatus, Id,
+    AcceptHandoffRequest, CancelHandoffRequest, Error, HandoffReceipt, HandoffStatus, Id,
     InspectHandoffRequest, PersonId, ProposeHandoffRequest, RejectHandoffRequest, Result,
     TeamHandoff, TimeoutHandoffRequest, apply_handoff_accept, apply_handoff_cancel,
     apply_handoff_inspect, apply_handoff_propose, apply_handoff_reject, apply_handoff_timeout,
-    Error,
 };
 use rusqlite::{OptionalExtension, params};
 
@@ -29,7 +28,13 @@ impl Store {
         }
         let handoff = apply_handoff_propose(&project_s, work_item_id, from_person, req)?;
         persist(&self.conn, &project_s, &handoff)?;
-        let receipt = record(&self.conn, &project_s, &handoff, &req.request_key, "propose")?;
+        let receipt = record(
+            &self.conn,
+            &project_s,
+            &handoff,
+            &req.request_key,
+            "propose",
+        )?;
         Ok((handoff, receipt))
     }
 
@@ -109,11 +114,7 @@ impl Store {
     }
 }
 
-fn load(
-    conn: &rusqlite::Connection,
-    project: &str,
-    id: &str,
-) -> Result<Option<TeamHandoff>> {
+fn load(conn: &rusqlite::Connection, project: &str, id: &str) -> Result<Option<TeamHandoff>> {
     let row = conn
         .query_row(
             "SELECT body_json FROM team_handoffs WHERE project_id=?1 AND id=?2",
@@ -124,9 +125,11 @@ fn load(
         .map_err(db_error)?;
     match row {
         None => Ok(None),
-        Some(json) => Ok(Some(serde_json::from_str(&json).map_err(|e| {
-            Error::Storage(format!("corrupt team handoff: {e}"))
-        })?)),
+        Some(json) => {
+            Ok(Some(serde_json::from_str(&json).map_err(|e| {
+                Error::Storage(format!("corrupt team handoff: {e}"))
+            })?))
+        }
     }
 }
 
@@ -183,7 +186,13 @@ fn load_receipt(
             "SELECT handoff_id, event_id, op FROM team_handoff_receipts
              WHERE project_id=?1 AND request_key=?2",
             params![project, request_key],
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            },
         )
         .optional()
         .map_err(db_error)?;

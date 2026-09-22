@@ -1106,7 +1106,6 @@ async fn current_review(
     }
 }
 
-
 /// Resolve the responsible person for an actor.
 /// Humans map to a persons row with the same id (created if needed).
 /// Agents require an active person_agent_bindings row — another agent of the

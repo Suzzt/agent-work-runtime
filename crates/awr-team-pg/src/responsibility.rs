@@ -5,10 +5,10 @@ use crate::error::{PgError, PgResult};
 use crate::tx::new_id;
 use awr_core::{
     AcceptResponsibilityRequest, AssignResponsibilityRequest, BindingStatus, ClaimExecutionRequest,
-    ExecutionInstance, PersonAgentBinding, PersonId, ResponsibilityEventType, ResponsibilityPending,
-    ResponsibilityPendingKind, ResponsibilityReceipt, TaskResponsibility, TransferOwnerRequest,
-    apply_accept, apply_agent_swap_for_person, apply_assign, apply_claim_execution,
-    apply_mark_pending, apply_release_execution, apply_transfer_propose,
+    ExecutionInstance, PersonAgentBinding, PersonId, ResponsibilityEventType,
+    ResponsibilityPending, ResponsibilityPendingKind, ResponsibilityReceipt, TaskResponsibility,
+    TransferOwnerRequest, apply_accept, apply_agent_swap_for_person, apply_assign,
+    apply_claim_execution, apply_mark_pending, apply_release_execution, apply_transfer_propose,
 };
 use serde_json::{Value, json};
 use tokio_postgres::{Client, Transaction};
@@ -144,10 +144,19 @@ impl ResponsibilityStore {
         work_id: &str,
         req: &AssignResponsibilityRequest,
     ) -> PgResult<(TaskResponsibility, ResponsibilityReceipt)> {
-        self.apply(tenant, project, work_id, &req.request_key, ResponsibilityEventType::Assigned, |before, bindings| {
-            let _ = bindings;
-            apply_assign(before, req).map_err(map_core)
-        }, Some(req.authorized_by.as_str()), json!({"owner": req.owner.as_ref().map(|p| p.as_str())}))
+        self.apply(
+            tenant,
+            project,
+            work_id,
+            &req.request_key,
+            ResponsibilityEventType::Assigned,
+            |before, bindings| {
+                let _ = bindings;
+                apply_assign(before, req).map_err(map_core)
+            },
+            Some(req.authorized_by.as_str()),
+            json!({"owner": req.owner.as_ref().map(|p| p.as_str())}),
+        )
         .await
     }
 
@@ -158,9 +167,16 @@ impl ResponsibilityStore {
         work_id: &str,
         req: &AcceptResponsibilityRequest,
     ) -> PgResult<(TaskResponsibility, ResponsibilityReceipt)> {
-        self.apply(tenant, project, work_id, &req.request_key, ResponsibilityEventType::Accepted, |before, _| {
-            apply_accept(before, req).map_err(map_core)
-        }, Some(req.acceptor.as_str()), json!({"acceptor": req.acceptor.as_str()}))
+        self.apply(
+            tenant,
+            project,
+            work_id,
+            &req.request_key,
+            ResponsibilityEventType::Accepted,
+            |before, _| apply_accept(before, req).map_err(map_core),
+            Some(req.acceptor.as_str()),
+            json!({"acceptor": req.acceptor.as_str()}),
+        )
         .await
     }
 
@@ -171,12 +187,19 @@ impl ResponsibilityStore {
         work_id: &str,
         req: &ClaimExecutionRequest,
     ) -> PgResult<(TaskResponsibility, ResponsibilityReceipt)> {
-        self.apply(tenant, project, work_id, &req.request_key, ResponsibilityEventType::ExecutionClaimed, |before, bindings| {
-            apply_claim_execution(before, req, bindings).map_err(map_core)
-        }, Some(req.executor.person_id().as_str()), json!({
-            "coordination_claim_id": req.coordination_claim_id,
-            "owner_unchanged": true,
-        }))
+        self.apply(
+            tenant,
+            project,
+            work_id,
+            &req.request_key,
+            ResponsibilityEventType::ExecutionClaimed,
+            |before, bindings| apply_claim_execution(before, req, bindings).map_err(map_core),
+            Some(req.executor.person_id().as_str()),
+            json!({
+                "coordination_claim_id": req.coordination_claim_id,
+                "owner_unchanged": true,
+            }),
+        )
         .await
     }
 
@@ -189,9 +212,19 @@ impl ResponsibilityStore {
         expected_version: u64,
         by_person: &PersonId,
     ) -> PgResult<(TaskResponsibility, ResponsibilityReceipt)> {
-        self.apply(tenant, project, work_id, request_key, ResponsibilityEventType::ExecutionReleased, |before, _| {
-            apply_release_execution(before, request_key, expected_version, by_person).map_err(map_core)
-        }, Some(by_person.as_str()), json!({}))
+        self.apply(
+            tenant,
+            project,
+            work_id,
+            request_key,
+            ResponsibilityEventType::ExecutionReleased,
+            |before, _| {
+                apply_release_execution(before, request_key, expected_version, by_person)
+                    .map_err(map_core)
+            },
+            Some(by_person.as_str()),
+            json!({}),
+        )
         .await
     }
 
@@ -202,12 +235,19 @@ impl ResponsibilityStore {
         work_id: &str,
         req: &TransferOwnerRequest,
     ) -> PgResult<(TaskResponsibility, ResponsibilityReceipt)> {
-        self.apply(tenant, project, work_id, &req.request_key, ResponsibilityEventType::OwnerTransferProposed, |before, _| {
-            apply_transfer_propose(before, req).map_err(map_core)
-        }, Some(req.authorized_by.as_str()), json!({
-            "from": req.from_owner.as_str(),
-            "to": req.to_owner.as_str(),
-        }))
+        self.apply(
+            tenant,
+            project,
+            work_id,
+            &req.request_key,
+            ResponsibilityEventType::OwnerTransferProposed,
+            |before, _| apply_transfer_propose(before, req).map_err(map_core),
+            Some(req.authorized_by.as_str()),
+            json!({
+                "from": req.from_owner.as_str(),
+                "to": req.to_owner.as_str(),
+            }),
+        )
         .await
     }
 
@@ -221,10 +261,26 @@ impl ResponsibilityStore {
         person_id: &PersonId,
         new_executor: ExecutionInstance,
     ) -> PgResult<(TaskResponsibility, ResponsibilityReceipt)> {
-        self.apply(tenant, project, work_id, request_key, ResponsibilityEventType::ExecutionClaimed, move |before, bindings| {
-            apply_agent_swap_for_person(before, request_key, expected_version, person_id, new_executor.clone(), bindings)
+        self.apply(
+            tenant,
+            project,
+            work_id,
+            request_key,
+            ResponsibilityEventType::ExecutionClaimed,
+            move |before, bindings| {
+                apply_agent_swap_for_person(
+                    before,
+                    request_key,
+                    expected_version,
+                    person_id,
+                    new_executor.clone(),
+                    bindings,
+                )
                 .map_err(map_core)
-        }, Some(person_id.as_str()), json!({"agent_swap": true, "owner_unchanged": true}))
+            },
+            Some(person_id.as_str()),
+            json!({"agent_swap": true, "owner_unchanged": true}),
+        )
         .await
     }
 
@@ -238,13 +294,19 @@ impl ResponsibilityStore {
         pending: ResponsibilityPending,
     ) -> PgResult<(TaskResponsibility, ResponsibilityReceipt)> {
         let kind = pending_kind_str(pending.kind);
-        let actor = pending
-            .person_id
-            .as_ref()
-            .map(|p| p.as_str().to_string());
-        self.apply(tenant, project, work_id, request_key, ResponsibilityEventType::PendingMarked, move |before, _| {
-            apply_mark_pending(before, request_key, expected_version, pending).map_err(map_core)
-        }, actor.as_deref(), json!({"kind": kind}))
+        let actor = pending.person_id.as_ref().map(|p| p.as_str().to_string());
+        self.apply(
+            tenant,
+            project,
+            work_id,
+            request_key,
+            ResponsibilityEventType::PendingMarked,
+            move |before, _| {
+                apply_mark_pending(before, request_key, expected_version, pending).map_err(map_core)
+            },
+            actor.as_deref(),
+            json!({"kind": kind}),
+        )
         .await
     }
 
@@ -277,7 +339,17 @@ impl ResponsibilityStore {
         let bindings = load_bindings_tx(&tx, tenant, project).await?;
         let after = transition(&before, &bindings)?;
         persist_task(&tx, tenant, project, &after).await?;
-        let receipt = record_change(&tx, tenant, &before, &after, op, request_key, actor, payload).await?;
+        let receipt = record_change(
+            &tx,
+            tenant,
+            &before,
+            &after,
+            op,
+            request_key,
+            actor,
+            payload,
+        )
+        .await?;
         tx.commit().await?;
         Ok((after, receipt))
     }
@@ -330,7 +402,12 @@ async fn load_bindings_tx(
     Ok(out)
 }
 
-async fn load_task(client: &Client, tenant: &str, project: &str, work_id: &str) -> PgResult<Option<TaskResponsibility>> {
+async fn load_task(
+    client: &Client,
+    tenant: &str,
+    project: &str,
+    work_id: &str,
+) -> PgResult<Option<TaskResponsibility>> {
     let row = client
         .query_opt(
             "SELECT owner_person_id, independent_reviewer_person_id, executor_kind, executor_person_id,
@@ -507,7 +584,14 @@ async fn persist_task(
         ensure_person_tx(tx, tenant, project, c.as_str(), c.as_str()).await?;
     }
     if let Some(exec) = &task.current_executor {
-        ensure_person_tx(tx, tenant, project, exec.person_id().as_str(), exec.person_id().as_str()).await?;
+        ensure_person_tx(
+            tx,
+            tenant,
+            project,
+            exec.person_id().as_str(),
+            exec.person_id().as_str(),
+        )
+        .await?;
     }
     let (exec_kind, exec_person, exec_agent, exec_binding): (
         Option<&str>,

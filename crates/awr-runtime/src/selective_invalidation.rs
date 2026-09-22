@@ -5,9 +5,7 @@
 //! current-contract consumers revalidate on authoritative selection drift.
 //! Prepare/dispatch/complete rechecks prevent revoke races. Mid-execution
 //! invalidation keeps real effects and recovery duty; unrelated work continues.
-use awr_core::{
-    AdoptionCredentialStatus, DeliveryStatus, DeliveryVersionPolicy,
-};
+use awr_core::{AdoptionCredentialStatus, DeliveryStatus, DeliveryVersionPolicy};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -397,7 +395,10 @@ pub fn consumers_by_provider(
 pub fn planning_change_fingerprint(change: &ScopedPlanningChange) -> String {
     format!(
         "{}:{}:{}:{}",
-        change.change_id, change.old_graph_version, change.new_graph_version, change.status_str()
+        change.change_id,
+        change.old_graph_version,
+        change.new_graph_version,
+        change.status_str()
     )
 }
 
@@ -558,15 +559,15 @@ mod tests {
             ],
         })
         .unwrap();
-        assert_eq!(
-            app.change.status,
-            PlanningChangeStatus::AffectedBlocked
-        );
+        assert_eq!(app.change.status, PlanningChangeStatus::AffectedBlocked);
         assert_eq!(
             app.blocked_work_ids,
             vec!["integration".to_string(), "sdk".to_string()]
         );
-        assert_eq!(app.unblocked_unrelated_work_ids, vec!["api".to_string(), "docs".to_string()]);
+        assert_eq!(
+            app.unblocked_unrelated_work_ids,
+            vec!["api".to_string(), "docs".to_string()]
+        );
         assert_eq!(
             action_blocked_by_planning_changes("sdk", &[app.change.clone()]),
             Some("pc-1".into())

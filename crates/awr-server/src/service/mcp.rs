@@ -169,27 +169,27 @@ fn catalog() -> Vec<Tool> {
         "required":["protocol_version","plan"],
         "properties":{"protocol_version":{"type":"integer","const":1},"plan":access_plan}});
     let access_apply = json!({"type":"object","additionalProperties":false,
-        "required":["protocol_version","request_id","expected_state","expected_plan","plan"],
-        "properties":{
-            "protocol_version":{"type":"integer","const":1},
-            "request_id":{"type":"string","maxLength":128},
-            "expected_state":{"type":"string","pattern":"^[0-9a-f]{64}$"},
-            "expected_plan":{"type":"string","pattern":"^[0-9a-f]{64}$"},
-            "plan":access_plan
-        }});
+    "required":["protocol_version","request_id","expected_state","expected_plan","plan"],
+    "properties":{
+        "protocol_version":{"type":"integer","const":1},
+        "request_id":{"type":"string","maxLength":128},
+        "expected_state":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "expected_plan":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "plan":access_plan
+    }});
     let access_outcome = json!({"type":"object","additionalProperties":false,
-        "required":["protocol_version","request_id"],
-        "properties":{
-            "protocol_version":{"type":"integer","const":1},
-            "request_id":{"type":"string","maxLength":128}
-        }});
+    "required":["protocol_version","request_id"],
+    "properties":{
+        "protocol_version":{"type":"integer","const":1},
+        "request_id":{"type":"string","maxLength":128}
+    }});
     let access_inspect = json!({"type":"object","additionalProperties":false,
-        "required":["protocol_version","subject_actor_id","subject_client_id"],
-        "properties":{
-            "protocol_version":{"type":"integer","const":1},
-            "subject_actor_id":{"type":"string","maxLength":128},
-            "subject_client_id":{"type":"string","maxLength":128}
-        }});
+    "required":["protocol_version","subject_actor_id","subject_client_id"],
+    "properties":{
+        "protocol_version":{"type":"integer","const":1},
+        "subject_actor_id":{"type":"string","maxLength":128},
+        "subject_client_id":{"type":"string","maxLength":128}
+    }});
     vec![
         Tool::new("awr_team_query",
             "Scoped Team reads. Begin with capabilities, then workstreams.list or work.prepare. The endpoint binds the project; bearer grants bind the client. Tool discovery is navigation-only; each query rechecks work.read. Re-prepare after relevant changes. No execution admission.",
@@ -325,10 +325,9 @@ impl ServerHandler for Endpoint {
                         .await
                 }
                 "awr_team_access_preview" => {
-                    let plan: awr_team_pg::AdminAccessPlan = serde_json::from_value(
-                        args.get("plan").cloned().unwrap_or(Value::Null),
-                    )
-                    .map_err(|_| PgError::Protocol("invalid access plan".into()))?;
+                    let plan: awr_team_pg::AdminAccessPlan =
+                        serde_json::from_value(args.get("plan").cloned().unwrap_or(Value::Null))
+                            .map_err(|_| PgError::Protocol("invalid access plan".into()))?;
                     self.state
                         .store
                         .project_access()
@@ -341,10 +340,9 @@ impl ServerHandler for Endpoint {
                         .await
                 }
                 "awr_team_access_apply" => {
-                    let plan: awr_team_pg::AdminAccessPlan = serde_json::from_value(
-                        args.get("plan").cloned().unwrap_or(Value::Null),
-                    )
-                    .map_err(|_| PgError::Protocol("invalid access plan".into()))?;
+                    let plan: awr_team_pg::AdminAccessPlan =
+                        serde_json::from_value(args.get("plan").cloned().unwrap_or(Value::Null))
+                            .map_err(|_| PgError::Protocol("invalid access plan".into()))?;
                     let request_id = args
                         .get("request_id")
                         .and_then(|v| v.as_str())
