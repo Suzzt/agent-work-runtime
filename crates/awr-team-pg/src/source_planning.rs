@@ -8,11 +8,12 @@ use super::{PgError, PgResult, SourceStore, sha256_hex};
 use crate::tx::new_id;
 use crate::workstream_auth::{authenticate, authenticate_writer, authorize_domain_action};
 use awr_team::{
-    AffectedTaskImpact, BaselineView, CandidateState, DraftChange, OrdinaryPlanningSelfApprovePolicy,
-    PLANNING_CODEC, PlanningApproval, PlanningCandidate, PlanningSuggestion, ResourceRef,
-    SUGGESTION_ADDS_FORMAL_WORK, SUGGESTION_CLAIMABLE, SuggestionState,
-    authorize_planning_approve, authorize_planning_publish, build_candidate_diff, edit_candidate,
-    ensure_independent_review_not_downgraded, refuse_reader_suggestion_write, validate_candidate,
+    AffectedTaskImpact, BaselineView, CandidateState, DraftChange,
+    OrdinaryPlanningSelfApprovePolicy, PLANNING_CODEC, PlanningApproval, PlanningCandidate,
+    PlanningSuggestion, ResourceRef, SUGGESTION_ADDS_FORMAL_WORK, SUGGESTION_CLAIMABLE,
+    SuggestionState, authorize_planning_approve, authorize_planning_publish, build_candidate_diff,
+    edit_candidate, ensure_independent_review_not_downgraded, refuse_reader_suggestion_write,
+    validate_candidate,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -98,7 +99,8 @@ impl SourceStore {
                 "suggestion invariants broken: must not be claimable or formal work".into(),
             ));
         }
-        let (baseline_digest, baseline_epoch) = current_baseline(&tx, tenant_id, project_id).await?;
+        let (baseline_digest, baseline_epoch) =
+            current_baseline(&tx, tenant_id, project_id).await?;
         let suggestion_id = new_id();
         let person = submit
             .author_person_id
@@ -182,14 +184,18 @@ impl SourceStore {
             .await?;
         let auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningEditDraft, None, None)?;
-        let (baseline_digest, baseline_epoch) = current_baseline(&tx, tenant_id, project_id).await?;
+        let (baseline_digest, baseline_epoch) =
+            current_baseline(&tx, tenant_id, project_id).await?;
         let known = known_work(&tx, tenant_id, project_id).await?;
         let policy = create
             .self_approve_policy
             .clone()
             .unwrap_or_else(OrdinaryPlanningSelfApprovePolicy::ordinary_default);
-        ensure_independent_review_not_downgraded("independent_review", &policy.delivery_completion_policy)
-            .map_err(map_team)?;
+        ensure_independent_review_not_downgraded(
+            "independent_review",
+            &policy.delivery_completion_policy,
+        )
+        .map_err(map_team)?;
         let person = create
             .author_person_id
             .clone()
@@ -224,8 +230,8 @@ impl SourceStore {
         };
         validate_candidate(&candidate, &base_view).map_err(map_team)?;
         let digest = candidate.candidate_digest().map_err(map_team)?;
-        let changes_json =
-            serde_json::to_value(&candidate.changes).map_err(|e| PgError::Protocol(e.to_string()))?;
+        let changes_json = serde_json::to_value(&candidate.changes)
+            .map_err(|e| PgError::Protocol(e.to_string()))?;
         let suggestion_ids = serde_json::to_value(&candidate.suggestion_ids)
             .map_err(|e| PgError::Protocol(e.to_string()))?;
         let roots = serde_json::to_value(&candidate.allowed_spec_roots)
@@ -315,7 +321,8 @@ impl SourceStore {
         let auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningEditDraft, None, None)?;
         let mut candidate = load_candidate(&tx, tenant_id, project_id, candidate_id).await?;
-        let (baseline_digest, baseline_epoch) = current_baseline(&tx, tenant_id, project_id).await?;
+        let (baseline_digest, baseline_epoch) =
+            current_baseline(&tx, tenant_id, project_id).await?;
         // Edits must still target the live baseline; expired baselines refuse.
         candidate.baseline_digest = baseline_digest.clone();
         candidate.baseline_epoch = baseline_epoch.clone();
@@ -330,8 +337,8 @@ impl SourceStore {
         };
         validate_candidate(&candidate, &base_view).map_err(map_team)?;
         let digest = candidate.candidate_digest().map_err(map_team)?;
-        let changes_json =
-            serde_json::to_value(&candidate.changes).map_err(|e| PgError::Protocol(e.to_string()))?;
+        let changes_json = serde_json::to_value(&candidate.changes)
+            .map_err(|e| PgError::Protocol(e.to_string()))?;
         tx.execute(
             "UPDATE awr_team.planning_candidates SET
                 draft_revision=$4, candidate_digest=$5, state='drafting',
@@ -813,12 +820,7 @@ async fn load_candidate(
         // approve/publish the stored digest is authoritative for binding.
         candidate.baseline_digest = row.get(2);
     }
-    if computed != stored
-        && matches!(
-            state,
-            CandidateState::Approved | CandidateState::Published
-        )
-    {
+    if computed != stored && matches!(state, CandidateState::Approved | CandidateState::Published) {
         return Err(PgError::StaleApproval);
     }
     Ok(candidate)
@@ -882,4 +884,3 @@ fn now_unix_ms() -> u64 {
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
 }
-

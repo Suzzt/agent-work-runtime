@@ -65,7 +65,9 @@ pub fn validate_resource_kind(kind: &str) -> PgResult<()> {
     if resource_domain(kind).is_some() {
         Ok(())
     } else {
-        Err(PgError::Protocol(format!("unsupported resource kind: {kind}")))
+        Err(PgError::Protocol(format!(
+            "unsupported resource kind: {kind}"
+        )))
     }
 }
 
@@ -154,7 +156,9 @@ fn normalize_resource_key(kind: &str, key: &str) -> PgResult<String> {
         }
         ResourceDomain::WorktreeLocal if kind == "workspace" => {
             if key.is_empty() || key.len() > 512 || key.chars().any(char::is_control) {
-                return Err(PgError::UnsafeSourcePath("invalid workspace resource".into()));
+                return Err(PgError::UnsafeSourcePath(
+                    "invalid workspace resource".into(),
+                ));
             }
             Ok(key.to_string())
         }
@@ -374,7 +378,9 @@ impl GraphStore {
         execution_id: Option<&str>,
     ) -> PgResult<String> {
         if lease.lease_generation < 0 || lease.fence < 0 {
-            return Err(PgError::Protocol("lease generation and fence must be >= 0".into()));
+            return Err(PgError::Protocol(
+                "lease generation and fence must be >= 0".into(),
+            ));
         }
         let key = normalize_resource_key(&bound.kind, &bound.key)?;
         let worktree_id = normalize_worktree_id(&bound.kind, &bound.worktree_id)?;

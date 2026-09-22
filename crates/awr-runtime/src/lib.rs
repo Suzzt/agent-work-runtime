@@ -46,7 +46,11 @@ pub use branch::{CreateBranchRequest, create_branch, observe_git_ref, switch_bra
 pub use branch_close::{CloseBranchRequest, close_branch};
 pub use completion::{CompleteWorkRequest, complete_work};
 pub use doctor::{ProjectDoctorReport, diagnose_project};
-pub use execution::{HostIsolationEvidence, IsolationClass, classify_isolation, inspect_execution, inspect_work_executions, isolation_basis, refuse_unverified_strong_isolation, render_execution_observations};
+pub use execution::{
+    HostIsolationEvidence, IsolationClass, classify_isolation, inspect_execution,
+    inspect_work_executions, isolation_basis, refuse_unverified_strong_isolation,
+    render_execution_observations,
+};
 pub use management::{AssessManagementRequest, ManageWorkRequest, assess_management, manage_work};
 pub use mutation::{
     CreateProposalRequest, ProposalReport, ReviewProposalAction, ReviewProposalRequest,
