@@ -67,6 +67,7 @@ async fn developer_can_suggest_reader_cannot_and_suggestion_is_not_executable() 
         affected_work_keys: vec!["CLIENT-1".into()],
         proposed_notes: json!({"add":"SHARED-1"}),
         author_person_id: Some("agent".into()),
+        predetermined_suggestion_id: None,
     };
     let ok = store
         .submit_planning_suggestion(TENANT, PROJECT, A, &submit)
@@ -119,6 +120,7 @@ async fn maintainer_draft_diff_approve_publish_and_edit_invalidates_approval() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let created = store
         .create_planning_candidate(TENANT, PROJECT, A, &create)
@@ -252,6 +254,7 @@ async fn rejects_cycles_dangling_cross_project_oob_and_policy_downgrade() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: None,
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let err = store
         .create_planning_candidate(TENANT, PROJECT, A, &cycle)
@@ -270,6 +273,7 @@ async fn rejects_cycles_dangling_cross_project_oob_and_policy_downgrade() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: None,
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let err = store
         .create_planning_candidate(TENANT, PROJECT, A, &dangling)
@@ -290,6 +294,7 @@ async fn rejects_cycles_dangling_cross_project_oob_and_policy_downgrade() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: None,
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let err = store
         .create_planning_candidate(TENANT, PROJECT, A, &cross_c)
@@ -310,6 +315,7 @@ async fn rejects_cycles_dangling_cross_project_oob_and_policy_downgrade() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: None,
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let err = store
         .create_planning_candidate(TENANT, PROJECT, A, &oob_c)
@@ -331,6 +337,7 @@ async fn rejects_cycles_dangling_cross_project_oob_and_policy_downgrade() {
             delivery_completion_policy: "author_may_complete".into(),
         }),
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let err = store
         .create_planning_candidate(TENANT, PROJECT, A, &downgrade)
@@ -364,6 +371,7 @@ async fn preview_refuses_candidates_outside_client_readable_scope() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: None,
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let created = store
         .create_planning_candidate(TENANT, PROJECT, A, &create)
@@ -427,6 +435,7 @@ async fn preview_refuses_candidates_outside_client_readable_scope() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: None,
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let priv_created = store
         .create_planning_candidate(TENANT, PROJECT, A, &private)
@@ -466,6 +475,7 @@ async fn approve_and_publish_refuse_stale_source_baseline() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let created = store
         .create_planning_candidate(TENANT, PROJECT, A, &create)
@@ -560,6 +570,7 @@ async fn mutations_refuse_zero_grant_maintainer_client() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: None,
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let err = store
         .create_planning_candidate(TENANT, PROJECT, NONE, &create)

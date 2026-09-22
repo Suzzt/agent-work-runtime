@@ -148,7 +148,7 @@ impl SourceStore {
         bind_workstream_scope(&tx, tenant_id, project_id).await?;
         let row = tx
             .query_opt(
-                "SELECT op, request_hash, actor_id, client_id, result_json, created_at::text
+                "SELECT op, request_hash, actor_id, client_id, result_json, created_at::text, status
                  FROM awr_team.planning_command_receipts
                  WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3",
                 &[&tenant_id, &project_id, &request_id],
@@ -158,6 +158,12 @@ impl SourceStore {
             tx.commit().await?;
             return Ok(None);
         };
+        let status: String = row.get(6);
+        if status != "completed" {
+            // Reserved/in-flight is not a usable outcome receipt.
+            tx.commit().await?;
+            return Ok(None);
+        }
         let out = json!({
             "protocol": RECEIPT_PROTOCOL,
             "request_id": request_id,
@@ -174,7 +180,139 @@ impl SourceStore {
         Ok(Some(out))
     }
 
-    async fn commit_planning_receipt(
+    /// Reserve an idempotency slot before the domain mutation. Returns prior
+    /// completed receipt when present (`Ok(Ok(receipt))`), or a durable
+    /// `domain_id` to resume (`Ok(Err(domain_id))`).
+    async fn reserve_planning_receipt(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        bearer: &str,
+        request_id: &str,
+        op: &str,
+        hash: &str,
+        domain_id: &str,
+    ) -> PgResult<std::result::Result<Value, String>> {
+        let mut client = self.connect().await?;
+        crate::check_schema(&client).await?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await?;
+        let auth = authenticate(&tx, tenant_id, project_id, bearer).await?;
+        let scope = crate::workstream_auth::authority_scope(&auth, None, None);
+        let can = [
+            awr_team::Action::PlanningPropose,
+            awr_team::Action::PlanningEditDraft,
+            awr_team::Action::PlanningApprove,
+            awr_team::Action::PlanningPublish,
+        ]
+        .iter()
+        .any(|a| scope.allowed_actions.contains(a));
+        if !can {
+            return Err(PgError::Forbidden);
+        }
+        bind_workstream_scope(&tx, tenant_id, project_id).await?;
+        let existing = tx
+            .query_opt(
+                "SELECT request_hash, status, result_json
+                 FROM awr_team.planning_command_receipts
+                 WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3
+                 FOR UPDATE",
+                &[&tenant_id, &project_id, &request_id],
+            )
+            .await?;
+        if let Some(row) = existing {
+            let prior_hash: String = row.get(0);
+            if prior_hash != hash {
+                return Err(PgError::IdempotencyConflict);
+            }
+            let status: String = row.get(1);
+            let prior: Value = row.get(2);
+            if status == "completed" {
+                let mut prior = prior;
+                if let Some(obj) = prior.as_object_mut() {
+                    obj.insert("already_recorded".into(), Value::Bool(true));
+                }
+                tx.commit().await?;
+                return Ok(Ok(prior));
+            }
+            let domain = prior
+                .get("domain_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or(domain_id)
+                .to_string();
+            tx.commit().await?;
+            return Ok(Err(domain));
+        }
+        let placeholder = json!({
+            "protocol": RECEIPT_PROTOCOL,
+            "request_id": request_id,
+            "op": op,
+            "request_hash": hash,
+            "status": "reserved",
+            "domain_id": domain_id,
+            "already_recorded": false
+        });
+        match tx
+            .execute(
+                "INSERT INTO awr_team.planning_command_receipts(
+                    tenant_id, project_id, request_id, op, request_hash,
+                    actor_id, client_id, status, result_json)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,'reserved',$8)",
+                &[
+                    &tenant_id,
+                    &project_id,
+                    &request_id,
+                    &op,
+                    &hash,
+                    &auth.actor_id,
+                    &auth.client_id,
+                    &placeholder,
+                ],
+            )
+            .await
+        {
+            Ok(_) => {}
+            Err(e) if e.code() == Some(&tokio_postgres::error::SqlState::UNIQUE_VIOLATION) => {
+                // Concurrent reserve — re-read.
+                let row = tx
+                    .query_one(
+                        "SELECT request_hash, status, result_json
+                         FROM awr_team.planning_command_receipts
+                         WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3",
+                        &[&tenant_id, &project_id, &request_id],
+                    )
+                    .await?;
+                let prior_hash: String = row.get(0);
+                if prior_hash != hash {
+                    return Err(PgError::IdempotencyConflict);
+                }
+                let status: String = row.get(1);
+                let prior: Value = row.get(2);
+                tx.commit().await?;
+                if status == "completed" {
+                    let mut prior = prior;
+                    if let Some(obj) = prior.as_object_mut() {
+                        obj.insert("already_recorded".into(), Value::Bool(true));
+                    }
+                    return Ok(Ok(prior));
+                }
+                let domain = prior
+                    .get("domain_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(domain_id)
+                    .to_string();
+                return Ok(Err(domain));
+            }
+            Err(e) => return Err(e.into()),
+        }
+        tx.commit().await?;
+        Ok(Err(domain_id.to_string()))
+    }
+
+    async fn finalize_planning_receipt(
         &self,
         tenant_id: &str,
         project_id: &str,
@@ -185,30 +323,13 @@ impl SourceStore {
         result: Value,
     ) -> PgResult<Value> {
         let mut client = self.connect().await?;
-        crate::check_schema(&client).await?;
         let tx = client
             .build_transaction()
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
             .start()
             .await?;
-        let auth = authenticate(&tx, tenant_id, project_id, bearer).await?;
+        let _auth = authenticate(&tx, tenant_id, project_id, bearer).await?;
         bind_workstream_scope(&tx, tenant_id, project_id).await?;
-        if let Some(row) = tx
-            .query_opt(
-                "SELECT request_hash, result_json FROM awr_team.planning_command_receipts
-                 WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3",
-                &[&tenant_id, &project_id, &request_id],
-            )
-            .await?
-        {
-            let prior_hash: String = row.get(0);
-            if prior_hash != hash {
-                return Err(PgError::IdempotencyConflict);
-            }
-            let prior: Value = row.get(1);
-            tx.commit().await?;
-            return Ok(prior);
-        }
         let wrapped = json!({
             "protocol": RECEIPT_PROTOCOL,
             "request_id": request_id,
@@ -217,23 +338,30 @@ impl SourceStore {
             "result": result,
             "already_recorded": false
         });
-        tx.execute(
-            "INSERT INTO awr_team.planning_command_receipts(
-                tenant_id, project_id, request_id, op, request_hash,
-                actor_id, client_id, result_json)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
-            &[
-                &tenant_id,
-                &project_id,
-                &request_id,
-                &op,
-                &hash,
-                &auth.actor_id,
-                &auth.client_id,
-                &wrapped,
-            ],
-        )
-        .await?;
+        let updated = tx
+            .execute(
+                "UPDATE awr_team.planning_command_receipts
+                 SET status='completed', result_json=$4, updated_at=clock_timestamp()
+                 WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3
+                   AND request_hash=$5",
+                &[&tenant_id, &project_id, &request_id, &wrapped, &hash],
+            )
+            .await?;
+        if updated == 0 {
+            let row = tx
+                .query_opt(
+                    "SELECT result_json FROM awr_team.planning_command_receipts
+                     WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3",
+                    &[&tenant_id, &project_id, &request_id],
+                )
+                .await?
+                .ok_or_else(|| {
+                    PgError::Protocol("planning receipt missing after finalize".into())
+                })?;
+            let prior: Value = row.get(0);
+            tx.commit().await?;
+            return Ok(prior);
+        }
         tx.commit().await?;
         Ok(wrapped)
     }
@@ -249,25 +377,33 @@ impl SourceStore {
         require_request_id(&req.request_id)?;
         require_protocol(req.protocol_version)?;
         let hash = intent_hash("planning.propose", &intent)?;
-        if let Some(existing) = self
-            .get_planning_command_receipt(tenant_id, project_id, bearer, &req.request_id)
-            .await?
-        {
-            if existing["request_hash"] != hash {
-                return Err(PgError::IdempotencyConflict);
-            }
-            return Ok(existing);
-        }
+        let domain_id = crate::tx::new_id();
+        let reserved = self
+            .reserve_planning_receipt(
+                tenant_id,
+                project_id,
+                bearer,
+                &req.request_id,
+                "planning.propose",
+                &hash,
+                &domain_id,
+            )
+            .await?;
+        let domain_id = match reserved {
+            Ok(existing) => return Ok(existing),
+            Err(id) => id,
+        };
         let submit = SuggestionSubmit {
             rationale: req.rationale.clone(),
             affected_work_keys: req.affected_work_keys.clone(),
             proposed_notes: req.proposed_notes.clone(),
             author_person_id: req.author_person_id.clone(),
+            predetermined_suggestion_id: Some(domain_id),
         };
         let result = self
             .submit_planning_suggestion(tenant_id, project_id, bearer, &submit)
             .await?;
-        self.commit_planning_receipt(
+        self.finalize_planning_receipt(
             tenant_id,
             project_id,
             bearer,
@@ -290,15 +426,26 @@ impl SourceStore {
         require_request_id(&req.request_id)?;
         require_protocol(req.protocol_version)?;
         let hash = intent_hash("planning.edit_draft", &intent)?;
-        if let Some(existing) = self
-            .get_planning_command_receipt(tenant_id, project_id, bearer, &req.request_id)
-            .await?
-        {
-            if existing["request_hash"] != hash {
-                return Err(PgError::IdempotencyConflict);
-            }
-            return Ok(existing);
-        }
+        let domain_id = req
+            .candidate_id
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(crate::tx::new_id);
+        let reserved = self
+            .reserve_planning_receipt(
+                tenant_id,
+                project_id,
+                bearer,
+                &req.request_id,
+                "planning.edit_draft",
+                &hash,
+                &domain_id,
+            )
+            .await?;
+        let domain_id = match reserved {
+            Ok(existing) => return Ok(existing),
+            Err(id) => id,
+        };
         let result = match req.mode.as_str() {
             "create" => {
                 let create = DraftCandidateCreate {
@@ -308,6 +455,7 @@ impl SourceStore {
                     project_goal_keys: req.project_goal_keys.clone(),
                     self_approve_policy: req.self_approve_policy.clone(),
                     author_person_id: req.author_person_id.clone(),
+                    predetermined_candidate_id: Some(domain_id.clone()),
                 };
                 self.create_planning_candidate(tenant_id, project_id, bearer, &create)
                     .await?
@@ -331,7 +479,7 @@ impl SourceStore {
                 )));
             }
         };
-        self.commit_planning_receipt(
+        self.finalize_planning_receipt(
             tenant_id,
             project_id,
             bearer,
@@ -354,13 +502,18 @@ impl SourceStore {
         require_request_id(&req.request_id)?;
         require_protocol(req.protocol_version)?;
         let hash = intent_hash("planning.approve", &intent)?;
-        if let Some(existing) = self
-            .get_planning_command_receipt(tenant_id, project_id, bearer, &req.request_id)
-            .await?
-        {
-            if existing["request_hash"] != hash {
-                return Err(PgError::IdempotencyConflict);
-            }
+        let reserved = self
+            .reserve_planning_receipt(
+                tenant_id,
+                project_id,
+                bearer,
+                &req.request_id,
+                "planning.approve",
+                &hash,
+                &req.candidate_id,
+            )
+            .await?;
+        if let Ok(existing) = reserved {
             return Ok(existing);
         }
         let result = self
@@ -373,7 +526,7 @@ impl SourceStore {
                 req.author_person_id.as_deref(),
             )
             .await?;
-        self.commit_planning_receipt(
+        self.finalize_planning_receipt(
             tenant_id,
             project_id,
             bearer,
@@ -401,13 +554,18 @@ impl SourceStore {
             "planning.publish"
         };
         let hash = intent_hash(op, &intent)?;
-        if let Some(existing) = self
-            .get_planning_command_receipt(tenant_id, project_id, bearer, &req.request_id)
-            .await?
-        {
-            if existing["request_hash"] != hash {
-                return Err(PgError::IdempotencyConflict);
-            }
+        let reserved = self
+            .reserve_planning_receipt(
+                tenant_id,
+                project_id,
+                bearer,
+                &req.request_id,
+                op,
+                &hash,
+                &req.candidate_id,
+            )
+            .await?;
+        if let Ok(existing) = reserved {
             return Ok(existing);
         }
         let result = if req.activate {
@@ -460,7 +618,7 @@ impl SourceStore {
                 "next_step": "after disconnect query planning.outcome with this request_id; to activate later call publish with activate=true, publish_receipt_id from this result, and a new request_id after stop/reconcile"
             })
         };
-        self.commit_planning_receipt(
+        self.finalize_planning_receipt(
             tenant_id,
             project_id,
             bearer,

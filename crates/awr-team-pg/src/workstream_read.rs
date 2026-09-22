@@ -935,7 +935,7 @@ async fn read_controlled_source_content(
     tx: &Transaction<'_>,
     tenant: &str,
     project: &str,
-    _auth: &ReaderAuthority,
+    auth: &ReaderAuthority,
     path: &str,
     expected_sha256: Option<&str>,
     max_bytes: Option<usize>,
@@ -954,6 +954,11 @@ async fn read_controlled_source_content(
         .get("text")
         .and_then(|v| v.as_str())
         .ok_or_else(|| PgError::Protocol("source file text unavailable".into()))?;
+    // Require read grant over every workstream whose identity/content is exposed.
+    // Mixed-scope catalog files (e.g. workstreams.json) are refused unless the
+    // caller can read the entire file's stream set — never return a raw shared
+    // snapshot based only on nonempty visible streams.
+    authorize_source_file_streams(auth, path, text)?;
     let digest = crate::source::sha256_hex(text.as_bytes());
     let recorded = file.get("sha256").and_then(|v| v.as_str()).unwrap_or("");
     if !recorded.is_empty() && recorded != digest {
@@ -968,6 +973,7 @@ async fn read_controlled_source_content(
     if text.len() > max {
         return Err(PgError::ContextIncomplete);
     }
+    let _ = (tenant, project);
     Ok(json!({
         "kind":"source",
         "path":path,
@@ -979,6 +985,68 @@ async fn read_controlled_source_content(
         "url_bypass":false,
         "next_step":null
     }))
+}
+
+fn authorize_source_file_streams(auth: &ReaderAuthority, path: &str, text: &str) -> PgResult<()> {
+    use awr_core::Id;
+    use std::collections::BTreeSet;
+
+    let mut required: BTreeSet<Id> = BTreeSet::new();
+    if path == "workstreams.json" || path.ends_with("/workstreams.json") {
+        let bundle: Value = serde_json::from_str(text).map_err(|e| {
+            PgError::Protocol(format!("workstreams.json unreadable for auth binding: {e}"))
+        })?;
+        let streams = bundle
+            .pointer("/catalog/workstreams")
+            .and_then(Value::as_array)
+            .or_else(|| bundle.get("workstreams").and_then(Value::as_array));
+        if let Some(streams) = streams {
+            for stream in streams {
+                if let Some(id_str) = stream.get("id").and_then(Value::as_str) {
+                    let id: Id = id_str.parse().map_err(|_| {
+                        PgError::Protocol("invalid workstream id in catalog".into())
+                    })?;
+                    required.insert(id);
+                }
+            }
+        }
+        if let Some(contracts) = bundle.get("contracts").and_then(Value::as_array) {
+            for c in contracts {
+                if let Some(id_str) = c.get("workstream_id").and_then(Value::as_str) {
+                    let id: Id = id_str.parse().map_err(|_| {
+                        PgError::Protocol("invalid workstream_id in contracts".into())
+                    })?;
+                    required.insert(id);
+                }
+            }
+        }
+    } else {
+        // Spec / other snapshot files: only readable when referenced by a
+        // workstream the caller can already read.
+        for stream in &auth.catalog.workstreams {
+            if stream.acceptance_contracts.iter().any(|p| p == path) {
+                required.insert(stream.id);
+            }
+        }
+        if required.is_empty() {
+            // Unscoped paths in the shared snapshot are not readable via a
+            // partial stream grant.
+            return Err(PgError::Forbidden);
+        }
+    }
+
+    if required.is_empty() {
+        return Err(PgError::Forbidden);
+    }
+    for id in &required {
+        let Some(grant) = auth.access.grants.iter().find(|g| g.workstream_id == *id) else {
+            return Err(PgError::Forbidden);
+        };
+        if !grant.read {
+            return Err(PgError::Forbidden);
+        }
+    }
+    Ok(())
 }
 
 async fn read_controlled_artifact_content(
