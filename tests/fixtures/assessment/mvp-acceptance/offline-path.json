@@ -1,0 +1,59 @@
+{
+  "schema_id": "awr-assessment-mvp-offline-path-v1",
+  "work": "AWR-DEC-060",
+  "recorded_at": "2026-09-23T06:47:23+08:00",
+  "timezone": "Asia/Taipei",
+  "source_sha": "189e4a2af57587c667ea1925d6745264e3138714",
+  "user_walkable_offline_path": [
+    "python3 tests/fixtures/assessment/counterexamples/verify.py",
+    "python3 tests/benchmarks/assessment/verify.py",
+    "python3 tests/benchmarks/assessment/prove_acceptance.py",
+    "python3 tests/benchmarks/assessment/prove_acceptance_dec022.py",
+    "cargo test -p awr-runtime --test assessment_offline --offline",
+    "cargo test -p awr-cli --test assessment_offline_cli --offline",
+    "cargo test -p awr-cli --test assessment_explain_cli --offline",
+    "cargo test -p awr-mcp --test assessment_explain_mcp --offline",
+    "python3 tests/benchmarks/assessment/prove_acceptance_dec060.py"
+  ],
+  "no_model_config": {
+    "assessment_path_imports_model_client": false,
+    "replay_flags": {
+      "reread_production_state": false,
+      "reran_tools": false,
+      "model_or_network_requests": false
+    },
+    "evidence": [
+      "crates/awr-runtime/src/assessment_replay.rs",
+      "crates/awr-cli/tests/assessment_offline_cli.rs",
+      "tests/fixtures/assessment/replay/"
+    ]
+  },
+  "cli_mcp_parity": {
+    "shared_assessment_hash": true,
+    "capability": "assessment.explain",
+    "evidence": [
+      "crates/awr-cli/tests/assessment_explain_cli.rs",
+      "crates/awr-mcp/tests/assessment_explain_mcp.rs"
+    ]
+  },
+  "hard_reject": {
+    "critical_families_zero_tolerance": true,
+    "offset_by_average_rejected": true,
+    "evidence": [
+      "tests/benchmarks/assessment/prove_acceptance.py",
+      "tests/fixtures/assessment/counterexamples/p03-hard-reject-not-offset-by-score.json",
+      "crates/awr-runtime/tests/explanation_chain.rs"
+    ]
+  },
+  "kill_switch_fallback": {
+    "advice_mode_disabled_restores_prior_advice": true,
+    "hard_protections_retained": true,
+    "evidence": [
+      "crates/awr-runtime/src/assessment_shadow.rs",
+      "crates/awr-runtime/tests/assessment_offline.rs",
+      "crates/awr-cli/tests/assessment_offline_cli.rs",
+      "docs/reference/assessment.md §17"
+    ]
+  },
+  "perf_raw_retained": "perf-raw/offline-parse-hash-samples.json"
+}

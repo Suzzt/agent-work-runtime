@@ -1,0 +1,16 @@
+{
+  "schema_id": "awr-assessment-mvp-budget-crosscheck-v1",
+  "work": "AWR-DEC-060",
+  "recorded_at": "2026-09-23T06:47:23+08:00",
+  "timezone": "Asia/Taipei",
+  "source_sha": "189e4a2af57587c667ea1925d6745264e3138714",
+  "budgets_status": "frozen_slots_pending_baseline_binding",
+  "contract_status": "preregistered_before_first_candidate_run",
+  "baseline_bound": false,
+  "roi_claims_invented": false,
+  "dollar_savings_derived": false,
+  "model_success_rate_derived": false,
+  "ms_improvement_fabricated": false,
+  "decision": "retain_raw_perf_only_do_not_label_later_version_candidate",
+  "note": "Pre-registered budgets still pending baseline binding; DEC-060 retains raw samples and refuses ROI / later-version candidacy claims."
+}

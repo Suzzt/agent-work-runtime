@@ -495,10 +495,31 @@ Fixtures: `tests/fixtures/assessment/replay/`.
 Corpus marker: `tests/fixtures/assessment/counterexamples/manifest.json` sets
 `dec_022_started: true`.
 
-## 18. Related pages
 
+## 18. DEC-060 first-batch independent acceptance gate
+
+Independently accepts the first model-free explanation closed loop. Cross-checks
+DEC-010..022 acceptance evidence item-by-item and counts **eight** first-batch
+items separately (010/011/012/013/020/021/022 + this gate). Reuses existing
+fixtures, offline replay, CLI/MCP explain, and kill-switch — **no second
+assessment stack**.
+
+| Item | Behavior |
+| --- | --- |
+| Evidence pack | `tests/fixtures/assessment/mvp-acceptance/` (checked-in stand-in for `.local/awr-decision-20260920/mvp-acceptance/`) |
+| Acceptance note | `docs/benchmarks/assessment.md` §10 |
+| Gate harness | `tests/benchmarks/assessment/prove_acceptance_dec060.py` |
+| Offline re-run | `tests/benchmarks/assessment/run_offline_gate.py` [`--full`] |
+| Perf raw | `mvp-acceptance/perf-raw/` retained; budgets not invented |
+| Non-claims | Does **not** prove full 14-item suite, AUTO, Team, native host, or a released version |
+
+Corpus marker: `tests/fixtures/assessment/counterexamples/manifest.json` sets
+`dec_060_started: true`. `evo_000_started` / `dec_040_started` remain false.
+
+## 19. Related pages
 
 - [Management intensity](management.md) — classification rules hosts still follow
 - [Workflow prepare](workflow.md) — prepare / completion preflight
 - [Daily work](daily-work.md) — status action queues
-- Fixtures: `tests/fixtures/assessment/contracts/`, `signals/`, `envelope/`
+- Fixtures: `tests/fixtures/assessment/contracts/`, `signals/`, `envelope/`, `mvp-acceptance/`
+- Benchmarks: `docs/benchmarks/assessment.md`
