@@ -515,3 +515,118 @@ fn cumulative_usage_handoff_is_not_eta() {
     let record = estimate_next_acceptance(&req).unwrap();
     assert!(record.observation_handoff_digest.is_some());
 }
+
+/// Unknown human/dependency wait must not be coerced to zero readiness.
+#[test]
+fn unknown_wait_keeps_acceptance_finish_unknown() {
+    let tasks = vec![EtaTaskNode {
+        work_id: "card".into(),
+        effective_execution_ms: Some(10),
+        wait_before_ms: None,
+        depends_on: vec![],
+        mainline_id: Some("m1".into()),
+        is_acceptance_checkpoint: true,
+    }];
+    let schedule = schedule_next_acceptance(&tasks, &capacity(1), "card").unwrap();
+    assert_eq!(
+        schedule.checkpoint_ready_ms, None,
+        "unknown wait must not yield a concrete finish"
+    );
+    assert_eq!(
+        schedule.dependency_or_human_wait_ms, None,
+        "None wait must stay unknown (not Some(0))"
+    );
+
+    // Explicit Some(0) remains distinct and schedules normally.
+    let known_zero = vec![EtaTaskNode {
+        work_id: "card".into(),
+        effective_execution_ms: Some(10),
+        wait_before_ms: Some(0),
+        depends_on: vec![],
+        mainline_id: Some("m1".into()),
+        is_acceptance_checkpoint: true,
+    }];
+    let zero = schedule_next_acceptance(&known_zero, &capacity(1), "card").unwrap();
+    assert_eq!(zero.checkpoint_ready_ms, Some(10));
+    assert_eq!(zero.dependency_or_human_wait_ms, Some(0));
+
+    // Measured wait also remains concrete.
+    let measured = vec![EtaTaskNode {
+        work_id: "card".into(),
+        effective_execution_ms: Some(10),
+        wait_before_ms: Some(7),
+        depends_on: vec![],
+        mainline_id: Some("m1".into()),
+        is_acceptance_checkpoint: true,
+    }];
+    let meas = schedule_next_acceptance(&measured, &capacity(1), "card").unwrap();
+    assert_eq!(meas.checkpoint_ready_ms, Some(17));
+    assert_eq!(meas.dependency_or_human_wait_ms, Some(7));
+
+    // Unknown wait on a prerequisite keeps the target finish unknown.
+    let with_prereq = vec![
+        EtaTaskNode {
+            work_id: "review".into(),
+            effective_execution_ms: Some(20),
+            wait_before_ms: None,
+            depends_on: vec![],
+            mainline_id: Some("m1".into()),
+            is_acceptance_checkpoint: false,
+        },
+        EtaTaskNode {
+            work_id: "card".into(),
+            effective_execution_ms: Some(10),
+            wait_before_ms: Some(0),
+            depends_on: vec!["review".into()],
+            mainline_id: Some("m1".into()),
+            is_acceptance_checkpoint: true,
+        },
+    ];
+    let blocked = schedule_next_acceptance(&with_prereq, &capacity(1), "card").unwrap();
+    assert_eq!(blocked.checkpoint_ready_ms, None);
+    assert_eq!(blocked.dependency_or_human_wait_ms, None);
+
+    // Forecast path: calendar acceptance stays unknown when wait is unknown.
+    let req = EtaEstimateRequest {
+        project_id: "proj".into(),
+        forecast_id: "f-unknown-wait".into(),
+        generated_at_ms: 1_700_000_000_000,
+        target: target(),
+        task_graph_version: "g-uw".into(),
+        execution_strategy: "s".into(),
+        tasks,
+        capacity: capacity(1),
+        sample_policy: EtaSamplePolicy::default_frozen(),
+        samples: vec![],
+        holdout_sample_ids: BTreeSet::new(),
+        acceptance_data: vec![],
+        exclusions: EtaObservableExclusion {
+            network_queue_ms: None,
+            model_queue_ms: None,
+            evidence_ref: None,
+        },
+        assumptions: vec![],
+        unknowns: vec![],
+        observation_handoff: None,
+        llm_narrative: None,
+        calendar_offset_ms: Some(0),
+        supersedes_forecast_id: None,
+        reestimate_trigger: None,
+        reestimate_reason_before: None,
+        reestimate_reason_after: None,
+    };
+    let record = estimate_next_acceptance(&req).unwrap();
+    assert!(matches!(
+        record.components.dependency_or_human_wait_ms.low_ms,
+        EtaBoundMs::Unknown
+    ));
+    assert!(matches!(
+        record.components.calendar_acceptance_window_ms.low_ms,
+        EtaBoundMs::Unknown
+    ));
+    assert!(record
+        .unknowns
+        .iter()
+        .any(|u| u == "dependency_or_human_wait_ms"));
+    assert!(record.unknowns.iter().any(|u| u == "checkpoint_ready_ms"));
+}

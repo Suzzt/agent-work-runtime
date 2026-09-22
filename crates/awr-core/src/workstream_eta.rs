@@ -335,6 +335,7 @@ pub struct EtaTaskNode {
     /// Effective execution duration sample (ms). None = unknown.
     pub effective_execution_ms: Option<u64>,
     /// Dependency / human wait before this task can start.
+    /// `None` = unknown (distinct from `Some(0)`, which is an explicit zero wait).
     pub wait_before_ms: Option<u64>,
     /// Hard prerequisites (must complete before start).
     pub depends_on: Vec<String>,
@@ -603,8 +604,6 @@ pub fn schedule_next_acceptance(
     let mut running: Vec<(&str, u64)> = Vec::new(); // (id, finish_ms)
     let mut now: u64 = 0;
     let mut refused_parallel_sum: u64 = 0;
-    let mut total_wait: u64 = 0;
-    let mut total_exec: u64 = 0;
     let mut pred: BTreeMap<&str, Option<&str>> = BTreeMap::new();
 
     while !remaining.is_empty() || !running.is_empty() {
@@ -635,7 +634,11 @@ pub fn schedule_next_acceptance(
                     .map(|d| finish[d.as_str()])
                     .max()
                     .unwrap_or(0);
-                let wait = node.wait_before_ms.unwrap_or(0);
+                // Unknown wait → cannot schedule a precise finish (do not
+                // silently substitute zero for missing human/dependency wait).
+                let Some(wait) = node.wait_before_ms else {
+                    continue;
+                };
                 let start = max_u64(now, add_u64(dep_ready, wait)?);
                 // Unknown execution → cannot schedule a precise finish.
                 let Some(exec) = node.effective_execution_ms else {
@@ -654,18 +657,15 @@ pub fn schedule_next_acceptance(
                 running.push((id, fin));
                 remaining.remove(id);
                 refused_parallel_sum = add_u64(refused_parallel_sum, exec)?;
-                total_wait = add_u64(total_wait, wait)?;
-                total_exec = add_u64(total_exec, exec)?;
                 started += 1;
             }
         }
 
-        if remaining
-            .iter()
-            .any(|id| by_id[*id].effective_execution_ms.is_none())
-            && running.is_empty()
+        if remaining.iter().any(|id| {
+            by_id[*id].effective_execution_ms.is_none() || by_id[*id].wait_before_ms.is_none()
+        }) && running.is_empty()
         {
-            // Unresolvable unknown durations remain.
+            // Unresolvable unknown durations or waits remain.
             break;
         }
 
@@ -677,7 +677,7 @@ pub fn schedule_next_acceptance(
                     .iter()
                     .all(|d| finish.contains_key(d.as_str()))
             }) {
-                // Ready but unknown exec — stop with partial.
+                // Ready but unknown exec or wait — stop with partial.
                 break;
             }
             return Err(EtaError::DependencyCycle);
@@ -712,15 +712,31 @@ pub fn schedule_next_acceptance(
     } else {
         None
     };
-    let dependency_or_human_wait_ms = if checkpoint_ready_ms.is_some() {
+    // Distinguish Some(0) / measured waits from None. Any unknown wait on the
+    // reported path (critical path when complete, otherwise needed closure)
+    // keeps the wait component unknown — never coerce None → 0.
+    let dependency_or_human_wait_ms = {
+        let ids: Vec<&str> = if checkpoint_ready_ms.is_some() {
+            critical_path.iter().map(|s| s.as_str()).collect()
+        } else {
+            needed.iter().copied().collect()
+        };
         let mut sum = 0u64;
-        for id in &critical_path {
-            sum = add_u64(sum, by_id[id.as_str()].wait_before_ms.unwrap_or(0))?;
+        let mut unknown = false;
+        for id in ids {
+            match by_id[id].wait_before_ms {
+                Some(w) => sum = add_u64(sum, w)?,
+                None => {
+                    unknown = true;
+                    break;
+                }
+            }
         }
-        Some(sum)
-    } else {
-        // Still report aggregated known waits along needed set when partial.
-        Some(total_wait).filter(|_| total_wait > 0).or(Some(0))
+        if unknown {
+            None
+        } else {
+            Some(sum)
+        }
     };
 
     Ok(EtaScheduleResult {
@@ -994,6 +1010,9 @@ pub fn estimate_next_acceptance(req: &EtaEstimateRequest) -> Result<EtaForecastR
     }
     if schedule.checkpoint_ready_ms.is_none() {
         unknowns.push("checkpoint_ready_ms".into());
+    }
+    if schedule.dependency_or_human_wait_ms.is_none() {
+        unknowns.push("dependency_or_human_wait_ms".into());
     }
 
     let estimate_kind = if let Some(narrative) = &req.llm_narrative {
