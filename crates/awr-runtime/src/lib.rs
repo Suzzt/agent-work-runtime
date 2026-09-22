@@ -28,6 +28,7 @@ mod management;
 mod mutation;
 mod mutation_apply;
 mod operation_readset;
+mod source_concurrency;
 mod organization;
 mod read;
 mod resume;
@@ -53,6 +54,10 @@ pub use mutation::{
     create_proposal, review_proposal,
 };
 pub use operation_readset::{append_work_observation, classify_operation_replay_result};
+pub use source_concurrency::{
+    SourceConcurrencyReport, activate_precise_patch, activate_shard_candidate,
+    classify_whole_file_gate, recover_shard_candidate,
+};
 pub use organization::{OrganizationReport, OrganizationState, inspect_organization};
 pub use response_view::summarize_work_response;
 pub use resume::{ResumeReport, ResumeRequest, resume_bound_session, resume_session};
