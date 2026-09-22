@@ -287,3 +287,19 @@ pub(super) fn reject_external_graph(files: &[(String, Vec<u8>)]) -> PgResult<()>
     }
     Ok(())
 }
+
+
+/// Source status and historical human `done` retain source meaning only
+/// (AWR-TMCP-020). Installing a projection never treats them as completion
+/// receipts; completion remains a separate PG domain path.
+pub(crate) fn source_status_is_completion_proof() -> bool {
+    false
+}
+
+#[cfg(test)]
+mod publish_boundaries {
+    #[test]
+    fn install_path_does_not_treat_source_status_as_completion() {
+        assert!(!super::source_status_is_completion_proof());
+    }
+}

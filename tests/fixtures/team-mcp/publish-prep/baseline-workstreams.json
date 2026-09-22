@@ -1,0 +1,84 @@
+{
+  "codec": "awr-team-workstreams-v1",
+  "catalog": {
+    "version": 1,
+    "project_id": "demo-project",
+    "legacy_default": null,
+    "workstreams": [
+      {
+        "id": "01K00000000000000000000001",
+        "project_id": "demo-project",
+        "external_key": "api",
+        "title": "API",
+        "state": "active",
+        "authority_version": 1,
+        "goal_keys": [
+          "delivery"
+        ],
+        "acceptance_contracts": [
+          "contracts/api-v1.json"
+        ]
+      },
+      {
+        "id": "01K00000000000000000000002",
+        "project_id": "demo-project",
+        "external_key": "client",
+        "title": "Client",
+        "state": "active",
+        "authority_version": 1,
+        "goal_keys": [
+          "delivery"
+        ],
+        "acceptance_contracts": [
+          "contracts/client-v1.md"
+        ]
+      }
+    ]
+  },
+  "contracts": [
+    {
+      "workstream_id": "01K00000000000000000000001",
+      "contract": {
+        "codec": "awr-team-contract-v1",
+        "work_id": "API-1",
+        "external_key": "API-1",
+        "goals": [
+          "delivery"
+        ],
+        "hard_rules": [],
+        "scope_paths": [
+          "openapi.yaml"
+        ],
+        "acceptance": [
+          "OpenAPI draft exists"
+        ],
+        "required_dependencies": [],
+        "completion_policy": "independent_review",
+        "verification_requirements": []
+      }
+    },
+    {
+      "workstream_id": "01K00000000000000000000002",
+      "contract": {
+        "codec": "awr-team-contract-v1",
+        "work_id": "CLIENT-1",
+        "external_key": "CLIENT-1",
+        "goals": [
+          "delivery"
+        ],
+        "hard_rules": [],
+        "scope_paths": [
+          "sdk/"
+        ],
+        "acceptance": [
+          "SDK smoke test passes"
+        ],
+        "required_dependencies": [
+          "API-1"
+        ],
+        "completion_policy": "independent_review",
+        "verification_requirements": []
+      }
+    }
+  ]
+}
