@@ -266,8 +266,8 @@ pub(super) async fn apply(
             return Err(PgError::PreconditionsChanged);
         }
     }
-    // Bind actor to a person identity: Team credentials use actor_id as person key for handoff.
-    let actor_person = person(&auth.actor_id)?;
+    // Resolve the acting person from authenticated actor + explicit person↔agent binding.
+    let actor_person = resolve_authenticated_person(tx, tenant, project, auth).await?;
     let handoff = match action {
         Action::Propose(a) => {
             if a.package.task_id != command.work_id {
@@ -304,11 +304,12 @@ pub(super) async fn apply(
             if before.work_item_id != command.work_id {
                 return Err(PgError::Forbidden);
             }
+            require_person_match(&actor_person, &a.inspector_person_id)?;
             let req = InspectHandoffRequest {
                 request_key: command.request_id.clone(),
                 handoff_id: a.handoff_id,
                 expected_version: version(&a.expected_handoff_version)? as u64,
-                inspector_person_id: person(&a.inspector_person_id)?,
+                inspector_person_id: actor_person.clone(),
                 now_ms: a.now_ms,
             };
             let h = apply_handoff_inspect(&before, &req).map_err(map_core)?;
@@ -343,11 +344,12 @@ pub(super) async fn apply(
                 .as_ref()
                 .map(|s| version(s))
                 .transpose()?;
+            require_person_match(&actor_person, &a.acceptor_person_id)?;
             let req = AcceptHandoffRequest {
                 request_key: command.request_id.clone(),
                 handoff_id: a.handoff_id,
                 expected_version: version(&a.expected_handoff_version)? as u64,
-                acceptor_person_id: person(&a.acceptor_person_id)?,
+                acceptor_person_id: actor_person.clone(),
                 successor_execution: a.successor_execution,
                 prior_execution_stopped: a.prior_execution_stopped,
                 prior_reconciled: a.prior_reconciled,
@@ -359,13 +361,8 @@ pub(super) async fn apply(
             };
             let was_open = before.status.is_open();
             let h = apply_handoff_accept(&before, &req).map_err(map_core)?;
-            if was_open && h.status == HandoffStatus::Accepted && h.kind == HandoffKind::Execution {
-                let _ = tx
-                    .execute(
-                        "UPDATE awr_team.work_runtime SET last_fence = last_fence + 1
-                         WHERE tenant_id=$1 AND project_id=$2 AND scope_id='main' AND work_id=$3",
-                        &[&tenant, &project, &command.work_id],
-                    )
+            if was_open && h.status == HandoffStatus::Accepted {
+                crate::team_handoff::commit_accepted_transfer(tx, tenant, project, &before, &h)
                     .await?;
             }
             persist(tx, tenant, project, &h).await?;
@@ -378,11 +375,12 @@ pub(super) async fn apply(
             if before.work_item_id != command.work_id {
                 return Err(PgError::Forbidden);
             }
+            require_person_match(&actor_person, &a.by_person_id)?;
             let req = RejectHandoffRequest {
                 request_key: command.request_id.clone(),
                 handoff_id: a.handoff_id,
                 expected_version: version(&a.expected_handoff_version)? as u64,
-                by_person_id: person(&a.by_person_id)?,
+                by_person_id: actor_person.clone(),
                 reason: a.reason,
                 now_ms: a.now_ms,
             };
@@ -397,11 +395,12 @@ pub(super) async fn apply(
             if before.work_item_id != command.work_id {
                 return Err(PgError::Forbidden);
             }
+            require_person_match(&actor_person, &a.by_person_id)?;
             let req = CancelHandoffRequest {
                 request_key: command.request_id.clone(),
                 handoff_id: a.handoff_id,
                 expected_version: version(&a.expected_handoff_version)? as u64,
-                by_person_id: person(&a.by_person_id)?,
+                by_person_id: actor_person.clone(),
                 reason: a.reason,
                 now_ms: a.now_ms,
             };
@@ -448,6 +447,59 @@ pub(super) async fn apply(
             }),
         )],
     })
+}
+
+
+fn require_person_match(authenticated: &PersonId, claimed: &str) -> PgResult<()> {
+    if authenticated.as_str() != claimed {
+        return Err(PgError::Forbidden);
+    }
+    Ok(())
+}
+
+/// Resolve the person speaking for this authenticated credential.
+/// Prefer an active explicit person↔agent binding for agent actors; otherwise
+/// require a person row whose id equals the authenticated actor_id.
+async fn resolve_authenticated_person(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    auth: &ReaderAuthority,
+) -> PgResult<PersonId> {
+    let bindings = tx
+        .query(
+            "SELECT person_id FROM awr_team.person_agent_bindings
+             WHERE tenant_id=$1 AND project_id=$2 AND agent_id=$3 AND status='active'
+             ORDER BY id",
+            &[&tenant, &project, &auth.actor_id],
+        )
+        .await?;
+    if bindings.len() > 1 {
+        return Err(PgError::Protocol(
+            "multiple active person↔agent bindings for actor; refuse ambiguous handoff identity"
+                .into(),
+        ));
+    }
+    if let Some(row) = bindings.first() {
+        let person_id: String = row.get(0);
+        return person(&person_id);
+    }
+    let person_row = tx
+        .query_opt(
+            "SELECT id FROM awr_team.persons
+             WHERE tenant_id=$1 AND project_id=$2 AND id=$3 AND status='active'",
+            &[&tenant, &project, &auth.actor_id],
+        )
+        .await?;
+    if person_row.is_some() {
+        return person(&auth.actor_id);
+    }
+    // Human/system actors may still use actor_id as person key when the person row
+    // is created on first propose; agent actors must have an explicit binding.
+    if auth.actor_kind == "agent" {
+        return Err(PgError::Forbidden);
+    }
+    person(&auth.actor_id)
 }
 
 async fn ensure_person(tx: &Transaction<'_>, tenant: &str, project: &str, person_id: &str) -> PgResult<()> {
