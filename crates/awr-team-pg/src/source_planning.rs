@@ -6,7 +6,10 @@
 //! published candidates is deferred to TMCP-022.
 use super::{PgError, PgResult, SourceStore, sha256_hex};
 use crate::tx::new_id;
-use crate::workstream_auth::{authenticate, authenticate_writer, authorize_domain_action};
+use crate::workstream_auth::{
+    authenticate, authenticate_writer, authorize_domain_action, ReaderAuthority,
+};
+use awr_core::{Id, WorkstreamAction};
 use awr_team::{
     AffectedTaskImpact, BaselineView, CandidateState, DraftChange, OrdinaryPlanningSelfApprovePolicy,
     PLANNING_CODEC, PlanningApproval, PlanningCandidate, PlanningSuggestion, ResourceRef,
@@ -316,9 +319,9 @@ impl SourceStore {
         authorize_domain_action(&auth, awr_team::Action::PlanningEditDraft, None, None)?;
         let mut candidate = load_candidate(&tx, tenant_id, project_id, candidate_id).await?;
         let (baseline_digest, baseline_epoch) = current_baseline(&tx, tenant_id, project_id).await?;
-        // Edits must still target the live baseline; expired baselines refuse.
-        candidate.baseline_digest = baseline_digest.clone();
-        candidate.baseline_epoch = baseline_epoch.clone();
+        // Do not silently replace the stored baseline; require an explicit rebase
+        // (fresh candidate) when the authority source has moved on.
+        ensure_baseline_current(&candidate, &baseline_digest, &baseline_epoch)?;
         candidate = edit_candidate(candidate, changes).map_err(map_team)?;
         let known = known_work(&tx, tenant_id, project_id).await?;
         let base_view = BaselineView {
@@ -392,7 +395,7 @@ impl SourceStore {
             .start()
             .await?;
         let auth = authenticate(&tx, tenant_id, project_id, bearer).await?;
-        // Preview requires at least propose or edit or approve/publish.
+        // Preview requires at least propose or edit or approve/publish or work.read.
         let scope = crate::workstream_auth::authority_scope(&auth, None, None);
         let can = [
             awr_team::Action::PlanningPropose,
@@ -407,6 +410,8 @@ impl SourceStore {
             return Err(PgError::Forbidden);
         }
         let candidate = load_candidate(&tx, tenant_id, project_id, candidate_id).await?;
+        // Membership WorkRead is not enough: confine contents to client readable scope.
+        authorize_candidate_readable_scope(&tx, &auth, tenant_id, project_id, &candidate).await?;
         let impacts = load_impacts(&tx, tenant_id, project_id, &candidate).await?;
         let diff = build_candidate_diff(&candidate, impacts).map_err(map_team)?;
         let result = json!({
@@ -458,6 +463,8 @@ impl SourceStore {
         let policy: OrdinaryPlanningSelfApprovePolicy =
             serde_json::from_value(policy_json).map_err(|e| PgError::Protocol(e.to_string()))?;
         let mut candidate = load_candidate(&tx, tenant_id, project_id, candidate_id).await?;
+        let (live_digest, live_epoch) = current_baseline(&tx, tenant_id, project_id).await?;
+        ensure_baseline_current(&candidate, &live_digest, &live_epoch)?;
         if let Some(person) = author_person_id {
             // Allow callers to assert person identity for self-approve checks.
             if candidate.author_person_id != person && auth.actor_id != person {
@@ -552,6 +559,8 @@ impl SourceStore {
         let auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningPublish, None, None)?;
         let mut candidate = load_candidate(&tx, tenant_id, project_id, candidate_id).await?;
+        let (live_digest, live_epoch) = current_baseline(&tx, tenant_id, project_id).await?;
+        ensure_baseline_current(&candidate, &live_digest, &live_epoch)?;
         // Attach latest approval for publish checks.
         if let Some(row) = tx
             .query_opt(
@@ -670,6 +679,67 @@ impl SourceStore {
 struct KnownWork {
     ids: Vec<String>,
     keys: Vec<String>,
+}
+
+
+fn ensure_baseline_current(
+    candidate: &PlanningCandidate,
+    live_digest: &str,
+    live_epoch: &str,
+) -> PgResult<()> {
+    if candidate.baseline_digest != live_digest || candidate.baseline_epoch != live_epoch {
+        return Err(PgError::PreconditionsChanged);
+    }
+    Ok(())
+}
+
+/// Fail closed unless every exposed affected task is inside the client's readable
+/// workstream grants. Membership template WorkRead alone is insufficient.
+async fn authorize_candidate_readable_scope(
+    tx: &Transaction<'_>,
+    auth: &ReaderAuthority,
+    tenant_id: &str,
+    project_id: &str,
+    candidate: &PlanningCandidate,
+) -> PgResult<()> {
+    authorize_domain_action(auth, awr_team::Action::WorkRead, None, None)?;
+    if auth.access.grants.iter().all(|g| !g.read) {
+        return Err(PgError::Forbidden);
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for change in &candidate.changes {
+        let work_id = change.after.work_id.as_str();
+        if !seen.insert(work_id.to_owned()) {
+            continue;
+        }
+        let row = tx
+            .query_opt(
+                "SELECT workstream_id FROM awr_team.workstream_ownership
+                 WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3",
+                &[&tenant_id, &project_id, &work_id],
+            )
+            .await?;
+        match row {
+            Some(r) => {
+                let stream: Id = r
+                    .get::<_, String>(0)
+                    .parse()
+                    .map_err(|_| PgError::Forbidden)?;
+                auth.access
+                    .authorize(&auth.catalog, stream, WorkstreamAction::Read)
+                    .map_err(|_| PgError::Forbidden)?;
+                authorize_domain_action(auth, awr_team::Action::WorkRead, Some(stream), Some(work_id))?;
+            }
+            None => {
+                // Unbound/new draft work: require at least one live read grant
+                // (already checked) but do not invent stream authority.
+                if !auth.access.grants.iter().any(|g| g.read) {
+                    return Err(PgError::Forbidden);
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 async fn current_baseline(

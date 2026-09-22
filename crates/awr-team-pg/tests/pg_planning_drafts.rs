@@ -344,3 +344,191 @@ fn planning_capabilities_surface() {
     assert_eq!(caps["approve_publish_separated"], true);
     assert_eq!(caps["source_writeback"], "deferred_to_tmcp_022");
 }
+
+#[tokio::test]
+async fn preview_refuses_candidates_outside_client_readable_scope() {
+    let (_g, admin, _db, store) = store_and_roles().await;
+    let create = DraftCandidateCreate {
+        changes: vec![DraftChange {
+            op: DraftOpKind::CreateTask,
+            before: None,
+            after: draft("SCOPED-1", &[], DraftDefinitionState::Draft),
+        }],
+        suggestion_ids: vec![],
+        allowed_spec_roots: vec!["specs".into()],
+        project_goal_keys: vec!["delivery".into()],
+        self_approve_policy: None,
+        author_person_id: Some("agent".into()),
+    };
+    let created = store
+        .create_planning_candidate(TENANT, PROJECT, A, &create)
+        .await
+        .unwrap();
+    let candidate_id = created["candidate_id"].as_str().unwrap().to_string();
+
+    // Reader membership retains WorkRead in the template, but NONE has zero client grants.
+    admin
+        .batch_execute(
+            "UPDATE awr_team.project_memberships SET role='reader', membership_version=membership_version+1
+             WHERE actor_id='agent'",
+        )
+        .await
+        .unwrap();
+    let err = store
+        .preview_planning_candidate(TENANT, PROJECT, NONE, &candidate_id)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, PgError::Forbidden),
+        "zero-grant reader must not preview candidate contents: {err:?}"
+    );
+
+    // Work owned by private stream 2 must not leak to cli-a (stream 1 only).
+    admin
+        .batch_execute(
+            "UPDATE awr_team.project_memberships SET role='maintainer', membership_version=membership_version+1
+             WHERE actor_id='agent';
+             INSERT INTO awr_team.work_items(tenant_id,project_id,id,external_key)
+             VALUES ('reader-tenant','reader-project','b-private','b-private')
+             ON CONFLICT DO NOTHING;
+             INSERT INTO awr_team.workstream_ownership(tenant_id,project_id,work_id,workstream_id,ownership_version)
+             VALUES ('reader-tenant','reader-project','b-private','00000000000000000000000002',1)
+             ON CONFLICT DO NOTHING;",
+        )
+        .await
+        .unwrap();
+    // Temporarily grant stream 2 so create can authorize if needed, then create via owner-authored path.
+    admin
+        .batch_execute(
+            "INSERT INTO awr_team.workstream_grants(tenant_id,project_id,actor_id,client_id,workstream_id,authority_version,can_read,can_write,active)
+             VALUES ('reader-tenant','reader-project','agent','cli-a','00000000000000000000000002',1,true,true,true)
+             ON CONFLICT (tenant_id,project_id,actor_id,client_id,workstream_id)
+             DO UPDATE SET can_read=true, can_write=true, active=true, grant_version=awr_team.workstream_grants.grant_version+1;",
+        )
+        .await
+        .unwrap();
+    let private = DraftCandidateCreate {
+        changes: vec![DraftChange {
+            op: DraftOpKind::EditFields,
+            before: Some(draft("b-private", &[], DraftDefinitionState::Enabled)),
+            after: {
+                let mut d = draft("b-private", &[], DraftDefinitionState::Enabled);
+                d.title = "Still private".into();
+                d
+            },
+        }],
+        suggestion_ids: vec![],
+        allowed_spec_roots: vec!["specs".into()],
+        project_goal_keys: vec!["delivery".into()],
+        self_approve_policy: None,
+        author_person_id: Some("agent".into()),
+    };
+    let priv_created = store
+        .create_planning_candidate(TENANT, PROJECT, A, &private)
+        .await
+        .unwrap();
+    let priv_id = priv_created["candidate_id"].as_str().unwrap().to_string();
+    admin
+        .batch_execute(
+            "UPDATE awr_team.workstream_grants SET active=false, grant_version=grant_version+1
+             WHERE client_id='cli-a' AND workstream_id='00000000000000000000000002';
+             UPDATE awr_team.project_memberships SET role='reader', membership_version=membership_version+1
+             WHERE actor_id='agent';",
+        )
+        .await
+        .unwrap();
+    let err = store
+        .preview_planning_candidate(TENANT, PROJECT, A, &priv_id)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, PgError::Forbidden),
+        "stream-1 reader must not preview stream-2 candidate: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn approve_and_publish_refuse_stale_source_baseline() {
+    let (_g, admin, _db, store) = store_and_roles().await;
+    let create = DraftCandidateCreate {
+        changes: vec![DraftChange {
+            op: DraftOpKind::CreateTask,
+            before: None,
+            after: draft("STALE-1", &[], DraftDefinitionState::Draft),
+        }],
+        suggestion_ids: vec![],
+        allowed_spec_roots: vec!["specs".into()],
+        project_goal_keys: vec!["delivery".into()],
+        self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
+        author_person_id: Some("agent".into()),
+    };
+    let created = store
+        .create_planning_candidate(TENANT, PROJECT, A, &create)
+        .await
+        .unwrap();
+    let candidate_id = created["candidate_id"].as_str().unwrap().to_string();
+    let digest = created["candidate_digest"].as_str().unwrap().to_string();
+
+    // Fault-inject: change the active source snapshot digest after candidate creation.
+    admin
+        .batch_execute(
+            "UPDATE awr_team.source_snapshots SET manifest_digest='sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+             WHERE tenant_id='reader-tenant' AND project_id='reader-project'
+               AND id=(SELECT active_snapshot_id FROM awr_team.projects
+                       WHERE tenant_id='reader-tenant' AND id='reader-project');",
+        )
+        .await
+        .unwrap();
+
+    let err = store
+        .approve_planning_candidate(TENANT, PROJECT, A, &candidate_id, &digest, Some("agent"))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, PgError::PreconditionsChanged),
+        "stale baseline must refuse approve: {err:?}"
+    );
+
+    // Restore digest, approve, then stale again before publish.
+    let baseline: String = admin
+        .query_one(
+            "SELECT baseline_digest FROM awr_team.planning_candidates WHERE id=$1",
+            &[&candidate_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    admin
+        .execute(
+            "UPDATE awr_team.source_snapshots SET manifest_digest=$1
+             WHERE tenant_id='reader-tenant' AND project_id='reader-project'
+               AND id=(SELECT active_snapshot_id FROM awr_team.projects
+                       WHERE tenant_id='reader-tenant' AND id='reader-project')",
+            &[&baseline],
+        )
+        .await
+        .unwrap();
+
+    store
+        .approve_planning_candidate(TENANT, PROJECT, A, &candidate_id, &digest, Some("agent"))
+        .await
+        .unwrap();
+    admin
+        .execute(
+            "UPDATE awr_team.source_snapshots SET manifest_digest='sha256:cafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabe'
+             WHERE tenant_id='reader-tenant' AND project_id='reader-project'
+               AND id=(SELECT active_snapshot_id FROM awr_team.projects
+                       WHERE tenant_id='reader-tenant' AND id='reader-project')",
+            &[],
+        )
+        .await
+        .unwrap();
+    let err = store
+        .publish_planning_candidate(TENANT, PROJECT, A, &candidate_id, &digest)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, PgError::PreconditionsChanged),
+        "stale baseline must refuse publish: {err:?}"
+    );
+}
