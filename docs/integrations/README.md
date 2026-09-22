@@ -99,3 +99,10 @@ They do not need a Codex-shaped installer to “count” as supported.
 Cursor MCP merge paths are an [L1 note](cursor.md).
 
 - [Delegation ∩ execution authority (TMCP-030)](delegation-execution-auth.md)
+
+## Team MCP authority notes
+
+| Topic | Page |
+| --- | --- |
+| Delegation ∩ execution auth (TMCP-030) | [delegation-execution-auth.md](delegation-execution-auth.md) |
+| PR delivery ∩ review/complete (TMCP-031) | [pr-delivery-review.md](pr-delivery-review.md) |

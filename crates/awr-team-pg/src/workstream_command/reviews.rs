@@ -52,14 +52,60 @@ pub(super) struct Complete {
     requested_policy: Option<String>,
     context_complete: bool,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct DecideUnified {
+    session_id: String,
+    expected_session_version: String,
+    round_id: String,
+    decision: String,
+    reason: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RegisterPr {
+    session_id: String,
+    expected_session_version: String,
+    repository: String,
+    pr_number: i32,
+    pr_url: String,
+    head_sha: String,
+    merge_sha: Option<String>,
+    test_evidence_id: Option<String>,
+    fact_source: String,
+    observed_at: String,
+    author_actor_id: Option<String>,
+    owner_person_id: Option<String>,
+    executor_actor_id: Option<String>,
+    gh_submitted: Option<bool>,
+    gh_approved: Option<bool>,
+    gh_merged: Option<bool>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ObservePr {
+    session_id: String,
+    expected_session_version: String,
+    delivery_id: String,
+    expected_head_sha: String,
+    fact_source: String,
+    observed_at: String,
+    gh_approved: Option<bool>,
+    gh_merged: Option<bool>,
+    merge_sha: Option<String>,
+}
 
 pub(super) enum Action {
     Submit(SubmitEvidence),
     Open(OpenReview),
     Accept(Decide),
     Return(Decide),
+    Decide(DecideUnified),
     Rework(Rework),
     Complete(Complete),
+    RegisterPr(RegisterPr),
+    ObservePr(ObservePr),
+    SubmitAndRequest(OpenReview),
 }
 
 impl Action {
@@ -69,8 +115,20 @@ impl Action {
             "review.open" => Self::Open(serde_json::from_value(args).map_err(|_| invalid())?),
             "review.accept" => Self::Accept(serde_json::from_value(args).map_err(|_| invalid())?),
             "review.return" => Self::Return(serde_json::from_value(args).map_err(|_| invalid())?),
+            "review.decide" => Self::Decide(serde_json::from_value(args).map_err(|_| invalid())?),
             "work.rework" => Self::Rework(serde_json::from_value(args).map_err(|_| invalid())?),
-            "work.complete" => Self::Complete(serde_json::from_value(args).map_err(|_| invalid())?),
+            "work.complete" | "delivery.finalize" => {
+                Self::Complete(serde_json::from_value(args).map_err(|_| invalid())?)
+            }
+            "delivery.register_pr" => {
+                Self::RegisterPr(serde_json::from_value(args).map_err(|_| invalid())?)
+            }
+            "delivery.observe_pr" => {
+                Self::ObservePr(serde_json::from_value(args).map_err(|_| invalid())?)
+            }
+            "delivery.submit_and_request_review" => {
+                Self::SubmitAndRequest(serde_json::from_value(args).map_err(|_| invalid())?)
+            }
             _ => return Err(invalid()),
         };
         let (s, v) = action.session();
@@ -82,10 +140,15 @@ impl Action {
     fn session(&self) -> (&str, &str) {
         match self {
             Self::Submit(a) => (&a.session_id, &a.expected_session_version),
-            Self::Open(a) => (&a.session_id, &a.expected_session_version),
+            Self::Open(a) | Self::SubmitAndRequest(a) => {
+                (&a.session_id, &a.expected_session_version)
+            }
             Self::Accept(a) | Self::Return(a) => (&a.session_id, &a.expected_session_version),
+            Self::Decide(a) => (&a.session_id, &a.expected_session_version),
             Self::Rework(a) => (&a.session_id, &a.expected_session_version),
             Self::Complete(a) => (&a.session_id, &a.expected_session_version),
+            Self::RegisterPr(a) => (&a.session_id, &a.expected_session_version),
+            Self::ObservePr(a) => (&a.session_id, &a.expected_session_version),
         }
     }
     pub(super) fn requires_active_stream(&self) -> bool {
@@ -142,11 +205,28 @@ pub(super) async fn apply(
         .map_err(|e| PgError::Protocol(e.to_string()))?;
     match action {
         Action::Submit(a) => submit(tx, tenant, project, auth, command, &contract_hash, a).await,
-        Action::Open(a) => open(tx, tenant, project, auth, command, a).await,
+        Action::Open(a) | Action::SubmitAndRequest(a) => {
+            open(tx, tenant, project, auth, command, a).await
+        }
         Action::Accept(a) => decide(tx, tenant, project, auth, command, &contract_hash, a, "approve").await,
         Action::Return(a) => decide(tx, tenant, project, auth, command, &contract_hash, a, "reject").await,
+        Action::Decide(a) => {
+            if !matches!(a.decision.as_str(), "approve" | "reject") {
+                return Err(invalid());
+            }
+            let decision = a.decision.clone();
+            let mapped = Decide {
+                session_id: a.session_id,
+                expected_session_version: a.expected_session_version,
+                round_id: a.round_id,
+                reason: a.reason,
+            };
+            decide(tx, tenant, project, auth, command, &contract_hash, mapped, &decision).await
+        }
         Action::Rework(a) => rework(tx, tenant, project, auth, command, a).await,
         Action::Complete(a) => complete(tx, tenant, project, auth, command, contract, &contract_hash, a).await,
+        Action::RegisterPr(a) => register_pr(tx, tenant, project, auth, command, &contract_hash, a).await,
+        Action::ObservePr(a) => observe_pr(tx, tenant, project, auth, command, a).await,
     }
 }
 
@@ -468,6 +548,9 @@ async fn decide(
         return Err(PgError::AuthorCannotReview);
     }
     crate::tx::validate_reviewer(tx, tenant, project, &auth.actor_id).await?;
+    // Command path also enforces ReviewDecide via authorize_command; keep domain
+    // check so ReviewStore and command stay aligned (TMCP-031).
+    crate::tx::require_independent_review_grant(tx, tenant, project, &auth.actor_id).await?;
     let author_person = match author_person {
         Some(p) => p,
         None => resolve_person_id(tx, tenant, project, &author)
@@ -973,6 +1056,329 @@ async fn complete(
             }),
         )],
     })
+}
+
+
+async fn register_pr(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    auth: &ReaderAuthority,
+    command: &WorkstreamCommand,
+    contract_hash: &str,
+    a: RegisterPr,
+) -> PgResult<Applied> {
+    if a.pr_number <= 0
+        || a.repository.trim().is_empty()
+        || a.repository.len() > 256
+        || a.pr_url.trim().is_empty()
+        || a.pr_url.len() > 512
+        || a.head_sha.len() != 40
+        || !a.head_sha.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        || a.merge_sha.as_ref().is_some_and(|s| {
+            s.len() != 40 || !s.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        })
+        || !matches!(
+            a.fact_source.as_str(),
+            "authorized_human_github_verification" | "operator_recorded_observation"
+        )
+        || a.observed_at.trim().is_empty()
+        || a.observed_at.len() > 64
+    {
+        return Err(invalid());
+    }
+    if let Some(eid) = &a.test_evidence_id {
+        if !identity(eid) {
+            return Err(invalid());
+        }
+    }
+    let mut test_digest: Option<String> = None;
+    if let Some(eid) = &a.test_evidence_id {
+        let ev = tx
+            .query_opt(
+                "SELECT work_id, contract_hash, digest FROM awr_team.evidence
+                 WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+                &[&tenant, &project, eid],
+            )
+            .await?
+            .ok_or(PgError::EvidenceInvalid)?;
+        let w: String = ev.get(0);
+        let c: String = ev.get(1);
+        if w != command.work_id || c != contract_hash {
+            return Err(PgError::EvidenceInvalid);
+        }
+        test_digest = Some(ev.get(2));
+    }
+    tx.execute(
+        "UPDATE awr_team.pr_deliveries
+         SET state='invalidated', invalidation_reason='superseded_by_new_registration'
+         WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3 AND state='active'",
+        &[&tenant, &project, &command.work_id],
+    )
+    .await?;
+    let id = crate::tx::new_id();
+    let gh_submitted = a.gh_submitted.unwrap_or(true);
+    let gh_approved = a.gh_approved.unwrap_or(false);
+    let gh_merged = a.gh_merged.unwrap_or(false);
+    tx.execute(
+        "INSERT INTO awr_team.pr_deliveries(
+            tenant_id, project_id, id, work_id, contract_hash, repository, pr_number, pr_url,
+            head_sha, merge_sha, test_evidence_id, test_evidence_digest,
+            gh_submitted, gh_approved, gh_merged, fact_source, observed_at,
+            registered_by_actor_id, author_actor_id, owner_person_id, executor_actor_id, state)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,'active')",
+        &[
+            &tenant,
+            &project,
+            &id,
+            &command.work_id,
+            &contract_hash,
+            &a.repository,
+            &a.pr_number,
+            &a.pr_url,
+            &a.head_sha,
+            &a.merge_sha,
+            &a.test_evidence_id,
+            &test_digest,
+            &gh_submitted,
+            &gh_approved,
+            &gh_merged,
+            &a.fact_source,
+            &a.observed_at,
+            &auth.actor_id,
+            &a.author_actor_id,
+            &a.owner_person_id,
+            &a.executor_actor_id,
+        ],
+    )
+    .await?;
+    Ok(Applied {
+        data: json!({
+            "delivery_id": id,
+            "work_id": command.work_id,
+            "repository": a.repository,
+            "pr_number": a.pr_number,
+            "pr_url": a.pr_url,
+            "head_sha": a.head_sha,
+            "merge_sha": a.merge_sha,
+            "gh_submitted": gh_submitted,
+            "gh_approved": gh_approved,
+            "gh_merged": gh_merged,
+            "fact_source": a.fact_source,
+            "observed_at": a.observed_at,
+            "state": "active",
+            "awr_acceptance_complete": false,
+            "webhook_auto_sync": false,
+            "task_complete": false,
+        }),
+        preceding_events: vec![(
+            "delivery.pr_registered",
+            json!({
+                "delivery_id": id,
+                "head_sha": a.head_sha,
+                "fact_source": a.fact_source,
+                "webhook_auto_sync": false,
+            }),
+        )],
+    })
+}
+
+async fn observe_pr(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    _auth: &ReaderAuthority,
+    command: &WorkstreamCommand,
+    a: ObservePr,
+) -> PgResult<Applied> {
+    if !identity(&a.delivery_id)
+        || a.expected_head_sha.len() != 40
+        || !a
+            .expected_head_sha
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        || !matches!(
+            a.fact_source.as_str(),
+            "authorized_human_github_verification" | "operator_recorded_observation"
+        )
+        || a.observed_at.trim().is_empty()
+    {
+        return Err(invalid());
+    }
+    let row = tx
+        .query_opt(
+            "SELECT work_id, contract_hash, head_sha, gh_approved, gh_merged, merge_sha, state
+             FROM awr_team.pr_deliveries
+             WHERE tenant_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE",
+            &[&tenant, &project, &a.delivery_id],
+        )
+        .await?
+        .ok_or_else(|| PgError::Protocol("pr delivery not found".into()))?;
+    let work_id: String = row.get(0);
+    let contract_hash: String = row.get(1);
+    let head_sha: String = row.get(2);
+    let mut gh_approved: bool = row.get(3);
+    let mut gh_merged: bool = row.get(4);
+    let mut merge_sha: Option<String> = row.get(5);
+    let state: String = row.get(6);
+    if work_id != command.work_id {
+        return Err(PgError::Forbidden);
+    }
+    if state != "active" {
+        return Err(PgError::PreconditionsChanged);
+    }
+    if head_sha != a.expected_head_sha {
+        // Commit invalidation (do not roll back on mismatch): head change must
+        // durably clear mismatched approvals even when the observe is refused.
+        tx.execute(
+            "UPDATE awr_team.pr_deliveries
+             SET state='invalidated', invalidation_reason='head_sha_mismatch'
+             WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+            &[&tenant, &project, &a.delivery_id],
+        )
+        .await?;
+        tx.execute(
+            "UPDATE awr_team.review_rounds SET state='invalidated'
+             WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3
+               AND state IN ('open','approved') AND contract_hash=$4",
+            &[&tenant, &project, &work_id, &contract_hash],
+        )
+        .await?;
+        return Ok(Applied {
+            data: json!({
+                "delivery_id": a.delivery_id,
+                "work_id": work_id,
+                "state": "invalidated",
+                "invalidation_reason": "head_sha_mismatch",
+                "expected_head_sha": a.expected_head_sha,
+                "recorded_head_sha": head_sha,
+                "awr_acceptance_complete": false,
+                "webhook_auto_sync": false,
+                "task_complete": false,
+            }),
+            preceding_events: vec![(
+                "delivery.pr_invalidated",
+                json!({
+                    "delivery_id": a.delivery_id,
+                    "reason": "head_sha_mismatch",
+                }),
+            )],
+        });
+    }
+    if let Some(v) = a.gh_approved {
+        gh_approved = v;
+    }
+    if let Some(v) = a.gh_merged {
+        gh_merged = v;
+    }
+    if let Some(m) = &a.merge_sha {
+        if m.len() != 40 || !m.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()) {
+            return Err(invalid());
+        }
+        merge_sha = Some(m.clone());
+    }
+    tx.execute(
+        "UPDATE awr_team.pr_deliveries
+         SET gh_approved=$4, gh_merged=$5, merge_sha=$6, fact_source=$7, observed_at=$8
+         WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+        &[
+            &tenant,
+            &project,
+            &a.delivery_id,
+            &gh_approved,
+            &gh_merged,
+            &merge_sha,
+            &a.fact_source,
+            &a.observed_at,
+        ],
+    )
+    .await?;
+    Ok(Applied {
+        data: json!({
+            "delivery_id": a.delivery_id,
+            "work_id": work_id,
+            "head_sha": head_sha,
+            "gh_approved": gh_approved,
+            "gh_merged": gh_merged,
+            "merge_sha": merge_sha,
+            "fact_source": a.fact_source,
+            "observed_at": a.observed_at,
+            "awr_acceptance_complete": false,
+            "webhook_auto_sync": false,
+            "task_complete": false,
+        }),
+        preceding_events: vec![(
+            "delivery.pr_observed",
+            json!({
+                "delivery_id": a.delivery_id,
+                "gh_approved": gh_approved,
+                "gh_merged": gh_merged,
+                "awr_acceptance_complete": false,
+            }),
+        )],
+    })
+}
+
+pub(crate) async fn inspect_delivery(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    work_id: &str,
+) -> PgResult<Value> {
+    let pr = tx
+        .query_opt(
+            "SELECT id, repository, pr_number, pr_url, head_sha, merge_sha,
+                    gh_submitted, gh_approved, gh_merged, fact_source, observed_at,
+                    contract_hash, state, test_evidence_id
+             FROM awr_team.pr_deliveries
+             WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3 AND state='active'
+             ORDER BY created_at DESC LIMIT 1",
+            &[&tenant, &project, &work_id],
+        )
+        .await?;
+    let runtime = tx
+        .query_opt(
+            "SELECT state, selected_completion_id FROM awr_team.work_runtime
+             WHERE tenant_id=$1 AND project_id=$2 AND scope_id='main' AND work_id=$3",
+            &[&tenant, &project, &work_id],
+        )
+        .await?;
+    let awr_complete = runtime
+        .as_ref()
+        .is_some_and(|r| r.get::<_, String>(0) == "completed" && r.get::<_, Option<String>>(1).is_some());
+    Ok(json!({
+        "delivery": {
+            "work_id": work_id,
+            "pr": pr.as_ref().map(|r| json!({
+                "delivery_id": r.get::<_,String>(0),
+                "repository": r.get::<_,String>(1),
+                "pr_number": r.get::<_,i32>(2),
+                "pr_url": r.get::<_,String>(3),
+                "head_sha": r.get::<_,String>(4),
+                "merge_sha": r.get::<_,Option<String>>(5),
+                "submitted": r.get::<_,bool>(6),
+                "approved": r.get::<_,bool>(7),
+                "merged": r.get::<_,bool>(8),
+                "fact_source": r.get::<_,String>(9),
+                "observed_at": r.get::<_,String>(10),
+                "contract_hash": r.get::<_,String>(11),
+                "state": r.get::<_,String>(12),
+                "test_evidence_id": r.get::<_,Option<String>>(13),
+            })),
+            "github": {
+                "submitted": pr.as_ref().map(|r| r.get::<_,bool>(6)).unwrap_or(false),
+                "approved": pr.as_ref().map(|r| r.get::<_,bool>(7)).unwrap_or(false),
+                "merged": pr.as_ref().map(|r| r.get::<_,bool>(8)).unwrap_or(false),
+            },
+            "awr_acceptance": {
+                "complete": awr_complete,
+                "runtime_state": runtime.as_ref().map(|r| r.get::<_,String>(0)),
+                "selected_completion_id": runtime.as_ref().and_then(|r| r.get::<_,Option<String>>(1)),
+            },
+            "cannot_skip_acceptance_via": ["pr_url_alone","green_ci","admin_role","already_merged"],
+            "webhook_auto_sync": false,
+        }
+    }))
 }
 
 pub(crate) async fn inspect_evidence(

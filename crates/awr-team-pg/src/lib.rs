@@ -70,7 +70,7 @@ pub use read::{
     EventCursor, EventPage, EventRecord, PreparedWork, ReadStore, WorkGraph, capabilities,
     dispatch_query,
 };
-pub use review::{CompletionReceipt, EvidenceRecord, ReviewRound, ReviewStore};
+pub use review::{CompletionReceipt, EvidenceRecord, PrDelivery, ReviewRound, ReviewStore};
 #[doc(hidden)]
 pub use runner::fence_key;
 pub use runner::{CrashPoint, ReferenceRunner, RunnerOutcome};
@@ -111,6 +111,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 29);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 30);
     }
 }

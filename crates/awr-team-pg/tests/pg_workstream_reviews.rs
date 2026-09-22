@@ -93,7 +93,12 @@ async fn seed_review_actors(admin: &Client) {
     enable_writes(admin).await;
     admin
         .batch_execute(
-            "UPDATE awr_team.workstream_grants
+            "UPDATE awr_team.project_memberships
+             SET role='developer', independent_review=true,
+                 membership_version=membership_version+1
+             WHERE tenant_id='reader-tenant' AND project_id='reader-project'
+               AND actor_id='reviewer';
+             UPDATE awr_team.workstream_grants
              SET can_write=true, grant_version=grant_version+1
              WHERE client_id IN ('cli-runner','cli-reviewer')",
         )

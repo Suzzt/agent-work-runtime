@@ -46,6 +46,8 @@ pub(crate) struct ReaderAuthority {
     pub role: String,
     pub role_template: awr_team::RoleTemplate,
     pub membership_version: i64,
+    /// Explicit independent review.decide grant (never implied by role template).
+    pub independent_review: bool,
     pub execution_access: BTreeMap<Id, ExecutionAccess>,
     pub access: WorkstreamAccess,
     pub catalog: WorkstreamCatalog,
@@ -142,7 +144,7 @@ async fn authenticate_inner(
         .query_opt(project_query, &[&tenant, &project])
         .await?
         .ok_or(PgError::Forbidden)?;
-    let identity = tx.query_opt("SELECT c.actor_id,c.client_id,m.membership_version,m.role,a.kind
+    let identity = tx.query_opt("SELECT c.actor_id,c.client_id,m.membership_version,m.role,a.kind,m.independent_review
         FROM awr_team.credentials c
         JOIN awr_team.tenants t ON t.id=c.tenant_id
         JOIN awr_team.actors a ON a.tenant_id=c.tenant_id AND a.id=c.actor_id
@@ -161,6 +163,7 @@ async fn authenticate_inner(
     let membership: i64 = identity.get(2);
     let role: String = identity.get(3);
     let actor_kind: String = identity.get(4);
+    let independent_review: bool = identity.get(5);
     let snapshot: String = p
         .get::<_, Option<String>>(0)
         .ok_or(PgError::InactiveCandidate)?;
@@ -232,6 +235,7 @@ async fn authenticate_inner(
         role,
         role_template,
         membership_version: membership,
+        independent_review,
         execution_access,
         access,
         catalog,
@@ -280,16 +284,16 @@ pub fn command_business_action(op: &str) -> Option<awr_team::Action> {
         "execution.prepare" | "execution.start" | "execution.cancel" | "execution.report" => {
             ExecutionRequestAndReportOwn
         }
-        "evidence.submit" | "review.open" => DeliverySubmitAndRequestReview,
-        "review.accept" | "review.return" | "work.rework" => ReviewDecide,
-        "work.complete" => DeliveryFinalize,
+        "evidence.submit" | "review.open" | "delivery.submit_and_request_review"
+        | "delivery.register_pr" | "delivery.observe_pr" => DeliverySubmitAndRequestReview,
+        "review.accept" | "review.return" | "review.decide" => ReviewDecide,
+        // Rework is author/executor acknowledgment of a return — not independent review.
+        "work.rework" => DeliverySubmitAndRequestReview,
+        "work.complete" | "delivery.finalize" => DeliveryFinalize,
         "planning.propose" => PlanningPropose,
         "planning.edit_draft" => PlanningEditDraft,
         "planning.approve" => PlanningApprove,
         "planning.publish" => PlanningPublish,
-        "delivery.submit_and_request_review" => DeliverySubmitAndRequestReview,
-        "review.decide" => ReviewDecide,
-        "delivery.finalize" => DeliveryFinalize,
         "access.manage_project" => AccessManageProject,
         "audit.read_project" => AuditReadProject,
         "execution.attest" | "execution.reconcile" => return None,
@@ -316,6 +320,7 @@ pub fn query_business_action(op: &str) -> Option<awr_team::Action> {
         "evidence.inspect",
         "review.inspect",
         "completion.inspect",
+        "delivery.inspect",
         "source.content",
         "artifact.content",
         "planning.outcome",
@@ -359,6 +364,12 @@ pub(crate) fn authority_scope(
         scope.allowed_actions = actions.clone();
         // Delegation alone never confers independent review.
         scope.independent_review_grant = false;
+    } else if auth.independent_review
+        && awr_team::independent_review_eligible(auth.role_template)
+    {
+        // Explicit membership grant on an eligible template (TMCP-031).
+        scope.independent_review_grant = true;
+        scope.allowed_actions.insert(awr_team::Action::ReviewDecide);
     }
     scope.policy_version = awr_team::PERMISSION_POLICY_VERSION;
     scope.revoked = false;
@@ -431,7 +442,10 @@ pub(crate) fn command_authority(op: &str) -> Option<DomainAuthority> {
         | "handoff.inspect" | "review.return" | "work.rework" => DomainAuthority::WritePreserve,
         "session.start" | "claim.acquire" | "claim.renew" | "execution.prepare"
         | "execution.start" | "handoff.propose" | "handoff.accept"
-        | "evidence.submit" | "review.open" | "review.accept" | "work.complete" => DomainAuthority::WriteActive,
+        | "evidence.submit" | "review.open" | "review.accept" | "review.decide"
+        | "work.complete" | "delivery.finalize"
+        | "delivery.submit_and_request_review" | "delivery.register_pr"
+        | "delivery.observe_pr" => DomainAuthority::WriteActive,
         "execution.attest" => DomainAuthority::Attest,
         "execution.reconcile" => DomainAuthority::Reconcile,
         _ => return None,
@@ -629,6 +643,7 @@ mod tests {
             role: role.into(),
             role_template,
             membership_version: 1,
+            independent_review: false,
             execution_access,
             access: WorkstreamAccess {
                 project_id: "project".into(),
