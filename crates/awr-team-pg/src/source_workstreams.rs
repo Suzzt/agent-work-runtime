@@ -288,7 +288,6 @@ pub(super) fn reject_external_graph(files: &[(String, Vec<u8>)]) -> PgResult<()>
     Ok(())
 }
 
-
 /// Source status and historical human `done` retain source meaning only
 /// (AWR-TMCP-020). Installing a projection never treats them as completion
 /// receipts; completion remains a separate PG domain path.
