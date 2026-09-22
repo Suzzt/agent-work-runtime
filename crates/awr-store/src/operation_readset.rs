@@ -153,9 +153,31 @@ fn bind_mutation_to_readset(
     }
 }
 
-fn identity_hash(supplied: &OperationReadSet) -> Result<String> {
-    let bytes = serde_json::to_vec(&supplied.identity).map_err(|e| {
-        Error::InvalidInput(format!("cannot canonicalize operation identity: {e}"))
+fn draft_intent_digest(draft: &EventDraft) -> Result<String> {
+    let payload_bytes = serde_json::to_vec(&draft.payload).map_err(|e| {
+        Error::InvalidInput(format!("cannot canonicalize event payload: {e}"))
+    })?;
+    use sha2::{Digest, Sha256};
+    let payload_sha256 = format!("{:x}", Sha256::digest(&payload_bytes));
+    let intent = serde_json::json!({
+        "event_type": draft.event_type,
+        "summary": draft.summary,
+        "importance": draft.importance,
+        "payload_sha256": payload_sha256,
+    });
+    let bytes = serde_json::to_vec(&intent).map_err(|e| {
+        Error::InvalidInput(format!("cannot canonicalize draft intent: {e}"))
+    })?;
+    Ok(format!("{:x}", Sha256::digest(bytes)))
+}
+
+fn receipt_intent_hash(supplied: &OperationReadSet, draft: &EventDraft) -> Result<String> {
+    let intent = serde_json::json!({
+        "identity": &supplied.identity,
+        "draft_digest": draft_intent_digest(draft)?,
+    });
+    let bytes = serde_json::to_vec(&intent).map_err(|e| {
+        Error::InvalidInput(format!("cannot canonicalize operation receipt intent: {e}"))
     })?;
     use sha2::{Digest, Sha256};
     Ok(format!("{:x}", Sha256::digest(bytes)))
@@ -165,6 +187,7 @@ fn load_exact_replay(
     conn: &Connection,
     project_id: Id,
     supplied: &OperationReadSet,
+    draft: &EventDraft,
 ) -> Result<Option<Event>> {
     let row = conn
         .query_row(
@@ -182,7 +205,7 @@ fn load_exact_replay(
         Error::Storage("invalid stored operation readset receipt".into())
     })?;
     classify_operation_replay(supplied, Some(&recorded)).map_err(map_readset)?;
-    let expected = identity_hash(supplied)?;
+    let expected = receipt_intent_hash(supplied, draft)?;
     if stored_hash != expected {
         return Err(map_readset(OperationReadSetError::IdempotencyConflict));
     }
@@ -206,9 +229,10 @@ fn persist_operation_receipt(
     conn: &Connection,
     project_id: Id,
     supplied: &OperationReadSet,
+    draft: &EventDraft,
     event: &Event,
 ) -> Result<()> {
-    let hash = identity_hash(supplied)?;
+    let hash = receipt_intent_hash(supplied, draft)?;
     let readset_json = serde_json::to_string(supplied).map_err(|e| {
         Error::InvalidInput(format!("cannot persist operation readset: {e}"))
     })?;
@@ -271,7 +295,7 @@ impl Store {
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(db_error)?;
         bind_mutation_to_readset(project_id, supplied, &draft)?;
-        if let Some(event) = load_exact_replay(&tx, project_id, supplied)? {
+        if let Some(event) = load_exact_replay(&tx, project_id, supplied, &draft)? {
             tx.commit().map_err(db_error)?;
             return Ok(event);
         }
@@ -306,6 +330,15 @@ impl Store {
                 "transaction changed project revision outside the domain contract".into(),
             ));
         }
+        let receipt_draft = EventDraft {
+            work_item_id: draft.work_item_id,
+            session_id: draft.session_id,
+            branch_id: draft.branch_id,
+            event_type: draft.event_type.clone(),
+            importance: draft.importance.clone(),
+            summary: draft.summary.clone(),
+            payload: draft.payload.clone(),
+        };
         crate::mcp::tag_operation(project_id, &mut draft.payload);
         let event = Event {
             id: Id::new(),
@@ -321,7 +354,7 @@ impl Store {
             created_at: now_millis()?,
         };
         insert_event(&tx, &event)?;
-        persist_operation_receipt(&tx, project_id, supplied, &event)?;
+        persist_operation_receipt(&tx, project_id, supplied, &receipt_draft, &event)?;
         tx.commit().map_err(db_error)?;
         Ok(event)
     }

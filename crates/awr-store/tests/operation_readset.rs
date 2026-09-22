@@ -162,3 +162,45 @@ fn mutation_target_must_match_validated_readset_identity() {
             .is_err()
     );
 }
+
+
+#[test]
+fn changed_draft_same_request_conflicts_even_with_same_payload_sha() {
+    let mut f = Fixture::new();
+    let work = f.works[0];
+    let mut supplied = f
+        .store
+        .prepare_operation_readset(identity(f.project, f.scopes[0], work, "draft-bind"))
+        .unwrap();
+    supplied.identity.payload_sha256 = "9".repeat(64);
+    let mut success = draft(work, "same summary");
+    success.payload = serde_json::json!({"status":"success"});
+    let first = f
+        .store
+        .append_event_with_readset(f.project, &supplied, success)
+        .unwrap();
+    let mut failure = draft(work, "same summary");
+    failure.payload = serde_json::json!({"status":"failure"});
+    // Caller still claims the same payload_sha256; receipt must bind actual draft.
+    let err = f
+        .store
+        .append_event_with_readset(f.project, &supplied, failure)
+        .unwrap_err();
+    assert!(
+        matches!(err, Error::MutationConflict(_)),
+        "changed draft must conflict despite same request_id/payload_sha256: {err:?}"
+    );
+    let replay = f
+        .store
+        .append_event_with_readset(
+            f.project,
+            &supplied,
+            {
+                let mut d = draft(work, "same summary");
+                d.payload = serde_json::json!({"status":"success"});
+                d
+            },
+        )
+        .unwrap();
+    assert_eq!(replay.id, first.id);
+}
