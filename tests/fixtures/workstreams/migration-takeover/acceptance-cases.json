@@ -1,0 +1,47 @@
+{
+  "schema": "awr-workstream-migration-takeover-acceptance/v1",
+  "work": "AWR-WS-050",
+  "cases": [
+    {
+      "id": "independent_fixture_drill",
+      "covers": [
+        1
+      ],
+      "asserts": [
+        "backup",
+        "preview",
+        "migrate",
+        "restore",
+        "unique_fact_source",
+        "identities_preserved"
+      ]
+    },
+    {
+      "id": "goal_line_ownership",
+      "covers": [
+        2
+      ],
+      "asserts": [
+        "Team",
+        "EVO",
+        "DEC",
+        "AUTO",
+        "incomplete_work",
+        "active_sessions",
+        "release_evidence"
+      ]
+    },
+    {
+      "id": "pending_confirmation_no_auto_promote",
+      "covers": [
+        3
+      ],
+      "asserts": [
+        "original_identities",
+        "unprovable_pending_confirmation",
+        "agent_not_owner",
+        "agent_not_independent_approver"
+      ]
+    }
+  ]
+}

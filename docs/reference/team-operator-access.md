@@ -308,3 +308,14 @@ is historical; use `access inspect` for current policy.
 This interface does not bypass project/source activation or migrate old execution
 ownership. It preserves admission-time executor trust: granting attestation now
 does not retroactively authorize an earlier ordinary execution.
+
+## Migration takeover drill (WS-050)
+
+Fixture-first backup → preview → migrate → restore classification for mainline
+takeover (including Team/EVO/DEC/AUTO goal ownership and
+pending-confirmation identity rules) is documented in
+[migration-takeover](migration-takeover.md). Use the independent fixture under
+`tests/fixtures/workstreams/migration-takeover/` before project takeover
+dry-runs. Owner-only `backup-*` / `history-*` commands remain the PG operational
+path; the core oracle does not replace them.
+

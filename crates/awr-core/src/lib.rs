@@ -72,6 +72,9 @@ pub use workstream_eta::*;
 pub mod workstream_adoption;
 pub use workstream_adoption::*;
 
+pub mod migration_takeover;
+pub use migration_takeover::*;
+
 pub use secrets::sensitive_field_category;
 
 pub use secrets::content_text_ranges;
