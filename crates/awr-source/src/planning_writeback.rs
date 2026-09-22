@@ -169,8 +169,10 @@ pub fn apply_planning_changes_to_ledger(
         match change.op {
             DraftOpKind::CreateTask => {
                 if items.iter().any(|row| {
-                    row.get("id").and_then(|v| v.as_str()) == Some(change.after.external_key.as_str())
-                        || row.get("id").and_then(|v| v.as_str()) == Some(change.after.work_id.as_str())
+                    row.get("id").and_then(|v| v.as_str())
+                        == Some(change.after.external_key.as_str())
+                        || row.get("id").and_then(|v| v.as_str())
+                            == Some(change.after.work_id.as_str())
                 }) {
                     return Err(Error::SourceConflict(format!(
                         "create would overwrite existing work {}",
@@ -180,11 +182,15 @@ pub fn apply_planning_changes_to_ledger(
                 items.push(draft_to_ledger_row(&change.after));
                 changed.insert(change.after.external_key.clone());
             }
-            DraftOpKind::EditFields | DraftOpKind::Split | DraftOpKind::Cancel | DraftOpKind::Archive => {
+            DraftOpKind::EditFields
+            | DraftOpKind::Split
+            | DraftOpKind::Cancel
+            | DraftOpKind::Archive => {
                 let key = change.after.external_key.as_str();
                 let Some(row) = items.iter_mut().find(|row| {
                     row.get("id").and_then(|v| v.as_str()) == Some(key)
-                        || row.get("id").and_then(|v| v.as_str()) == Some(change.after.work_id.as_str())
+                        || row.get("id").and_then(|v| v.as_str())
+                            == Some(change.after.work_id.as_str())
                 }) else {
                     return Err(Error::SourceConflict(format!(
                         "edit target {key} missing from authoritative ledger"
@@ -295,10 +301,7 @@ fn apply_draft_fields(row: &mut Value, draft: &TaskDraft) {
 
 /// Refuse installing writeback when on-disk bytes no longer match the planned
 /// before fingerprint (external edit / concurrent writer).
-pub fn refuse_external_overwrite(
-    planned_before: &str,
-    observed_before: &str,
-) -> Result<()> {
+pub fn refuse_external_overwrite(planned_before: &str, observed_before: &str) -> Result<()> {
     if planned_before != observed_before {
         return Err(Error::SourceConflict(
             "authoritative source changed externally; refusing overwrite of others' work".into(),
@@ -345,13 +348,15 @@ mod tests {
 
     #[test]
     fn compatible_status_requires_verified_receipt() {
-        assert!(derive_compatible_status_writeback(&VerifiedDomainStatus {
-            work_external_key: "API-1".into(),
-            domain_result: "accepted".into(),
-            verified: false,
-            receipt_id: Some("r1".into()),
-        })
-        .is_err());
+        assert!(
+            derive_compatible_status_writeback(&VerifiedDomainStatus {
+                work_external_key: "API-1".into(),
+                domain_result: "accepted".into(),
+                verified: false,
+                receipt_id: Some("r1".into()),
+            })
+            .is_err()
+        );
         let ok = derive_compatible_status_writeback(&VerifiedDomainStatus {
             work_external_key: "API-1".into(),
             domain_result: "accepted".into(),

@@ -548,10 +548,9 @@ pub(crate) async fn read(
             let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
             let _ = work_binding(tx, tenant, project, auth, work).await?;
             let handoff_id = q.handoff_id.as_deref().ok_or(PgError::Forbidden)?;
-            let value = crate::workstream_command::handoffs::inspect_query(
-                tx, tenant, project, handoff_id,
-            )
-            .await?;
+            let value =
+                crate::workstream_command::handoffs::inspect_query(tx, tenant, project, handoff_id)
+                    .await?;
             // Scope: handoff must belong to the selected work.
             if value["handoff"]["work_item_id"] != work {
                 return Err(PgError::Forbidden);
@@ -563,7 +562,10 @@ pub(crate) async fn read(
             let _ = work_binding(tx, tenant, project, auth, work).await?;
             let evidence_id = q.evidence_id.as_deref().ok_or(PgError::Forbidden)?;
             let value = crate::workstream_command::reviews::inspect_evidence(
-                tx, tenant, project, evidence_id,
+                tx,
+                tenant,
+                project,
+                evidence_id,
             )
             .await?;
             if value["evidence"]["work_id"] != work {
@@ -575,10 +577,9 @@ pub(crate) async fn read(
             let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
             let _ = work_binding(tx, tenant, project, auth, work).await?;
             let round_id = q.review_round_id.as_deref().ok_or(PgError::Forbidden)?;
-            let value = crate::workstream_command::reviews::inspect_review(
-                tx, tenant, project, round_id,
-            )
-            .await?;
+            let value =
+                crate::workstream_command::reviews::inspect_review(tx, tenant, project, round_id)
+                    .await?;
             if value["review"]["work_id"] != work {
                 return Err(PgError::Forbidden);
             }
@@ -587,7 +588,8 @@ pub(crate) async fn read(
         "completion.inspect" => {
             let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
             let _ = work_binding(tx, tenant, project, auth, work).await?;
-            crate::workstream_command::reviews::inspect_completion(tx, tenant, project, work).await?
+            crate::workstream_command::reviews::inspect_completion(tx, tenant, project, work)
+                .await?
         }
         "command.inspect" => {
             let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
@@ -756,7 +758,16 @@ pub(crate) async fn read(
         }
         "source.content" => {
             let path = q.source_path.as_deref().ok_or(PgError::Forbidden)?;
-            read_controlled_source_content(tx, tenant, project, auth, path, q.expected_sha256.as_deref(), q.max_context_bytes).await?
+            read_controlled_source_content(
+                tx,
+                tenant,
+                project,
+                auth,
+                path,
+                q.expected_sha256.as_deref(),
+                q.max_context_bytes,
+            )
+            .await?
         }
         "artifact.content" => {
             let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
@@ -812,7 +823,6 @@ pub(crate) async fn read(
         "coordinator_epoch":auth.epoch,"project_status":auth.project_status,"source_snapshot_id":auth.snapshot,"project_revision":auth.revision.to_string(),"data":data}),
     )
 }
-
 
 fn safe_relative_source_path(path: &str) -> PgResult<()> {
     if path.is_empty()
@@ -1043,8 +1053,16 @@ fn base64_encode(bytes: &[u8]) -> String {
     let mut i = 0;
     while i < bytes.len() {
         let b0 = bytes[i] as u32;
-        let b1 = if i + 1 < bytes.len() { bytes[i + 1] as u32 } else { 0 };
-        let b2 = if i + 2 < bytes.len() { bytes[i + 2] as u32 } else { 0 };
+        let b1 = if i + 1 < bytes.len() {
+            bytes[i + 1] as u32
+        } else {
+            0
+        };
+        let b2 = if i + 2 < bytes.len() {
+            bytes[i + 2] as u32
+        } else {
+            0
+        };
         let triple = (b0 << 16) | (b1 << 8) | b2;
         out.push(ALPH[((triple >> 18) & 63) as usize] as char);
         out.push(ALPH[((triple >> 12) & 63) as usize] as char);

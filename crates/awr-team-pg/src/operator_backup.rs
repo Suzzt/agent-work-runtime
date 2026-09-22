@@ -86,15 +86,10 @@ pub(crate) fn plan_restore(
     let safe = refusals.is_empty();
     RestoreDecision {
         safe_to_apply: safe,
-        mode: if safe {
-            "verified_fencing"
-        } else {
-            "refused"
-        },
+        mode: if safe { "verified_fencing" } else { "refused" },
         refusals,
     }
 }
-
 
 /// Pure rebuild planning over already-captured digests (unit-tested without PG).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -223,7 +218,10 @@ impl OperatorBackup {
         let logical = logical_inventory_digests(&tx, tenant, project).await?;
         let work_inventory = work_inventory_rows(&tx, tenant, project).await?;
         let receipts = completion_receipt_inventory(&tx, tenant, project).await?;
-        let epoch = projection["coordinator_epoch"].as_str().unwrap_or("").to_string();
+        let epoch = projection["coordinator_epoch"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
         let artifact_digests = logical["artifact_digests"].clone();
         let source_digests = logical["source_digests"].clone();
         let rebuildable = json!({
@@ -982,12 +980,7 @@ async fn logical_inventory_digests(
     }))
 }
 
-
-async fn work_inventory_rows(
-    tx: &Transaction<'_>,
-    tenant: &str,
-    project: &str,
-) -> PgResult<Value> {
+async fn work_inventory_rows(tx: &Transaction<'_>, tenant: &str, project: &str) -> PgResult<Value> {
     let items: Vec<Value> = tx
         .query(
             "SELECT id,external_key FROM awr_team.work_items
@@ -1162,8 +1155,9 @@ async fn build_rebuild_plan(
             continue;
         }
         match inventory_by_id.get(wid) {
-            Some(key) => work_items_to_insert
-                .push(json!({"work_id": wid, "external_key": key.as_str()})),
+            Some(key) => {
+                work_items_to_insert.push(json!({"work_id": wid, "external_key": key.as_str()}))
+            }
             None => missing += 1,
         }
     }
@@ -1379,9 +1373,10 @@ mod tests {
     fn completion_divergence_and_outbox_replay_are_refused() {
         let d = plan_restore(BACKUP_FORMAT, true, true, false, true, true, false, true);
         assert!(!d.safe_to_apply);
-        assert!(d
-            .refusals
-            .contains(&"completion_receipt_divergence_refuses_rewrite"));
+        assert!(
+            d.refusals
+                .contains(&"completion_receipt_divergence_refuses_rewrite")
+        );
         assert!(d.refusals.contains(&"outbox_replay_forbidden"));
     }
 
@@ -1411,8 +1406,14 @@ mod tests {
             limits["rebuild_from_manifest"]["subset"],
             "work_inventory_and_ownership_when_empty_v1"
         );
-        assert_eq!(limits["rebuild_from_manifest"]["dangerous_overwrite"], false);
-        assert_eq!(limits["rebuild_from_manifest"]["completion_receipts"], false);
+        assert_eq!(
+            limits["rebuild_from_manifest"]["dangerous_overwrite"],
+            false
+        );
+        assert_eq!(
+            limits["rebuild_from_manifest"]["completion_receipts"],
+            false
+        );
         assert_eq!(limits["rebuild_from_manifest"]["grants_or_actors"], false);
     }
 

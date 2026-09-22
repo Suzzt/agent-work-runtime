@@ -3,9 +3,7 @@ use super::*;
 use crate::review::{
     evidence_digest, required_dependencies_covered, resolve_person_id, self_review_permitted,
 };
-use awr_team::{
-    CompletionView, EvidenceBundle, EvidenceGrade, ReviewPolicy, current_completion,
-};
+use awr_team::{CompletionView, EvidenceBundle, EvidenceGrade, ReviewPolicy, current_completion};
 use sha2::{Digest, Sha256};
 
 #[derive(Deserialize)]
@@ -143,10 +141,46 @@ pub(super) async fn apply(
     match action {
         Action::Submit(a) => submit(tx, tenant, project, auth, command, &contract_hash, a).await,
         Action::Open(a) => open(tx, tenant, project, auth, command, a).await,
-        Action::Accept(a) => decide(tx, tenant, project, auth, command, &contract_hash, a, "approve").await,
-        Action::Return(a) => decide(tx, tenant, project, auth, command, &contract_hash, a, "reject").await,
+        Action::Accept(a) => {
+            decide(
+                tx,
+                tenant,
+                project,
+                auth,
+                command,
+                &contract_hash,
+                a,
+                "approve",
+            )
+            .await
+        }
+        Action::Return(a) => {
+            decide(
+                tx,
+                tenant,
+                project,
+                auth,
+                command,
+                &contract_hash,
+                a,
+                "reject",
+            )
+            .await
+        }
         Action::Rework(a) => rework(tx, tenant, project, auth, command, a).await,
-        Action::Complete(a) => complete(tx, tenant, project, auth, command, contract, &contract_hash, a).await,
+        Action::Complete(a) => {
+            complete(
+                tx,
+                tenant,
+                project,
+                auth,
+                command,
+                contract,
+                &contract_hash,
+                a,
+            )
+            .await
+        }
     }
 }
 
@@ -171,7 +205,8 @@ async fn submit(
     let artifact_bytes = match a.artifact_hex.as_deref() {
         None => None,
         Some(s) => {
-            if s.len() > 2_097_152 || s.len() % 2 != 0 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+            if s.len() > 2_097_152 || s.len() % 2 != 0 || !s.bytes().all(|b| b.is_ascii_hexdigit())
+            {
                 return Err(invalid());
             }
             let mut out = Vec::with_capacity(s.len() / 2);
@@ -706,7 +741,9 @@ async fn complete(
         let state: String = row.get(1);
         let content: Option<Vec<u8>> = row.get(2);
         let content = content.ok_or(PgError::EvidenceInvalid)?;
-        if state != "finalized" || sha256_hex(&content) != sha || output_digest.as_deref() != Some(sha.as_str())
+        if state != "finalized"
+            || sha256_hex(&content) != sha
+            || output_digest.as_deref() != Some(sha.as_str())
         {
             return Err(PgError::EvidenceInvalid);
         }
@@ -918,7 +955,13 @@ async fn complete(
                 tenant_id, project_id, completion_id, predecessor_work_id,
                 predecessor_completion_id)
              VALUES ($1,$2,$3,$4,$5)",
-            &[&tenant, &project, &receipt_id, upstream_work, upstream_receipt],
+            &[
+                &tenant,
+                &project,
+                &receipt_id,
+                upstream_work,
+                upstream_receipt,
+            ],
         )
         .await?;
     }

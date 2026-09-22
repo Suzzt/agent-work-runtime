@@ -7,8 +7,8 @@ mod compile;
 mod completeness;
 mod delta;
 mod hard;
-mod related;
 mod invalidation;
+mod related;
 pub use bootstrap::{BootstrapContext, BootstrapPack, BootstrapRequest, bootstrap};
 pub use branch::BranchContextBinding;
 pub use budget::{
@@ -31,13 +31,13 @@ pub use delta::{
 pub use hard::{
     HardContext, HardWork, RuleScopeInput, RuleSelection, SourceVersion, hard_context, select_rules,
 };
-pub use related::{
-    DecisionFact, DecisionGap, DependencyFact, EvidenceGap, EvidenceSummary, RelatedWorkContext,
-    related_work, related_work_in_workstream,
-};
 pub use invalidation::{
     InvalidationContextGaps, ReadinessBlock, ReadinessBlockReason, invalidation_context_gaps,
     readiness_complete_with_gaps,
+};
+pub use related::{
+    DecisionFact, DecisionGap, DependencyFact, EvidenceGap, EvidenceSummary, RelatedWorkContext,
+    related_work, related_work_in_workstream,
 };
 
 /// Withholding selected facts must never produce a falsely complete context packet.

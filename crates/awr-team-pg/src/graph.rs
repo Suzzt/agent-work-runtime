@@ -69,7 +69,9 @@ pub fn validate_resource_kind(kind: &str) -> PgResult<()> {
     if resource_domain(kind).is_some() {
         Ok(())
     } else {
-        Err(PgError::Protocol(format!("unsupported resource kind: {kind}")))
+        Err(PgError::Protocol(format!(
+            "unsupported resource kind: {kind}"
+        )))
     }
 }
 
@@ -156,7 +158,9 @@ fn normalize_resource_key(kind: &str, key: &str) -> PgResult<String> {
         }
         ResourceDomain::WorktreeLocal if kind == "workspace" => {
             if key.is_empty() || key.len() > 512 || key.chars().any(char::is_control) {
-                return Err(PgError::UnsafeSourcePath("invalid workspace resource".into()));
+                return Err(PgError::UnsafeSourcePath(
+                    "invalid workspace resource".into(),
+                ));
             }
             Ok(key.to_string())
         }
@@ -215,7 +219,10 @@ pub fn validate_required_graph(nodes: &[String], edges: &[DependencyEdge]) -> Pg
             return Err(PgError::MissingDependency);
         }
         if edge.from == edge.to {
-            return Err(PgError::DependencyCycle(vec![edge.from.clone(), edge.to.clone()]));
+            return Err(PgError::DependencyCycle(vec![
+                edge.from.clone(),
+                edge.to.clone(),
+            ]));
         }
     }
     awr_core::validate_dependency_dag(
@@ -394,14 +401,8 @@ impl GraphStore {
         // serialize on the project row, so the last writer replaces the
         // committed graph wholesale instead of merging (CR #40 P2-3).
         lock_project(&tx, tenant_id, project_id).await?;
-        let authoritative = Self::load_contract_work_ids(
-            &tx,
-            tenant_id,
-            project_id,
-            snapshot_id,
-            scope_id,
-        )
-        .await?;
+        let authoritative =
+            Self::load_contract_work_ids(&tx, tenant_id, project_id, snapshot_id, scope_id).await?;
         validate_required_graph(&authoritative, edges)?;
         Self::write_edges(&tx, tenant_id, project_id, snapshot_id, scope_id, edges).await?;
         tx.commit().await?;
@@ -444,7 +445,9 @@ impl GraphStore {
         execution_id: Option<&str>,
     ) -> PgResult<String> {
         if lease.lease_generation < 0 || lease.fence < 0 {
-            return Err(PgError::Protocol("lease generation and fence must be >= 0".into()));
+            return Err(PgError::Protocol(
+                "lease generation and fence must be >= 0".into(),
+            ));
         }
         let key = normalize_resource_key(&bound.kind, &bound.key)?;
         let worktree_id = normalize_worktree_id(&bound.kind, &bound.worktree_id)?;
@@ -928,19 +931,14 @@ impl GraphStore {
         let tx = client.transaction().await?;
         bind_scope(&tx, tenant_id, project_id).await?;
         lock_project(&tx, tenant_id, project_id).await?;
-        let nodes = Self::load_contract_work_ids(&tx, tenant_id, project_id, snapshot_id, scope_id)
-            .await?;
-        let mut by_key: BTreeMap<(String, String, String), DependencyEdge> = Self::load_edges(
-            &tx,
-            tenant_id,
-            project_id,
-            snapshot_id,
-            scope_id,
-        )
-        .await?
-        .into_iter()
-        .map(|edge| (edge_key(&edge), edge))
-        .collect();
+        let nodes =
+            Self::load_contract_work_ids(&tx, tenant_id, project_id, snapshot_id, scope_id).await?;
+        let mut by_key: BTreeMap<(String, String, String), DependencyEdge> =
+            Self::load_edges(&tx, tenant_id, project_id, snapshot_id, scope_id)
+                .await?
+                .into_iter()
+                .map(|edge| (edge_key(&edge), edge))
+                .collect();
         for mutation in mutations {
             match mutation {
                 EdgeMutation::Upsert(edge) => {
@@ -1217,7 +1215,15 @@ mod tests {
         let err = validate_cross_stream_graph(&catalog, &ids, &ownership, &cyclic).unwrap_err();
         match err {
             PgError::DependencyCycle(path) => {
-                assert_eq!(path, vec!["A1".to_string(), "B1".to_string(), "A2".to_string(), "A1".to_string()]);
+                assert_eq!(
+                    path,
+                    vec![
+                        "A1".to_string(),
+                        "B1".to_string(),
+                        "A2".to_string(),
+                        "A1".to_string()
+                    ]
+                );
             }
             other => panic!("expected explainable path, got {other}"),
         }
