@@ -2,7 +2,7 @@
 //! Extends coordination without duplicating claim leases: execution claim never
 //! steals sole ownership. Person↔agent bindings are explicit; actor.kind is ignored.
 use crate::error::{PgError, PgResult};
-use crate::tx::new_id;
+use crate::tx::{bind_workstream_scope, new_id};
 use awr_core::{
     AcceptResponsibilityRequest, AssignResponsibilityRequest, BindingStatus, ClaimExecutionRequest,
     ExecutionInstance, PersonAgentBinding, PersonId, ResponsibilityEventType, ResponsibilityPending,
@@ -11,7 +11,7 @@ use awr_core::{
     apply_mark_pending, apply_release_execution, apply_transfer_propose,
 };
 use serde_json::{Value, json};
-use tokio_postgres::{Client, Transaction};
+use tokio_postgres::Transaction;
 
 fn invalid() -> PgError {
     PgError::Protocol("invalid responsibility request".into())
@@ -83,8 +83,12 @@ impl ResponsibilityStore {
         person_id: &str,
         display_name: &str,
     ) -> PgResult<()> {
-        let client = self.connect().await?;
-        ensure_person(&*client, tenant, project, person_id, display_name).await
+        let mut client = self.connect().await?;
+        let tx = client.transaction().await?;
+        bind_workstream_scope(&tx, tenant, project).await?;
+        ensure_person_tx(&tx, tenant, project, person_id, display_name).await?;
+        tx.commit().await?;
+        Ok(())
     }
 
     pub async fn bind_person_agent(
@@ -93,35 +97,37 @@ impl ResponsibilityStore {
         project: &str,
         binding: &PersonAgentBinding,
     ) -> PgResult<()> {
-        let client = self.connect().await?;
+        let mut client = self.connect().await?;
+        let tx = client.transaction().await?;
+        bind_workstream_scope(&tx, tenant, project).await?;
         let status = match binding.status {
             BindingStatus::Active => "active",
             BindingStatus::Disabled => "disabled",
         };
-        ensure_person(
-            &*client,
+        ensure_person_tx(
+            &tx,
             tenant,
             project,
             binding.person_id.as_str(),
             binding.person_id.as_str(),
         )
         .await?;
-        client
-            .execute(
-                "INSERT INTO awr_team.person_agent_bindings(tenant_id,project_id,id,person_id,agent_id,status)
-                 VALUES($1,$2,$3,$4,$5,$6)
-                 ON CONFLICT(tenant_id,project_id,id) DO UPDATE
-                 SET status=EXCLUDED.status, agent_id=EXCLUDED.agent_id, person_id=EXCLUDED.person_id",
-                &[
-                    &tenant,
-                    &project,
-                    &binding.id,
-                    &binding.person_id.as_str(),
-                    &binding.agent_id,
-                    &status,
-                ],
-            )
-            .await?;
+        tx.execute(
+            "INSERT INTO awr_team.person_agent_bindings(tenant_id,project_id,id,person_id,agent_id,status)
+             VALUES($1,$2,$3,$4,$5,$6)
+             ON CONFLICT(tenant_id,project_id,id) DO UPDATE
+             SET status=EXCLUDED.status, agent_id=EXCLUDED.agent_id, person_id=EXCLUDED.person_id",
+            &[
+                &tenant,
+                &project,
+                &binding.id,
+                &binding.person_id.as_str(),
+                &binding.agent_id,
+                &status,
+            ],
+        )
+        .await?;
+        tx.commit().await?;
         Ok(())
     }
 
@@ -131,10 +137,14 @@ impl ResponsibilityStore {
         project: &str,
         work_id: &str,
     ) -> PgResult<TaskResponsibility> {
-        let client = self.connect().await?;
-        Ok(load_task(&*client, tenant, project, work_id)
+        let mut client = self.connect().await?;
+        let tx = client.transaction().await?;
+        bind_workstream_scope(&tx, tenant, project).await?;
+        let task = load_task_tx(&tx, tenant, project, work_id)
             .await?
-            .unwrap_or_else(|| TaskResponsibility::unassigned(project, work_id)))
+            .unwrap_or_else(|| TaskResponsibility::unassigned(project, work_id));
+        tx.commit().await?;
+        Ok(task)
     }
 
     pub async fn assign(
@@ -264,6 +274,7 @@ impl ResponsibilityStore {
     {
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
+        bind_workstream_scope(&tx, tenant, project).await?;
         if let Some(receipt) = load_receipt(&tx, tenant, project, request_key, op).await? {
             let after = load_task_tx(&tx, tenant, project, work_id)
                 .await?
@@ -281,23 +292,6 @@ impl ResponsibilityStore {
         tx.commit().await?;
         Ok((after, receipt))
     }
-}
-
-async fn ensure_person(
-    client: &Client,
-    tenant: &str,
-    project: &str,
-    person_id: &str,
-    display_name: &str,
-) -> PgResult<()> {
-    client
-        .execute(
-            "INSERT INTO awr_team.persons(tenant_id,project_id,id,display_name,status)
-             VALUES($1,$2,$3,$4,'active') ON CONFLICT DO NOTHING",
-            &[&tenant, &project, &person_id, &display_name],
-        )
-        .await?;
-    Ok(())
 }
 
 async fn load_bindings_tx(
@@ -330,23 +324,6 @@ async fn load_bindings_tx(
     Ok(out)
 }
 
-async fn load_task(client: &Client, tenant: &str, project: &str, work_id: &str) -> PgResult<Option<TaskResponsibility>> {
-    let row = client
-        .query_opt(
-            "SELECT owner_person_id, independent_reviewer_person_id, executor_kind, executor_person_id,
-                    executor_agent_id, executor_binding_id, version, pending_kind, pending_person_id,
-                    pending_legacy_ref, pending_transfer_request_key, pending_detail, personal_mode_default
-             FROM awr_team.task_responsibilities
-             WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3",
-            &[&tenant, &project, &work_id],
-        )
-        .await?;
-    let Some(row) = row else {
-        return Ok(None);
-    };
-    finish_task(client, tenant, project, work_id, row).await
-}
-
 async fn load_task_tx(
     tx: &Transaction<'_>,
     tenant: &str,
@@ -367,17 +344,6 @@ async fn load_task_tx(
         return Ok(None);
     };
     finish_task_tx(tx, tenant, project, work_id, row).await
-}
-
-async fn finish_task(
-    client: &Client,
-    tenant: &str,
-    project: &str,
-    work_id: &str,
-    row: tokio_postgres::Row,
-) -> PgResult<Option<TaskResponsibility>> {
-    let collaborators = load_collaborators(client, tenant, project, work_id).await?;
-    Ok(Some(row_to_task(project, work_id, row, collaborators)?))
 }
 
 async fn finish_task_tx(
@@ -453,24 +419,6 @@ fn row_to_task(
         pending,
         personal_mode_default: personal,
     })
-}
-
-async fn load_collaborators(
-    client: &Client,
-    tenant: &str,
-    project: &str,
-    work_id: &str,
-) -> PgResult<Vec<PersonId>> {
-    let rows = client
-        .query(
-            "SELECT person_id FROM awr_team.task_collaborators
-             WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3 ORDER BY person_id",
-            &[&tenant, &project, &work_id],
-        )
-        .await?;
-    rows.into_iter()
-        .map(|r| PersonId::new(r.get::<_, String>(0)).map_err(map_core))
-        .collect()
 }
 
 async fn load_collaborators_tx(

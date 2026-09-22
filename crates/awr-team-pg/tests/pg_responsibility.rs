@@ -3,7 +3,7 @@
 mod common;
 use awr_core::*;
 use awr_team_pg::ResponsibilityStore;
-use common::{fresh_team_schema, test_config, with_app_role};
+use common::{app_client, fresh_team_schema, test_config, with_app_role};
 use std::sync::MutexGuard;
 use tokio_postgres::Client;
 
@@ -181,4 +181,114 @@ async fn agent_swap_requires_explicit_binding_not_actor_kind() {
         .await
         .unwrap();
     assert_eq!(claimed.owner, Some(alice));
+}
+
+
+#[tokio::test]
+async fn responsibility_rls_blocks_unscoped_and_cross_tenant_app_reads() {
+    let (_g, admin, store) = setup().await;
+    // Seed a second tenant/project as superuser (bypasses FORCE RLS).
+    admin
+        .batch_execute(
+            "INSERT INTO awr_team.tenants(id,name,status) VALUES ('tenant-b','B','active');
+             INSERT INTO awr_team.projects(tenant_id,id,key,mode,coordinator_epoch,status)
+                VALUES ('tenant-b','project-b','beta','team','epoch-1','active');
+             INSERT INTO awr_team.persons(tenant_id,project_id,id,display_name,status)
+                VALUES ('tenant-b','project-b','eve','Eve','active');
+             INSERT INTO awr_team.persons(tenant_id,project_id,id,display_name,status)
+                VALUES ('tenant-a','project-a','alice','Alice','active');",
+        )
+        .await
+        .unwrap();
+
+    // Store path with correct tenant scope can read its own person via get after assign.
+    let alice = PersonId::new("alice").unwrap();
+    store
+        .assign(
+            TENANT,
+            PROJECT,
+            "work-rls",
+            &AssignResponsibilityRequest {
+                request_key: "rls-asg".into(),
+                expected_version: 0,
+                owner: Some(alice.clone()),
+                collaborators: vec![],
+                independent_reviewer: None,
+                allow_unassigned: false,
+                authorized_by: alice.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    let mine = store.get(TENANT, PROJECT, "work-rls").await.unwrap();
+    assert_eq!(mine.owner, Some(alice));
+
+    // Unscoped app role must not see any persons (including other tenants).
+    let mut app = {
+        // Reconnect as awr_app against the same DB the store uses.
+        let url = std::env::var("AWR_TEAM_TEST_DATABASE_URL").ok();
+        let _ = url;
+        // Pull db name from admin connection via current_database.
+        let db: String = admin
+            .query_one("SELECT current_database()", &[])
+            .await
+            .unwrap()
+            .get(0);
+        app_client(&db).await
+    };
+    let leaked: i64 = app
+        .query_one("SELECT count(*) FROM awr_team.persons", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(leaked, 0, "unscoped app must not read persons across tenants");
+
+    // Wrong-tenant scope must not reveal tenant-b rows.
+    let tx = app.transaction().await.unwrap();
+    tx.execute("SELECT set_config('awr.tenant_id', $1, true)", &[&TENANT])
+        .await
+        .unwrap();
+    tx.execute("SELECT set_config('awr.project_id', $1, true)", &[&PROJECT])
+        .await
+        .unwrap();
+    let cross: i64 = tx
+        .query_one(
+            "SELECT count(*) FROM awr_team.persons WHERE tenant_id='tenant-b'",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(cross, 0);
+    let visible: i64 = tx
+        .query_one("SELECT count(*) FROM awr_team.persons", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(visible, 1);
+    tx.commit().await.unwrap();
+
+    // Append-only: app cannot UPDATE/DELETE responsibility_events / receipts.
+    let scoped = app.transaction().await.unwrap();
+    scoped
+        .execute("SELECT set_config('awr.tenant_id', $1, true)", &[&TENANT])
+        .await
+        .unwrap();
+    scoped
+        .execute("SELECT set_config('awr.project_id', $1, true)", &[&PROJECT])
+        .await
+        .unwrap();
+    assert!(
+        scoped
+            .execute("UPDATE awr_team.responsibility_events SET event_type='tamper'", &[])
+            .await
+            .is_err()
+    );
+    assert!(
+        scoped
+            .execute("DELETE FROM awr_team.responsibility_receipts", &[])
+            .await
+            .is_err()
+    );
+    scoped.rollback().await.unwrap();
 }
