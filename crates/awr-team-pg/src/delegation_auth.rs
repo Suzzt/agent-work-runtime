@@ -117,6 +117,13 @@ pub(crate) async fn resolve_agent_delegation(
         if bind_runtime_identity(&grant, &auth.client_id, session_id, model_id, now_ms).is_err() {
             continue;
         }
+        // Live WS-015 relationship check: a valid-looking binding_id in JSON is
+        // not enough — person and binding rows must be active and match.
+        if !live_person_binding_covers(tx, &auth.tenant_id, project_id, &grant, &auth.actor_id)
+            .await?
+        {
+            continue;
+        }
         if let Some(work) = work_id.filter(|w| !w.is_empty()) {
             if !grant.covers_task(project_id, work) {
                 continue;
@@ -155,6 +162,46 @@ pub(crate) async fn resolve_agent_delegation(
         }
     }
     Ok(())
+}
+
+async fn live_person_binding_covers(
+    tx: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    project_id: &str,
+    grant: &AgentAuthorization,
+    agent_actor_id: &str,
+) -> PgResult<bool> {
+    let Some(binding_id) = grant.binding_id.as_deref().filter(|s| !s.is_empty()) else {
+        return Ok(false);
+    };
+    let row = tx
+        .query_opt(
+            "SELECT b.status, b.person_id, b.agent_id, p.status
+             FROM awr_team.person_agent_bindings b
+             JOIN awr_team.persons p
+               ON p.tenant_id=b.tenant_id AND p.project_id=b.project_id AND p.id=b.person_id
+             WHERE b.tenant_id=$1 AND b.project_id=$2 AND b.id=$3
+             FOR SHARE OF b, p",
+            &[&tenant_id, &project_id, &binding_id],
+        )
+        .await?;
+    let Some(row) = row else {
+        return Ok(false);
+    };
+    let binding_status: String = row.get(0);
+    let person_id: String = row.get(1);
+    let agent_id: String = row.get(2);
+    let person_status: String = row.get(3);
+    if binding_status != "active" || person_status != "active" {
+        return Ok(false);
+    }
+    if agent_id != agent_actor_id {
+        return Ok(false);
+    }
+    if person_id != grant.responsible_person_id.as_str() {
+        return Ok(false);
+    }
+    Ok(true)
 }
 
 /// Side-effecting execution requires StartWork-mapped TMCP execution permission.
