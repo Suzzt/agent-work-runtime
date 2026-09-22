@@ -182,10 +182,11 @@ Capabilities advertise `scope_id=main` historical semantics, refuse unsupported
 operations, and state that local file access is not a server ACL. The
 [reference runner](team-reference-runner.md) performs bounded local file
 writes with explicit executor authority. Old-epoch reconciliation requires an
-explicit operator review and preserves original attribution. Enabled-project
-backup/restore, migration of unattributed history and real-client acceptance
-remain outstanding; the current legacy import/restore APIs refuse enabled
-projects. The shared personal MCP read boundary described elsewhere does not
+explicit operator review and preserves original attribution. Owner-only read-only recovery inspection is available via
+`awr-server access recovery-inspect` for enabled projects; it does not restore or
+migrate. Enabled-project backup/restore, migration of unattributed history and
+real-client acceptance remain outstanding; the current legacy import/restore APIs
+refuse enabled projects. The shared personal MCP read boundary described elsewhere does not
 provide Team access.
 
 ### Source projection in the development branch

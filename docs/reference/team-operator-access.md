@@ -37,6 +37,21 @@ awr-server access inspect --tenant-id tenant-a --project-id project-a \
   --actor-id worker --client-id coding-client
 ```
 
+For enabled workstream projects, inspect recovery barriers without mutating state.
+This is schema-owner only, uses shared locks, and never restores, migrates history,
+clears `recovery_blocked`, or inspects host filesystems (local files are not a
+server ACL):
+
+```sh
+awr-server access recovery-inspect --tenant-id tenant-a --project-id project-a
+```
+
+The report lists recovery-blocked work, nonterminal/unknown executions, active
+claims, open waits, unattributed legacy rows lacking `workstream_id`, previous-epoch
+nonterminal executions, and recorded restore runs. Samples are bounded. Disabled
+or non-workstream projects return `Unsupported`/`Forbidden`. Client HTTP/MCP
+cannot call this path.
+
 Save an access plan as local JSON. Use an actual workstream ID and current authority
 version from inspection, and replace the hash placeholder with `access token`'s
 `secret_hash` output:

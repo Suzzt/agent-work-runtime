@@ -323,6 +323,7 @@ pub(crate) fn workstream_boundary_capabilities() -> serde_json::Value {
         "unsupported_capabilities": "refused",
         "local_file_access": "not_server_acl_or_confidentiality_sandbox",
         "reference_runner_effects": "operator_local_bounded_files_require_explicit_attestation_grant",
+        "operator_recovery_inspection": "schema_owner_cli_read_only_enabled_projects",
         "frontend_filtering": false
     })
 }
@@ -498,6 +499,10 @@ mod tests {
         let caps = workstream_boundary_capabilities();
         assert_eq!(caps["scope_id"], "main");
         assert_eq!(caps["frontend_filtering"], false);
+        assert_eq!(
+            caps["operator_recovery_inspection"],
+            "schema_owner_cli_read_only_enabled_projects"
+        );
         assert_eq!(caps["unsupported_capabilities"], "refused");
         assert_eq!(
             caps["local_file_access"],

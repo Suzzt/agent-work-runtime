@@ -1,4 +1,4 @@
-use awr_team_pg::{AccessPlan, OperatorAccess, PgError};
+use awr_team_pg::{AccessPlan, OperatorAccess, OperatorRecovery, PgError};
 use clap::Subcommand;
 use serde_json::{Value, json};
 use std::io::{Read, Write};
@@ -48,6 +48,14 @@ pub enum AccessCommand {
         project_id: String,
         #[arg(long)]
         request_id: String,
+    },
+    /// Owner-only read-only recovery diagnostics for an enabled workstream project.
+    /// Never restores, migrates history, or clears recovery blocks.
+    RecoveryInspect {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
     },
 }
 
@@ -178,6 +186,10 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
             project_id,
             request_id,
         } => OperatorAccess::outcome(&mut client, &tenant_id, &project_id, &request_id).await,
+        AccessCommand::RecoveryInspect {
+            tenant_id,
+            project_id,
+        } => OperatorRecovery::inspect(&mut client, &tenant_id, &project_id).await,
     }
     .map_err(pg_error)
 }

@@ -154,7 +154,7 @@ impl OperatorAccess {
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
             .start()
             .await?;
-        bind(&tx, tenant, project, false).await?;
+        require_owner_project(&tx, tenant, project, false).await?;
         let state = snapshot(&tx, tenant, project, actor, caller).await?;
         let result = json!({"state_digest":hash(&state)?,"state":state});
         tx.commit().await?;
@@ -169,7 +169,7 @@ impl OperatorAccess {
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
             .start()
             .await?;
-        bind(&tx, &plan.tenant_id, &plan.project_id, false).await?;
+        require_owner_project(&tx, &plan.tenant_id, &plan.project_id, false).await?;
         let state = snapshot(
             &tx,
             &plan.tenant_id,
@@ -202,7 +202,7 @@ impl OperatorAccess {
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
             .start()
             .await?;
-        bind(&tx, tenant, project, false).await?;
+        require_owner_project(&tx, tenant, project, false).await?;
         let row = tx.query_opt("SELECT result_json FROM awr_team.access_changes WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3",
             &[&tenant,&project,&request]).await?;
         let result = match row {
@@ -230,7 +230,7 @@ impl OperatorAccess {
         )?;
         crate::check_schema(client).await?;
         let tx = client.transaction().await?;
-        let operator = bind(&tx, &plan.tenant_id, &plan.project_id, true).await?;
+        let operator = require_owner_project(&tx, &plan.tenant_id, &plan.project_id, true).await?;
         if let Some(r) = tx.query_opt("SELECT request_hash,result_json FROM awr_team.access_changes WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3",
             &[&plan.tenant_id,&plan.project_id,&request]).await? {
             if r.get::<_,String>(0) != intent_hash { return Err(PgError::IdempotencyConflict); }
@@ -289,7 +289,7 @@ impl OperatorAccess {
     }
 }
 
-async fn bind(tx: &Transaction<'_>, tenant: &str, project: &str, write: bool) -> PgResult<String> {
+pub(crate) async fn require_owner_project(tx: &Transaction<'_>, tenant: &str, project: &str, write: bool) -> PgResult<String> {
     let role = tx
         .query_one(
             "SELECT current_user::text,pg_has_role(current_user,n.nspowner,'USAGE')
