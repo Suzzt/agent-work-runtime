@@ -25,6 +25,8 @@ pub use host_save::{
 mod execution;
 mod explanation_chain;
 mod assessment_explain;
+mod assessment_replay;
+mod assessment_shadow;
 mod fact_snapshot;
 mod fs_sync;
 mod management;
@@ -60,6 +62,18 @@ pub use assessment_explain::{
     AttachExplanationOptions, ExplanationSideEffects, ExplanationWireMetrics,
     attach_assessment_explanation, has_assessment_explanation,
     normalize_receipt_for_explanation, wire_bytes,
+};
+
+pub use assessment_replay::{
+    ASSESSMENT_REPLAY_CAPABILITY, REPLAY_SNAPSHOT_SCHEMA_ID, REPLAY_SNAPSHOT_SCHEMA_VERSION,
+    ReplayReport, ReplaySnapshot, ReplayStatus, capture_replay_snapshot, parse_replay_snapshot,
+    replay_assessment, replay_assessment_from_bytes, replay_missing_snapshot, rule_hash_for_policy,
+};
+pub use assessment_shadow::{
+    ASSESSMENT_ADVICE_MODE_CAPABILITY, ASSESSMENT_SHADOW_COMPARE_CAPABILITY, AdviceDeliveryMode,
+    AdviceModeEffect, ArmSummary, CompareCosts, HardProtectionFlags, ShadowCompareReport,
+    ShadowDifference, apply_advice_delivery_mode, attach_according_to_advice_mode,
+    hard_protections_after_disable, shadow_compare,
 };
 
 pub use fact_snapshot::{
