@@ -289,7 +289,12 @@ impl OperatorAccess {
     }
 }
 
-pub(crate) async fn require_owner_project(tx: &Transaction<'_>, tenant: &str, project: &str, write: bool) -> PgResult<String> {
+pub(crate) async fn require_owner_project(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    write: bool,
+) -> PgResult<String> {
     let role = tx
         .query_one(
             "SELECT current_user::text,pg_has_role(current_user,n.nspowner,'USAGE')

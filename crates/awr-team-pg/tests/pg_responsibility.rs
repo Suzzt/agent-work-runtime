@@ -183,7 +183,6 @@ async fn agent_swap_requires_explicit_binding_not_actor_kind() {
     assert_eq!(claimed.owner, Some(alice));
 }
 
-
 #[tokio::test]
 async fn responsibility_rls_blocks_unscoped_and_cross_tenant_app_reads() {
     let (_g, admin, store) = setup().await;
@@ -241,7 +240,10 @@ async fn responsibility_rls_blocks_unscoped_and_cross_tenant_app_reads() {
         .await
         .unwrap()
         .get(0);
-    assert_eq!(leaked, 0, "unscoped app must not read persons across tenants");
+    assert_eq!(
+        leaked, 0,
+        "unscoped app must not read persons across tenants"
+    );
 
     // Wrong-tenant scope must not reveal tenant-b rows.
     let tx = app.transaction().await.unwrap();
@@ -280,7 +282,10 @@ async fn responsibility_rls_blocks_unscoped_and_cross_tenant_app_reads() {
         .unwrap();
     assert!(
         scoped
-            .execute("UPDATE awr_team.responsibility_events SET event_type='tamper'", &[])
+            .execute(
+                "UPDATE awr_team.responsibility_events SET event_type='tamper'",
+                &[]
+            )
             .await
             .is_err()
     );

@@ -53,11 +53,7 @@ fn event_type_str(op: ResponsibilityEventType) -> &'static str {
     }
 }
 
-fn load_collaborators(
-    conn: &Connection,
-    project: &str,
-    work: &str,
-) -> Result<Vec<PersonId>> {
+fn load_collaborators(conn: &Connection, project: &str, work: &str) -> Result<Vec<PersonId>> {
     conn.prepare(
         "SELECT person_id FROM task_collaborators WHERE project_id=?1 AND work_item_id=?2 ORDER BY person_id",
     )
@@ -159,7 +155,6 @@ fn load_task(conn: &Connection, project: &str, work: &str) -> Result<Option<Task
     }))
 }
 
-
 fn begin_immediate(conn: &mut Connection) -> Result<rusqlite::Transaction<'_>> {
     conn.transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(db_error)
@@ -210,9 +205,12 @@ fn ensure_person(conn: &Connection, project: &str, person: &PersonId, now: i64) 
 fn persist_task(conn: &Connection, task: &TaskResponsibility, now: i64) -> Result<()> {
     let (exec_kind, exec_person, exec_agent, exec_binding) = match &task.current_executor {
         None => (None, None, None, None),
-        Some(ExecutionInstance::Person { person_id }) => {
-            (Some("person"), Some(person_id.as_str().to_string()), None, None)
-        }
+        Some(ExecutionInstance::Person { person_id }) => (
+            Some("person"),
+            Some(person_id.as_str().to_string()),
+            None,
+            None,
+        ),
         Some(ExecutionInstance::AgentRun {
             person_id,
             agent_id,
@@ -413,13 +411,14 @@ impl Store {
         Ok(())
     }
 
-    pub fn bind_person_agent(
-        &mut self,
-        project: Id,
-        binding: &PersonAgentBinding,
-    ) -> Result<()> {
+    pub fn bind_person_agent(&mut self, project: Id, binding: &PersonAgentBinding) -> Result<()> {
         let project = project.to_string();
-        ensure_person(&self.conn, &project, &binding.person_id, binding.created_at_ms)?;
+        ensure_person(
+            &self.conn,
+            &project,
+            &binding.person_id,
+            binding.created_at_ms,
+        )?;
         let status = match binding.status {
             BindingStatus::Active => "active",
             BindingStatus::Disabled => "disabled",
@@ -502,11 +501,17 @@ impl Store {
         req: &AssignResponsibilityRequest,
     ) -> Result<(TaskResponsibility, ResponsibilityReceipt)> {
         let project_s = project.to_string();
-        { let tx = begin_immediate(&mut self.conn)?;
+        {
+            let tx = begin_immediate(&mut self.conn)?;
             let now = now_millis()?;
             let before = load_task(&tx, &project_s, work_item_id)?
                 .unwrap_or_else(|| TaskResponsibility::unassigned(&project_s, work_item_id));
-            if let Some(receipt) = replay_receipt(&tx, &project_s, &req.request_key, ResponsibilityEventType::Assigned)? {
+            if let Some(receipt) = replay_receipt(
+                &tx,
+                &project_s,
+                &req.request_key,
+                ResponsibilityEventType::Assigned,
+            )? {
                 let after = load_task(&tx, &project_s, work_item_id)?.unwrap_or(before);
                 tx.commit().map_err(db_error)?;
                 return Ok((after, receipt));
@@ -536,11 +541,17 @@ impl Store {
         req: &AcceptResponsibilityRequest,
     ) -> Result<(TaskResponsibility, ResponsibilityReceipt)> {
         let project_s = project.to_string();
-        { let tx = begin_immediate(&mut self.conn)?;
+        {
+            let tx = begin_immediate(&mut self.conn)?;
             let now = now_millis()?;
             let before = load_task(&tx, &project_s, work_item_id)?
                 .ok_or_else(|| Error::NotFound("task responsibility missing".into()))?;
-            if let Some(receipt) = replay_receipt(&tx, &project_s, &req.request_key, ResponsibilityEventType::Accepted)? {
+            if let Some(receipt) = replay_receipt(
+                &tx,
+                &project_s,
+                &req.request_key,
+                ResponsibilityEventType::Accepted,
+            )? {
                 let after = load_task(&tx, &project_s, work_item_id)?.unwrap_or(before);
                 tx.commit().map_err(db_error)?;
                 return Ok((after, receipt));
@@ -570,13 +581,17 @@ impl Store {
         req: &ClaimExecutionRequest,
     ) -> Result<(TaskResponsibility, ResponsibilityReceipt)> {
         let project_s = project.to_string();
-        { let tx = begin_immediate(&mut self.conn)?;
+        {
+            let tx = begin_immediate(&mut self.conn)?;
             let now = now_millis()?;
             let before = load_task(&tx, &project_s, work_item_id)?
                 .unwrap_or_else(|| TaskResponsibility::unassigned(&project_s, work_item_id));
-            if let Some(receipt) =
-                replay_receipt(&tx, &project_s, &req.request_key, ResponsibilityEventType::ExecutionClaimed)?
-            {
+            if let Some(receipt) = replay_receipt(
+                &tx,
+                &project_s,
+                &req.request_key,
+                ResponsibilityEventType::ExecutionClaimed,
+            )? {
                 let after = load_task(&tx, &project_s, work_item_id)?.unwrap_or(before);
                 tx.commit().map_err(db_error)?;
                 return Ok((after, receipt));
@@ -612,13 +627,17 @@ impl Store {
         by_person: &PersonId,
     ) -> Result<(TaskResponsibility, ResponsibilityReceipt)> {
         let project_s = project.to_string();
-        { let tx = begin_immediate(&mut self.conn)?;
+        {
+            let tx = begin_immediate(&mut self.conn)?;
             let now = now_millis()?;
             let before = load_task(&tx, &project_s, work_item_id)?
                 .ok_or_else(|| Error::NotFound("task responsibility missing".into()))?;
-            if let Some(receipt) =
-                replay_receipt(&tx, &project_s, request_key, ResponsibilityEventType::ExecutionReleased)?
-            {
+            if let Some(receipt) = replay_receipt(
+                &tx,
+                &project_s,
+                request_key,
+                ResponsibilityEventType::ExecutionReleased,
+            )? {
                 let after = load_task(&tx, &project_s, work_item_id)?.unwrap_or(before);
                 tx.commit().map_err(db_error)?;
                 return Ok((after, receipt));
@@ -648,7 +667,8 @@ impl Store {
         req: &TransferOwnerRequest,
     ) -> Result<(TaskResponsibility, ResponsibilityReceipt)> {
         let project_s = project.to_string();
-        { let tx = begin_immediate(&mut self.conn)?;
+        {
+            let tx = begin_immediate(&mut self.conn)?;
             let now = now_millis()?;
             let before = load_task(&tx, &project_s, work_item_id)?
                 .ok_or_else(|| Error::NotFound("task responsibility missing".into()))?;
@@ -693,13 +713,17 @@ impl Store {
         new_executor: ExecutionInstance,
     ) -> Result<(TaskResponsibility, ResponsibilityReceipt)> {
         let project_s = project.to_string();
-        { let tx = begin_immediate(&mut self.conn)?;
+        {
+            let tx = begin_immediate(&mut self.conn)?;
             let now = now_millis()?;
             let before = load_task(&tx, &project_s, work_item_id)?
                 .ok_or_else(|| Error::NotFound("task responsibility missing".into()))?;
-            if let Some(receipt) =
-                replay_receipt(&tx, &project_s, request_key, ResponsibilityEventType::ExecutionClaimed)?
-            {
+            if let Some(receipt) = replay_receipt(
+                &tx,
+                &project_s,
+                request_key,
+                ResponsibilityEventType::ExecutionClaimed,
+            )? {
                 let after = load_task(&tx, &project_s, work_item_id)?.unwrap_or(before);
                 tx.commit().map_err(db_error)?;
                 return Ok((after, receipt));
@@ -739,13 +763,17 @@ impl Store {
         pending: ResponsibilityPending,
     ) -> Result<(TaskResponsibility, ResponsibilityReceipt)> {
         let project_s = project.to_string();
-        { let tx = begin_immediate(&mut self.conn)?;
+        {
+            let tx = begin_immediate(&mut self.conn)?;
             let now = now_millis()?;
             let before = load_task(&tx, &project_s, work_item_id)?
                 .ok_or_else(|| Error::NotFound("task responsibility missing".into()))?;
-            if let Some(receipt) =
-                replay_receipt(&tx, &project_s, request_key, ResponsibilityEventType::PendingMarked)?
-            {
+            if let Some(receipt) = replay_receipt(
+                &tx,
+                &project_s,
+                request_key,
+                ResponsibilityEventType::PendingMarked,
+            )? {
                 let after = load_task(&tx, &project_s, work_item_id)?.unwrap_or(before);
                 tx.commit().map_err(db_error)?;
                 return Ok((after, receipt));
