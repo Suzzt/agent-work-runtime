@@ -1,0 +1,100 @@
+{
+  "contract_id": "awr-assessment-contracts-v1",
+  "version": "1.0.0",
+  "work_item": "AWR-DEC-010",
+  "verified_main_sha": "8fa6679981c823842282a0a4b5b79b9c7165b2a4",
+  "schema_id": "awr-assessment-envelope-v1",
+  "assessment_profile": "management_and_action_rationale",
+  "authority_doc": "docs/reference/assessment.md",
+  "invariants": [
+    "no_model_or_network_required",
+    "source_first_single_work_authority",
+    "reuse_existing_admission_and_completion",
+    "unknown_is_not_false_or_zero",
+    "evidence_coverage_is_not_probability",
+    "no_second_decision_authority",
+    "decision_show_not_occupied"
+  ],
+  "fixtures": [
+    {
+      "id": "baseline-inventory",
+      "path": "baseline-inventory.json",
+      "checks": [
+        "tip_symbols",
+        "deltas"
+      ]
+    },
+    {
+      "id": "schema",
+      "path": "schema.json",
+      "checks": [
+        "envelope_shape",
+        "layer_ids"
+      ]
+    },
+    {
+      "id": "reason-codes",
+      "path": "reason-codes.json",
+      "checks": [
+        "codes",
+        "bases",
+        "actions"
+      ]
+    },
+    {
+      "id": "layers",
+      "path": "layers.json",
+      "checks": [
+        "five_layers",
+        "first_batch_mapping"
+      ]
+    },
+    {
+      "id": "read-boundaries",
+      "path": "read-boundaries.json",
+      "checks": [
+        "allowed",
+        "forbidden"
+      ]
+    },
+    {
+      "id": "legacy-compat",
+      "path": "legacy-compat.json",
+      "checks": [
+        "reuse_mapping",
+        "no_new_commands"
+      ]
+    },
+    {
+      "id": "consumers",
+      "path": "consumers.json",
+      "checks": [
+        "cli",
+        "mcp"
+      ]
+    },
+    {
+      "id": "unknown-fields",
+      "path": "unknown-fields.json",
+      "checks": [
+        "explicit_unknown",
+        "forbidden_coercions"
+      ]
+    },
+    {
+      "id": "examples",
+      "path": "examples.json",
+      "checks": [
+        "minimal_envelope",
+        "unsupported_unknown"
+      ]
+    }
+  ],
+  "out_of_scope": [
+    "AWR-DEC-011",
+    "AWR-DEC-012",
+    "general_scheduler",
+    "model_client",
+    "new_Decision_authority"
+  ]
+}

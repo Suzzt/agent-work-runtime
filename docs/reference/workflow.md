@@ -1,6 +1,7 @@
 # Preparing work with fewer steps
 
 For measurable task classification and upgrade rules, see [management intensity](management.md).
+The frozen first-batch assessment envelope and reuse mapping are in [engineering assessment](assessment.md).
 
 Use AWR's source ledger as a small work contract. Keep the outcome, current state,
 completion criteria and next action there. Link design documents and detailed
