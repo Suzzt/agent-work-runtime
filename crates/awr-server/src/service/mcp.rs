@@ -1,5 +1,6 @@
 //! Stateless MCP transport over the same transactional Team operations as HTTP.
 //! TMCP-012 adds project-admin access preview/apply/outcome tools (no raw secrets).
+//! TMCP-023 adds planning suggest/draft/preview/approve/publish/outcome tools.
 use super::*;
 use axum::{
     body::{Body, to_bytes},
@@ -114,7 +115,10 @@ fn catalog() -> Vec<Tool> {
         "execution_id":{"type":"string"},"handoff_id":{"type":"string"},
         "search":{"type":"string","maxLength":512},"cursor":{"type":"string","maxLength":4096},
         "limit":{"type":"integer","minimum":1,"maximum":100},
-        "max_context_bytes":{"type":"integer","minimum":1,"maximum":262144}
+        "max_context_bytes":{"type":"integer","minimum":1,"maximum":262144},
+        "source_path":{"type":"string","maxLength":512},
+        "artifact_id":{"type":"string","maxLength":128},
+        "expected_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}
     }});
     let command = json!({"type":"object","additionalProperties":false,
     "required":["protocol_version","request_id","op","workstream_id","work_id","coordinator_epoch","expected_project_revision","expected_authority_version","expected_ownership_version","expected_contract_hash","args"],
@@ -190,6 +194,74 @@ fn catalog() -> Vec<Tool> {
             "subject_actor_id":{"type":"string","maxLength":128},
             "subject_client_id":{"type":"string","maxLength":128}
         }});
+    let planning_suggest = json!({
+        "type":"object","additionalProperties":false,
+        "required":["protocol_version","request_id","rationale","affected_work_keys"],
+        "properties":{
+            "protocol_version":{"type":"integer","const":1},
+            "request_id":{"type":"string","maxLength":128},
+            "rationale":{"type":"string","minLength":1,"maxLength":8192},
+            "affected_work_keys":{"type":"array","maxItems":256,"items":{"type":"string","maxLength":128}},
+            "proposed_notes":{},
+            "author_person_id":{"type":["string","null"],"maxLength":128}
+        }
+    });
+    let planning_draft = json!({
+        "type":"object","additionalProperties":false,
+        "required":["protocol_version","request_id","mode","changes"],
+        "properties":{
+            "protocol_version":{"type":"integer","const":1},
+            "request_id":{"type":"string","maxLength":128},
+            "mode":{"type":"string","enum":["create","edit"]},
+            "candidate_id":{"type":["string","null"],"maxLength":128},
+            "changes":{"type":"array","maxItems":256},
+            "suggestion_ids":{"type":"array","maxItems":256,"items":{"type":"string"}},
+            "allowed_spec_roots":{"type":"array","maxItems":64,"items":{"type":"string"}},
+            "project_goal_keys":{"type":"array","maxItems":64,"items":{"type":"string"}},
+            "self_approve_policy":{"type":["object","null"]},
+            "author_person_id":{"type":["string","null"],"maxLength":128}
+        }
+    });
+    let planning_preview = json!({
+        "type":"object","additionalProperties":false,
+        "required":["protocol_version","candidate_id"],
+        "properties":{
+            "protocol_version":{"type":"integer","const":1},
+            "candidate_id":{"type":"string","maxLength":128}
+        }
+    });
+    let planning_approve = json!({
+        "type":"object","additionalProperties":false,
+        "required":["protocol_version","request_id","candidate_id","candidate_digest"],
+        "properties":{
+            "protocol_version":{"type":"integer","const":1},
+            "request_id":{"type":"string","maxLength":128},
+            "candidate_id":{"type":"string","maxLength":128},
+            "candidate_digest":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+            "author_person_id":{"type":["string","null"],"maxLength":128}
+        }
+    });
+    let planning_publish = json!({
+        "type":"object","additionalProperties":false,
+        "required":["protocol_version","request_id","candidate_id","candidate_digest"],
+        "properties":{
+            "protocol_version":{"type":"integer","const":1},
+            "request_id":{"type":"string","maxLength":128},
+            "candidate_id":{"type":"string","maxLength":128},
+            "candidate_digest":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+            "activate":{"type":"boolean","default":false},
+            "impact_proven":{"type":"boolean","default":false},
+            "stopped_work_ids":{"type":"array","maxItems":256,"items":{"type":"string","maxLength":128}}
+        }
+    });
+    let planning_outcome = json!({
+        "type":"object","additionalProperties":false,
+        "required":["protocol_version","request_id"],
+        "properties":{
+            "protocol_version":{"type":"integer","const":1},
+            "request_id":{"type":"string","maxLength":128}
+        }
+    });
     vec![
         Tool::new("awr_team_query",
             "Scoped Team reads. Begin with capabilities, then workstreams.list or work.prepare. The endpoint binds the project; bearer grants bind the client. Tool discovery is navigation-only; each query rechecks work.read. Re-prepare after relevant changes. No execution admission.",
@@ -215,6 +287,30 @@ fn catalog() -> Vec<Tool> {
             "Project-admin only. Query the receipt for an original access.apply request_id before retrying. Returns redacted identity and auth metadata only. Requires access.manage_project.",
             access_outcome.as_object().unwrap().clone())
             .with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(false)),
+        Tool::new("awr_team_planning_suggest",
+            "Submit a planning suggestion (planning.propose). Not claimable and does not add formal work or mutate live deps/acceptance. Uses the same identity/action gate as HTTP. Stable request_id for idempotent receipts.",
+            planning_suggest.as_object().unwrap().clone())
+            .with_annotations(ToolAnnotations::new().read_only(false).destructive(false).idempotent(true).open_world(false)),
+        Tool::new("awr_team_planning_draft",
+            "Create or edit a planning draft candidate (planning.edit_draft). Split/cancel/archive are DraftChange ops inside changes. No hard-delete of history and no forging done via status. Stable request_id.",
+            planning_draft.as_object().unwrap().clone())
+            .with_annotations(ToolAnnotations::new().read_only(false).destructive(false).idempotent(true).open_world(false)),
+        Tool::new("awr_team_planning_preview",
+            "Preview exact diffs, affected tasks, runtime impact and review requirements for a planning candidate. Read-only; does not mutate.",
+            planning_preview.as_object().unwrap().clone())
+            .with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(false)),
+        Tool::new("awr_team_planning_approve",
+            "Approve a planning candidate bound to its current digest (planning.approve). Edited drafts cannot reuse old approvals.",
+            planning_approve.as_object().unwrap().clone())
+            .with_annotations(ToolAnnotations::new().read_only(false).destructive(false).idempotent(true).open_world(false)),
+        Tool::new("awr_team_planning_publish",
+            "Publish an approved candidate (planning.publish). Optional activate uses the registered sole source only — no client path/URL/SQL. On disconnect, query outcome with the same request_id.",
+            planning_publish.as_object().unwrap().clone())
+            .with_annotations(ToolAnnotations::new().read_only(false).destructive(true).idempotent(true).open_world(false)),
+        Tool::new("awr_team_planning_outcome",
+            "Query the receipt for an original planning request_id before retrying. Absent receipt is unknown — never resubmit with a new ID.",
+            planning_outcome.as_object().unwrap().clone())
+            .with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(false)),
     ]
 }
 
@@ -222,7 +318,7 @@ impl ServerHandler for Endpoint {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("awr-team-mcp", env!("CARGO_PKG_VERSION")))
-            .with_instructions("The URL binds one operator-registered project; bearer credentials are checked on every request. Begin with awr_team_query capabilities. Project admins manage members via awr_team_access_* tools after local owner bootstrap of the first admin. Raw credentials are never accepted or returned over MCP — generate them with awr-server access token and register only secret_hash. Work/session selectors bind a workstream; missing permissions never mean satisfied dependencies. Consume work.prepare before checkpointing. Session journals and claims grant no execution rights. Claim replay is a historical receipt; use claim.inspect for current lease state. If a command outcome is unknown, inspect its original request_id before an exact retry. Recheck context and permission after relevant changes. MCP connection closure never closes a durable work session.")
+            .with_instructions("The URL binds one operator-registered project; bearer credentials are checked on every request. Begin with awr_team_query capabilities. Project admins manage members via awr_team_access_* tools after local owner bootstrap of the first admin. Raw credentials are never accepted or returned over MCP — generate them with awr-server access token and register only secret_hash. Work/session selectors bind a workstream; missing permissions never mean satisfied dependencies. Consume work.prepare before checkpointing. Session journals and claims grant no execution rights. Claim replay is a historical receipt; use claim.inspect for current lease state. If a command outcome is unknown, inspect its original request_id before an exact retry. Planning mutations use awr_team_planning_* with stable request_id; on disconnect call awr_team_planning_outcome or planning.outcome before any new ID. Controlled source/artifact content uses source.content / artifact.content — never path/URL/history bypass. Recheck context and permission after relevant changes. MCP connection closure never closes a durable work session.")
     }
 
     fn get_tool(&self, name: &str) -> Option<Tool> {
@@ -386,6 +482,105 @@ impl ServerHandler for Endpoint {
                             request_id,
                         )
                         .await
+                }
+                "awr_team_planning_suggest" => {
+                    let req: awr_team_pg::PlanningSuggestRequest = serde_json::from_value(args)
+                        .map_err(|_| PgError::Protocol("invalid planning suggest".into()))?;
+                    self.state
+                        .store
+                        .source()
+                        .planning_suggest(
+                            &self.project.tenant_id,
+                            &self.project.project_id,
+                            &access.bearer,
+                            &req,
+                        )
+                        .await
+                }
+                "awr_team_planning_draft" => {
+                    let req: awr_team_pg::PlanningDraftRequest = serde_json::from_value(args)
+                        .map_err(|_| PgError::Protocol("invalid planning draft".into()))?;
+                    self.state
+                        .store
+                        .source()
+                        .planning_draft(
+                            &self.project.tenant_id,
+                            &self.project.project_id,
+                            &access.bearer,
+                            &req,
+                        )
+                        .await
+                }
+                "awr_team_planning_preview" => {
+                    let candidate_id = args
+                        .get("candidate_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| PgError::Protocol("invalid planning preview".into()))?;
+                    self.state
+                        .store
+                        .source()
+                        .preview_planning_candidate(
+                            &self.project.tenant_id,
+                            &self.project.project_id,
+                            &access.bearer,
+                            candidate_id,
+                        )
+                        .await
+                }
+                "awr_team_planning_approve" => {
+                    let req: awr_team_pg::PlanningApproveRequest = serde_json::from_value(args)
+                        .map_err(|_| PgError::Protocol("invalid planning approve".into()))?;
+                    self.state
+                        .store
+                        .source()
+                        .planning_approve(
+                            &self.project.tenant_id,
+                            &self.project.project_id,
+                            &access.bearer,
+                            &req,
+                        )
+                        .await
+                }
+                "awr_team_planning_publish" => {
+                    let req: awr_team_pg::PlanningPublishRequest = serde_json::from_value(args)
+                        .map_err(|_| PgError::Protocol("invalid planning publish".into()))?;
+                    self.state
+                        .store
+                        .source()
+                        .planning_publish(
+                            &self.project.tenant_id,
+                            &self.project.project_id,
+                            &access.bearer,
+                            &req,
+                        )
+                        .await
+                }
+                "awr_team_planning_outcome" => {
+                    let request_id = args
+                        .get("request_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| PgError::Protocol("invalid planning outcome".into()))?;
+                    match self
+                        .state
+                        .store
+                        .source()
+                        .get_planning_command_receipt(
+                            &self.project.tenant_id,
+                            &self.project.project_id,
+                            &access.bearer,
+                            request_id,
+                        )
+                        .await?
+                    {
+                        Some(v) => Ok(v),
+                        None => Ok(json!({
+                            "protocol":"awr-team-planning-command-v1",
+                            "request_id":request_id,
+                            "already_recorded":false,
+                            "result":null,
+                            "next_step":"absent receipt is unknown — wait/retry outcome before submitting a new request_id"
+                        })),
+                    }
                 }
                 _ => Err(PgError::Unsupported("tool unavailable".into())),
             }

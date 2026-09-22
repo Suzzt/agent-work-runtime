@@ -304,6 +304,13 @@ pub fn query_business_action(op: &str) -> Option<awr_team::Action> {
         "command.inspect",
         "claim.inspect",
         "execution.inspect",
+        "handoff.inspect",
+        "evidence.inspect",
+        "review.inspect",
+        "completion.inspect",
+        "source.content",
+        "artifact.content",
+        "planning.outcome",
     ];
     if QUERIES.contains(&op) {
         Some(awr_team::Action::WorkRead)
