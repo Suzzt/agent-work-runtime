@@ -4,7 +4,9 @@ pub(crate) mod action_auth;
 pub(crate) mod claims;
 pub(crate) mod executions;
 
-use crate::workstream_auth::{CommandAuthPhase, ReaderAuthority, authenticate_writer, authorize_command};
+use crate::workstream_auth::{
+    CommandAuthPhase, ReaderAuthority, authenticate_writer, authorize_command,
+};
 use crate::workstream_read::{WorkstreamQuery, read, work_binding};
 use crate::{PgError, PgPool, PgResult};
 use awr_core::Id;
@@ -204,7 +206,13 @@ impl WorkstreamCommandStore {
         // still requires a current explicit write grant at admission. Effect-phase
         // active-stream / attest / reconcile checks run after idempotent replay.
         // Project freeze/import/restore barriers remain stricter for all writes.
-        authorize_command(&auth, stream, &command.work_id, &command.op, CommandAuthPhase::Admission)?;
+        authorize_command(
+            &auth,
+            stream,
+            &command.work_id,
+            &command.op,
+            CommandAuthPhase::Admission,
+        )?;
         if auth.epoch != command.coordinator_epoch {
             return Err(PgError::EpochChanged);
         }
@@ -238,7 +246,13 @@ impl WorkstreamCommandStore {
         {
             return Err(PgError::PreconditionsChanged);
         }
-        authorize_command(&auth, stream, &command.work_id, &command.op, CommandAuthPhase::Effect)?;
+        authorize_command(
+            &auth,
+            stream,
+            &command.work_id,
+            &command.op,
+            CommandAuthPhase::Effect,
+        )?;
         let stored = tx.query_one("SELECT contract_json,contract_hash FROM awr_team.work_contracts
             WHERE tenant_id=$1 AND project_id=$2 AND snapshot_id=$3 AND scope_id='main' AND work_id=$4",
             &[&tenant,&project,&auth.snapshot,&command.work_id]).await?;
