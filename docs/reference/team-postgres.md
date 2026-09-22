@@ -42,7 +42,11 @@ connection and do not use the pool.
 
 TLS is an opt-in `tls` cargo feature (rustls + webpki-roots). With the feature
 enabled, `sslmode=require` in `AWR_TEAM_DATABASE_URL` selects a verified TLS
-connection; `disable`/`prefer` or an omitted sslmode stays plaintext. Without
+connection. The connector explicitly uses the AWS-LC rustls provider, so its
+construction does not depend on a process-global provider when another
+workspace dependency also enables `ring`. `disable`/`prefer` or an omitted
+sslmode stays plaintext. The driver accepts only `disable`, `prefer`, and
+`require`; it rejects libpq's `verify-ca` and `verify-full` spellings. Without
 the feature, a TLS-requiring URL fails with an explicit error instead of
 silently downgrading.
 

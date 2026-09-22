@@ -9,6 +9,9 @@
 //! `RecyclingMethod::Fast` is safe.
 use std::time::Duration;
 
+#[cfg(feature = "tls")]
+use std::sync::Arc;
+
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Timeouts};
 use tokio::sync::OnceCell;
 use tokio_postgres::config::SslMode;
@@ -78,24 +81,73 @@ fn parse_config(url: &str) -> PgResult<tokio_postgres::Config> {
 }
 
 fn tls_required(config: &tokio_postgres::Config) -> bool {
-    // tokio-postgres models libpq verify-ca/verify-full as Require; rustls
-    // always performs full certificate and hostname verification anyway.
+    // tokio-postgres accepts disable, prefer, and require. It rejects libpq's
+    // verify-ca and verify-full values while parsing instead of mapping them.
     matches!(config.get_ssl_mode(), SslMode::Require)
 }
 
 #[cfg(feature = "tls")]
-fn rustls_connector() -> tokio_postgres_rustls::MakeRustlsConnect {
+fn root_certificates() -> PgResult<rustls::RootCertStore> {
     let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let config = rustls::ClientConfig::builder()
-        .with_root_certificates(roots)
+
+    // Real PostgreSQL tests use a synthetic CA without changing system trust.
+    // This block is absent from normal library/server builds, including builds
+    // that merely enable every Cargo feature.
+    #[cfg(all(test, feature = "pg-tests"))]
+    let roots = {
+        let mut roots = roots;
+        if let Some(path) = TEST_ROOT_CERTIFICATE.get() {
+            use rustls::pki_types::{CertificateDer, pem::PemObject};
+
+            let certificates = CertificateDer::pem_file_iter(path).map_err(|error| {
+                PgError::Protocol(format!("failed to read test TLS root certificate: {error}"))
+            })?;
+            let mut added = 0;
+            for certificate in certificates {
+                let certificate = certificate.map_err(|error| {
+                    PgError::Protocol(format!(
+                        "failed to parse test TLS root certificate: {error}"
+                    ))
+                })?;
+                roots.add(certificate).map_err(|error| {
+                    PgError::Protocol(format!("invalid test TLS root certificate: {error}"))
+                })?;
+                added += 1;
+            }
+            if added == 0 {
+                return Err(PgError::Protocol(
+                    "test TLS root file contains no certificates".into(),
+                ));
+            }
+        }
+        roots
+    };
+
+    Ok(roots)
+}
+
+#[cfg(all(test, feature = "tls", feature = "pg-tests"))]
+static TEST_ROOT_CERTIFICATE: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+#[cfg(feature = "tls")]
+fn rustls_connector() -> PgResult<tokio_postgres_rustls::MakeRustlsConnect> {
+    let provider = rustls::crypto::aws_lc_rs::default_provider();
+    let config = rustls::ClientConfig::builder_with_provider(Arc::new(provider))
+        .with_safe_default_protocol_versions()
+        .map_err(|error| {
+            PgError::Protocol(format!(
+                "failed to configure TLS protocol versions: {error}"
+            ))
+        })?
+        .with_root_certificates(root_certificates()?)
         .with_no_client_auth();
-    tokio_postgres_rustls::MakeRustlsConnect::new(config)
+    Ok(tokio_postgres_rustls::MakeRustlsConnect::new(config))
 }
 
 #[cfg(not(feature = "tls"))]
 fn tls_disabled_error() -> PgError {
     PgError::Protocol(
-        "database url requires TLS (sslmode=require/verify-ca/verify-full) but awr-team-pg was built without the `tls` feature"
+        "database url requires TLS (sslmode=require) but awr-team-pg was built without the `tls` feature"
             .into(),
     )
 }
@@ -126,7 +178,7 @@ fn build_pool(config: tokio_postgres::Config) -> PgResult<Pool> {
     let manager = if tls_required(&config) {
         #[cfg(feature = "tls")]
         {
-            Manager::from_config(config, rustls_connector(), manager_config())
+            Manager::from_config(config, rustls_connector()?, manager_config())
         }
         #[cfg(not(feature = "tls"))]
         {
@@ -150,7 +202,7 @@ pub async fn connect(url: &str) -> PgResult<tokio_postgres::Client> {
     if tls_required(&config) {
         #[cfg(feature = "tls")]
         {
-            let (client, connection) = config.connect(rustls_connector()).await?;
+            let (client, connection) = config.connect(rustls_connector()?).await?;
             tokio::spawn(async move {
                 let _ = connection.await;
             });
@@ -172,6 +224,127 @@ pub async fn connect(url: &str) -> PgResult<tokio_postgres::Client> {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "tls")]
+    const TLS_CHILD_CASE_ENV: &str = "AWR_TEAM_PG_TLS_CHILD_CASE";
+    #[cfg(feature = "tls")]
+    const TLS_CHILD_ROUTE_ENV: &str = "AWR_TEAM_PG_TLS_CHILD_ROUTE";
+    #[cfg(feature = "tls")]
+    const TLS_CHILD_URL_ENV: &str = "AWR_TEAM_PG_TLS_CHILD_URL";
+    #[cfg(feature = "tls")]
+    const TLS_CHILD_EXPECT_SUCCESS_ENV: &str = "AWR_TEAM_PG_TLS_CHILD_EXPECT_SUCCESS";
+    #[cfg(all(feature = "tls", feature = "pg-tests"))]
+    const TLS_CHILD_ROOT_ENV: &str = "AWR_TEAM_PG_TLS_CHILD_ROOT";
+
+    #[cfg(feature = "tls")]
+    fn spawn_tls_child(
+        case: &str,
+        route: &str,
+        url: &str,
+        expect_success: bool,
+        root: Option<&str>,
+    ) {
+        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "pool::tests::tls_child_process_entry",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env_remove(TLS_CHILD_CASE_ENV)
+            .env_remove(TLS_CHILD_ROUTE_ENV)
+            .env_remove(TLS_CHILD_URL_ENV)
+            .env_remove(TLS_CHILD_EXPECT_SUCCESS_ENV)
+            .env_remove("AWR_TEAM_PG_TLS_CHILD_ROOT")
+            .env(TLS_CHILD_CASE_ENV, case)
+            .env(TLS_CHILD_ROUTE_ENV, route)
+            .env(TLS_CHILD_URL_ENV, url)
+            .env(
+                TLS_CHILD_EXPECT_SUCCESS_ENV,
+                if expect_success { "1" } else { "0" },
+            );
+        #[cfg(feature = "pg-tests")]
+        if let Some(root) = root {
+            command.env(TLS_CHILD_ROOT_ENV, root);
+        }
+        #[cfg(not(feature = "pg-tests"))]
+        assert!(root.is_none());
+
+        let output = command.output().expect("start fresh TLS test process");
+        assert!(
+            output.status.success(),
+            "TLS child {case}/{route} failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[cfg(feature = "tls")]
+    async fn run_tls_route(route: &str, url: &str) -> PgResult<()> {
+        let row = match route {
+            "dedicated" => {
+                connect(url)
+                    .await?
+                    .query_one(
+                        "SELECT current_user, current_database(), ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
+                        &[],
+                    )
+                    .await?
+            }
+            "pool" => PgPool::new(url)
+                .get()
+                .await?
+                .query_one(
+                    "SELECT current_user, current_database(), ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
+                    &[],
+                )
+                .await?,
+            other => panic!("unknown TLS child route {other}"),
+        };
+        let user: String = row.get(0);
+        let database: String = row.get(1);
+        let tls: bool = row.get(2);
+        assert_eq!(user, "awr_tls_test");
+        assert_eq!(database, "awr_tls_test");
+        assert!(tls, "accepted connection must use TLS");
+        Ok(())
+    }
+
+    #[cfg(feature = "tls")]
+    fn error_chain_has_connection_refused(error: &(dyn std::error::Error + 'static)) -> bool {
+        let mut current = Some(error);
+        while let Some(source) = current {
+            if source
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|io| io.kind() == std::io::ErrorKind::ConnectionRefused)
+            {
+                return true;
+            }
+            current = source.source();
+        }
+        false
+    }
+
+    #[cfg(all(feature = "tls", feature = "pg-tests"))]
+    fn validate_real_tls_url(raw: &str, expected_host: &str) -> u16 {
+        use tokio_postgres::config::{ChannelBinding, Host};
+
+        let config: tokio_postgres::Config = raw.parse().expect("valid real TLS test URL");
+        assert_eq!(config.get_ssl_mode(), SslMode::Require);
+        assert_eq!(config.get_channel_binding(), ChannelBinding::Require);
+        assert_eq!(config.get_user(), Some("awr_tls_test"));
+        assert_eq!(config.get_dbname(), Some("awr_tls_test"));
+        assert_eq!(config.get_hosts(), &[Host::Tcp(expected_host.into())]);
+        assert!(
+            config.get_hostaddrs().iter().all(|addr| addr.is_loopback()),
+            "TLS test hostaddr must be loopback"
+        );
+        let ports = config.get_ports();
+        assert_eq!(ports.len(), 1, "TLS test must use one explicit port");
+        assert_ne!(ports[0], 5432, "TLS test must not use the default PG port");
+        ports[0]
+    }
+
     #[tokio::test]
     async fn invalid_url_surfaces_on_first_acquire() {
         let pool = PgPool::new("not a url");
@@ -187,6 +360,116 @@ mod tests {
         match error {
             PgError::Protocol(message) => assert!(message.contains("tls"), "{message}"),
             other => panic!("unexpected error: {other}"),
+        }
+    }
+
+    #[test]
+    fn unsupported_libpq_sslmode_aliases_are_rejected_during_parse() {
+        for mode in ["verify-ca", "verify-full"] {
+            let url = format!("postgres://u:p@127.0.0.1:1/db?sslmode={mode}");
+            let error = parse_config(&url).expect_err("unsupported sslmode must fail");
+            assert!(matches!(error, PgError::Protocol(_)), "{error}");
+        }
+    }
+
+    /// Entry point used only by the parent tests below. The environment guard
+    /// makes an ordinary test-harness invocation a no-op.
+    #[cfg(feature = "tls")]
+    #[test]
+    fn tls_child_process_entry() {
+        let Ok(case) = std::env::var(TLS_CHILD_CASE_ENV) else {
+            return;
+        };
+        let route = std::env::var(TLS_CHILD_ROUTE_ENV).expect("TLS child route");
+        let url = std::env::var(TLS_CHILD_URL_ENV).expect("TLS child URL");
+        let expect_success = std::env::var(TLS_CHILD_EXPECT_SUCCESS_ENV).as_deref() == Ok("1");
+
+        if case == "provider" {
+            assert!(
+                rustls::crypto::CryptoProvider::get_default().is_none(),
+                "provider regression child must start without a process default"
+            );
+        }
+
+        #[cfg(feature = "pg-tests")]
+        if let Ok(path) = std::env::var(TLS_CHILD_ROOT_ENV) {
+            TEST_ROOT_CERTIFICATE
+                .set(std::path::PathBuf::from(path))
+                .expect("test root must be set once in a fresh process");
+        }
+
+        let runtime = tokio::runtime::Runtime::new().expect("create TLS child runtime");
+        let result = runtime.block_on(run_tls_route(&route, &url));
+        if expect_success {
+            result.unwrap_or_else(|error| panic!("TLS child {case}/{route} failed: {error}"));
+        } else {
+            let error = result.expect_err("TLS child must reject this connection");
+            let evidence = format!("{error:?}");
+            if case == "provider" {
+                assert!(
+                    error_chain_has_connection_refused(&error),
+                    "provider regression must reach the network: {evidence}"
+                );
+                assert!(
+                    rustls::crypto::CryptoProvider::get_default().is_none(),
+                    "explicit connector must not install a process default provider"
+                );
+                return;
+            }
+            let expected = match case.as_str() {
+                "untrusted" => "UnknownIssuer",
+                "wrong-host" => "NotValidForName",
+                "no-tls" => "server does not support TLS",
+                other => panic!("unknown failing TLS child case {other}"),
+            };
+            assert!(
+                evidence.contains(expected),
+                "TLS child {case}/{route} failed for the wrong reason: {evidence}"
+            );
+        }
+    }
+
+    #[cfg(feature = "tls")]
+    #[test]
+    fn explicit_provider_covers_dedicated_and_pool_in_fresh_processes() {
+        // Port 1 is expected to refuse the connection. Reaching that error in
+        // a new process proves connector construction did not consult a global
+        // default provider or panic first.
+        let url = "postgres://u:p@127.0.0.1:1/db?sslmode=require&connect_timeout=1";
+        for route in ["dedicated", "pool"] {
+            spawn_tls_child("provider", route, url, false, None);
+        }
+    }
+
+    #[cfg(all(feature = "tls", feature = "pg-tests"))]
+    #[test]
+    fn real_tls_postgres_contract_in_fresh_processes() {
+        let root = std::env::var("AWR_TEAM_PG_TLS_TEST_ROOT")
+            .expect("AWR_TEAM_PG_TLS_TEST_ROOT must name the synthetic CA PEM");
+        let trusted = std::env::var("AWR_TEAM_PG_TLS_TEST_TRUSTED_URL")
+            .expect("AWR_TEAM_PG_TLS_TEST_TRUSTED_URL must target isolated TLS PostgreSQL");
+        let wrong_host = std::env::var("AWR_TEAM_PG_TLS_TEST_WRONG_HOST_URL")
+            .expect("AWR_TEAM_PG_TLS_TEST_WRONG_HOST_URL must use the mismatched host");
+        let no_tls = std::env::var("AWR_TEAM_PG_TLS_TEST_NO_TLS_URL")
+            .expect("AWR_TEAM_PG_TLS_TEST_NO_TLS_URL must target isolated plaintext PostgreSQL");
+
+        let trusted_port = validate_real_tls_url(&trusted, "localhost");
+        assert_eq!(
+            validate_real_tls_url(&wrong_host, "127.0.0.1"),
+            trusted_port,
+            "wrong-host case must target the same TLS server"
+        );
+        let no_tls_port = validate_real_tls_url(&no_tls, "localhost");
+        assert_ne!(
+            trusted_port, no_tls_port,
+            "TLS and plaintext fixtures must use different isolated ports"
+        );
+
+        for route in ["dedicated", "pool"] {
+            spawn_tls_child("trusted", route, &trusted, true, Some(&root));
+            spawn_tls_child("untrusted", route, &trusted, false, None);
+            spawn_tls_child("wrong-host", route, &wrong_host, false, Some(&root));
+            spawn_tls_child("no-tls", route, &no_tls, false, Some(&root));
         }
     }
 
