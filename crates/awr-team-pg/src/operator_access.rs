@@ -5,7 +5,7 @@
 use crate::pool::PgPool;
 use crate::workstream_auth::{authenticate, authorize_domain_action};
 use crate::{PgError, PgResult};
-use awr_core::{Id, WorkstreamCatalog};
+use awr_core::{Id, WorkstreamAction, WorkstreamCatalog};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -589,6 +589,74 @@ fn is_admin_role(role: &str) -> bool {
     matches!(role, "admin" | "project_admin")
 }
 
+
+/// Authenticated client grant ceiling for project-admin access changes (TMCP-012).
+/// Membership `access.manage_project` alone is insufficient: every inspect/preview/
+/// apply/outcome must also be covered by the caller's explicit workstream manage
+/// grants, and requested grant bits must not exceed the caller's own bits.
+fn caller_grant<'a>(
+    auth: &'a crate::workstream_auth::ReaderAuthority,
+    stream: Id,
+) -> Option<&'a awr_core::WorkstreamGrant> {
+    auth.access
+        .grants
+        .iter()
+        .find(|grant| grant.workstream_id == stream)
+}
+
+fn require_project_manage_grant(auth: &crate::workstream_auth::ReaderAuthority) -> PgResult<()> {
+    if !auth.access.grants.iter().any(|grant| grant.manage) {
+        return Err(PgError::Forbidden);
+    }
+    Ok(())
+}
+
+fn enforce_client_grant_ceiling(
+    auth: &crate::workstream_auth::ReaderAuthority,
+    plan: &AdminAccessPlan,
+) -> PgResult<()> {
+    if plan.remove_membership || plan.grants.is_empty() {
+        // Membership/role-wide changes still require explicit manage somewhere.
+        return require_project_manage_grant(auth);
+    }
+    for desired in &plan.grants {
+        let caller = caller_grant(auth, desired.workstream_id).ok_or(PgError::Forbidden)?;
+        if !caller.manage {
+            return Err(PgError::Forbidden);
+        }
+        // Ceiling: cannot bootstrap bits beyond the authenticated client grant.
+        if (desired.read && !caller.read)
+            || (desired.write && !caller.write)
+            || (desired.manage && !caller.manage)
+        {
+            return Err(PgError::Forbidden);
+        }
+        auth.access
+            .authorize(&auth.catalog, desired.workstream_id, WorkstreamAction::Manage)
+            .map_err(|_| PgError::Forbidden)?;
+    }
+    Ok(())
+}
+
+fn enforce_inspect_grant_ceiling(
+    auth: &crate::workstream_auth::ReaderAuthority,
+    subject_streams: &[Id],
+) -> PgResult<()> {
+    if subject_streams.is_empty() {
+        return require_project_manage_grant(auth);
+    }
+    for stream in subject_streams {
+        let caller = caller_grant(auth, *stream).ok_or(PgError::Forbidden)?;
+        if !caller.manage {
+            return Err(PgError::Forbidden);
+        }
+        auth.access
+            .authorize(&auth.catalog, *stream, WorkstreamAction::Manage)
+            .map_err(|_| PgError::Forbidden)?;
+    }
+    Ok(())
+}
+
 /// App-role store for project-admin MCP preview/apply/outcome (not schema-owner).
 pub struct ProjectAccessStore {
     pool: Arc<PgPool>,
@@ -638,6 +706,7 @@ impl ProjectAccessStore {
             None,
         )?;
         let state = snapshot(&tx, tenant, project, subject_actor, subject_client).await?;
+        enforce_inspect_grant_ceiling(&auth, &active_grant_streams(&state))?;
         let impact = impact_report(&tx, tenant, project, subject_actor, subject_client).await?;
         let result = json!({
             "state_digest": hash(&state)?,
@@ -672,6 +741,7 @@ impl ProjectAccessStore {
             None,
             None,
         )?;
+        enforce_client_grant_ceiling(&auth, plan)?;
         refuse_self_special_elevation(&auth, plan)?;
         let owner = plan.as_owner_plan(tenant, project);
         let state = snapshot(
@@ -735,6 +805,8 @@ impl ProjectAccessStore {
             None,
             None,
         )?;
+        // Outcome/replay inspection still requires an explicit manage grant ceiling.
+        require_project_manage_grant(&auth)?;
         let row = tx
             .query_opt(
                 "SELECT result_json FROM awr_team.project_access_changes
@@ -781,6 +853,7 @@ impl ProjectAccessStore {
             None,
             None,
         )?;
+        enforce_client_grant_ceiling(&auth, plan)?;
         refuse_self_special_elevation(&auth, plan)?;
         if let Some(r) = tx
             .query_opt(
@@ -918,16 +991,34 @@ impl ProjectAccessStore {
         let self_demotion = plan.subject.id == auth.actor_id
             && (plan.remove_membership || !is_admin_role(&plan.role));
         if !self_demotion {
+            let live = authenticate(&tx, tenant, project, bearer).await?;
             authorize_domain_action(
-                &authenticate(&tx, tenant, project, bearer).await?,
+                &live,
                 awr_team::Action::AccessManageProject,
                 None,
                 None,
             )?;
+            enforce_client_grant_ceiling(&live, plan)?;
         }
         tx.commit().await?;
         Ok(json!({"replayed":false,"receipt":receipt,"raw_secrets_in_response":false}))
     }
+}
+
+
+fn active_grant_streams(state: &Value) -> Vec<Id> {
+    state
+        .get("grants")
+        .and_then(|g| g.as_array())
+        .into_iter()
+        .flatten()
+        .filter(|g| g.get("active").and_then(|a| a.as_bool()).unwrap_or(true))
+        .filter_map(|g| {
+            g.get("workstream_id")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<Id>().ok())
+        })
+        .collect()
 }
 
 fn redacted_state(state: &Value) -> Value {

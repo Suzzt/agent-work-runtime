@@ -11,6 +11,18 @@ use serde_json::json;
 const NEW_TOKEN: &str =
     "awr1.new-member.eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
+
+async fn enable_admin_manage(owner: &tokio_postgres::Client) {
+    owner
+        .batch_execute(
+            "UPDATE awr_team.workstream_grants
+             SET can_write=true, can_manage=true, grant_version=grant_version+1
+             WHERE client_id='cli-a'",
+        )
+        .await
+        .unwrap();
+}
+
 fn admin_plan_member() -> AdminAccessPlan {
     serde_json::from_value(json!({
         "protocol_version":1,
@@ -37,8 +49,9 @@ fn admin_plan_member() -> AdminAccessPlan {
 #[tokio::test]
 async fn project_admin_mcp_path_preview_apply_outcome_and_denies_non_admin() {
     let (_g, owner, db, store) = setup().await;
+    enable_admin_manage(&owner).await;
     let access = ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
-    // Token A is actor=agent role=admin — project admin.
+    // Token A is actor=agent role=admin — project admin with manage grant ceiling.
     let plan = admin_plan_member();
     let preview = access
         .preview(TENANT, PROJECT, A, &plan)
@@ -163,6 +176,7 @@ async fn project_admin_mcp_path_preview_apply_outcome_and_denies_non_admin() {
 #[tokio::test]
 async fn tenant_credential_revoke_refused_project_revoke_preserves_other_projects_and_last_admin() {
     let (_g, mut owner, db, _) = setup().await;
+    enable_admin_manage(&owner).await;
     let access = ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     // Seed a grant in another project for the same actor to prove project revoke is scoped.
     owner
@@ -180,12 +194,12 @@ async fn tenant_credential_revoke_refused_project_revoke_preserves_other_project
     let mut revoke_tenant: AdminAccessPlan = serde_json::from_value(json!({
         "protocol_version":1,
         "subject":{"id":"agent","kind":"agent","display_name":"Worker"},
-        "subject_client_id":"cli-a",
+        "subject_client_id":"cli-b",
         "role":"admin",
         "grants":[],
         "credential":null,
         "remove_membership":false,
-        "revoke_tenant_credentials":["reader-a"]
+        "revoke_tenant_credentials":["reader-b"]
     }))
     .unwrap();
     assert!(matches!(
@@ -193,7 +207,8 @@ async fn tenant_credential_revoke_refused_project_revoke_preserves_other_project
         Err(PgError::Forbidden)
     ));
 
-    // Project grant clear for cli-a should not delete other-project grants.
+    // Project grant clear for cli-b must not delete other-project grants (cli-a).
+    // Keep the admin caller's (cli-a) manage ceiling intact for later steps.
     revoke_tenant.revoke_tenant_credentials.clear();
     let preview = access
         .preview(TENANT, PROJECT, A, &revoke_tenant)
@@ -206,7 +221,7 @@ async fn tenant_credential_revoke_refused_project_revoke_preserves_other_project
             PROJECT,
             A,
             &revoke_tenant,
-            "clear-cli-a",
+            "clear-cli-b",
             preview["state_digest"].as_str().unwrap(),
             preview["plan_digest"].as_str().unwrap(),
         )
@@ -344,6 +359,7 @@ async fn tenant_credential_revoke_refused_project_revoke_preserves_other_project
 #[tokio::test]
 async fn concurrent_admin_applies_serialize_and_owner_receipts_stay_separate() {
     let (_g, owner, db, _) = setup().await;
+    enable_admin_manage(&owner).await;
     let access = ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     let plan = admin_plan_member();
     let preview = access.preview(TENANT, PROJECT, A, &plan).await.unwrap();
@@ -387,4 +403,73 @@ async fn concurrent_admin_applies_serialize_and_owner_receipts_stay_separate() {
         Err(PgError::Forbidden)
     ));
     let _ = owner;
+}
+
+#[tokio::test]
+async fn admin_membership_without_manage_grant_cannot_escalate_on_preview_or_apply() {
+    let (_g, owner, db, _) = setup().await;
+    let access = ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let plan = admin_plan_member();
+    // NONE: admin membership, client unscoped, zero grants — AccessManageProject alone
+    // must not bootstrap developer membership/credential/grants.
+    assert!(
+        matches!(
+            access.preview(TENANT, PROJECT, NONE, &plan).await,
+            Err(PgError::Forbidden)
+        ),
+        "NONE preview must enforce client grant ceiling"
+    );
+    assert!(
+        matches!(
+            access
+                .apply(
+                    TENANT,
+                    PROJECT,
+                    NONE,
+                    &plan,
+                    "none-escalate",
+                    "a".repeat(64).as_str(),
+                    "b".repeat(64).as_str(),
+                )
+                .await,
+            Err(PgError::Forbidden)
+        ),
+        "NONE apply must enforce client grant ceiling"
+    );
+    assert!(
+        matches!(
+            access
+                .inspect(TENANT, PROJECT, NONE, "agent", "cli-a")
+                .await,
+            Err(PgError::Forbidden)
+        ),
+        "NONE inspect must enforce client grant ceiling"
+    );
+    assert!(
+        matches!(
+            access.outcome(TENANT, PROJECT, NONE, "any").await,
+            Err(PgError::Forbidden)
+        ),
+        "NONE outcome must enforce client grant ceiling"
+    );
+
+    // Read-only grant (no manage) on an admin membership still cannot escalate.
+    enable_admin_manage(&owner).await;
+    owner
+        .batch_execute(
+            "UPDATE awr_team.workstream_grants
+             SET can_write=false, can_manage=false, grant_version=grant_version+1
+             WHERE client_id='cli-a'",
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        access.preview(TENANT, PROJECT, A, &plan).await,
+        Err(PgError::Forbidden)
+    ));
+
+    // Restoring manage+write allows the same plan (grant ceiling satisfied).
+    enable_admin_manage(&owner).await;
+    let preview = access.preview(TENANT, PROJECT, A, &plan).await.unwrap();
+    assert_eq!(preview["applied"], false);
 }
