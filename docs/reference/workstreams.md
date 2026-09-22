@@ -502,3 +502,7 @@ The synthetic [context fixture](../../tests/fixtures/workstreams/context.yaml)
 and [manifest](../../tests/fixtures/workstreams/context.toml) exercise the native
 CLI and MCP stdio compilation paths. These are protocol/fixture checks, not
 complete business acceptance or authenticated multi-client isolation.
+
+## Parallel / handoff business acceptance (WS-051)
+
+See [workstream-parallel-handoff-biz.md](workstream-parallel-handoff-biz.md).

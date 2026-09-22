@@ -1,0 +1,120 @@
+{
+  "namespace": "awr-ws-r2-ws-biz-01",
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "同迭代三线并行交付 交付"
+    }
+  ],
+  "work_items": [
+    {
+      "id": "P1-FE",
+      "title": "前端并行实现可用界面",
+      "status": "ready",
+      "depends_on": [],
+      "owner": null,
+      "intended_person": "person.morgan-lee",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "前端并行实现可用界面 完成并可复核"
+      ],
+      "next_action": "由 Morgan Lee 经 codex_cli 推进"
+    },
+    {
+      "id": "P1-BE",
+      "title": "后端并行实现接口",
+      "status": "planned",
+      "depends_on": [],
+      "owner": null,
+      "intended_person": "person.casey-wu",
+      "intended_role": "executor_peer",
+      "intended_client": "claude_code",
+      "acceptance": [
+        "后端并行实现接口 完成并可复核"
+      ],
+      "next_action": "由 Casey Wu 经 claude_code 推进"
+    },
+    {
+      "id": "P1-QA",
+      "title": "Web 协作台发起联调检查",
+      "status": "planned",
+      "depends_on": [
+        "P1-FE",
+        "P1-BE"
+      ],
+      "owner": null,
+      "intended_person": "person.drew-kim",
+      "intended_role": "web_operator",
+      "intended_client": "team_web",
+      "acceptance": [
+        "Web 协作台发起联调检查 完成并可复核"
+      ],
+      "next_action": "由 Drew Kim 经 team_web 推进"
+    },
+    {
+      "id": "P1-FLOW",
+      "title": "按试用反馈调整用户流程",
+      "status": "planned",
+      "depends_on": [
+        "P1-QA"
+      ],
+      "owner": null,
+      "intended_person": "person.morgan-lee",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "按试用反馈调整用户流程 完成并可复核"
+      ],
+      "next_action": "由 Morgan Lee 经 codex_cli 推进"
+    },
+    {
+      "id": "P1-EMPTY",
+      "title": "对齐空态跨模块约定",
+      "status": "planned",
+      "depends_on": [
+        "P1-FLOW"
+      ],
+      "owner": null,
+      "intended_person": "person.casey-wu",
+      "intended_role": "executor_peer",
+      "intended_client": "claude_code",
+      "acceptance": [
+        "对齐空态跨模块约定 完成并可复核"
+      ],
+      "next_action": "由 Casey Wu 经 claude_code 推进"
+    },
+    {
+      "id": "P1-REVIEW",
+      "title": "独立复核三线交付",
+      "status": "planned",
+      "depends_on": [
+        "P1-EMPTY"
+      ],
+      "owner": null,
+      "intended_person": "person.drew-kim",
+      "intended_role": "reviewer",
+      "intended_client": "team_web",
+      "acceptance": [
+        "独立复核三线交付 完成并可复核"
+      ],
+      "next_action": "由 Drew Kim 经 team_web 推进"
+    },
+    {
+      "id": "P1-DELIVER",
+      "title": "关联 PR 并完成交付",
+      "status": "planned",
+      "depends_on": [
+        "P1-REVIEW"
+      ],
+      "owner": null,
+      "intended_person": "person.morgan-lee",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "关联 PR 并完成交付 完成并可复核"
+      ],
+      "next_action": "由 Morgan Lee 经 codex_cli 推进"
+    }
+  ]
+}

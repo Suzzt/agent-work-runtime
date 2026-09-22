@@ -1,0 +1,77 @@
+{
+  "namespace": "awr-ws-r2-ws-biz-06",
+  "hard_gate": "time_forecast_stage_acceptance",
+  "nodes": [
+    {
+      "key": "T6-FORECAST",
+      "role": "executor",
+      "person_id": "person.nicky-fang",
+      "client_adapter": "codex_cli",
+      "depends_on": []
+    },
+    {
+      "key": "T6-CORE",
+      "role": "executor_peer",
+      "person_id": "person.peyton-cho",
+      "client_adapter": "claude_code",
+      "depends_on": [
+        "T6-FORECAST"
+      ]
+    },
+    {
+      "key": "T6-CP1",
+      "role": "web_operator",
+      "person_id": "person.sydney-ma",
+      "client_adapter": "team_web",
+      "depends_on": [
+        "T6-CORE"
+      ]
+    },
+    {
+      "key": "T6-ADJ",
+      "role": "executor",
+      "person_id": "person.nicky-fang",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "T6-CP1"
+      ]
+    },
+    {
+      "key": "T6-CP2",
+      "role": "web_operator",
+      "person_id": "person.sydney-ma",
+      "client_adapter": "team_web",
+      "depends_on": [
+        "T6-ADJ"
+      ]
+    },
+    {
+      "key": "T6-REVIEW",
+      "role": "reviewer",
+      "person_id": "person.sydney-ma",
+      "client_adapter": "team_web",
+      "depends_on": [
+        "T6-CP2"
+      ]
+    },
+    {
+      "key": "T6-DELIVER",
+      "role": "executor",
+      "person_id": "person.nicky-fang",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "T6-REVIEW"
+      ]
+    }
+  ],
+  "reviewer_distinct_from": [
+    "executor",
+    "executor_peer"
+  ],
+  "required_surfaces": [
+    "codex_cli",
+    "claude_code",
+    "team_web"
+  ],
+  "handoff_requirement": "执行、同伴与复核的责任边界清晰；禁止同一 agent 会话同时签署执行与独立复核；须含真实 Web 操作。"
+}
