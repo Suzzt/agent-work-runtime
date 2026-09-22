@@ -5,6 +5,7 @@ mod document;
 mod freshness;
 mod indexer;
 mod ledger_mapping;
+mod publish_prep;
 mod limits;
 mod locator;
 mod manifest;
@@ -33,6 +34,13 @@ pub use indexer::{
     preview_index_project, scan_project, source_adapter, source_configuration,
 };
 pub use ledger_mapping::LedgerMapping;
+pub use publish_prep::{
+    DEFAULT_COMPLETION_POLICY, PARSER_VERSION, SOURCE_BINDING_FILE, SUPPORTED_LEDGER_ADAPTER,
+    WORKSTREAMS_FILE, FieldDiff, PublishPackageFile, PublishPrepOptions, PublishPreview,
+    ReferencedSpec, SoleSourceKind, SoleSourceLocation, SourceStatusNote, TeamPublishPackage,
+    prepare_publish_from_ledger_bytes, prepare_publish_from_server_directory,
+    source_status_notes_are_completion_receipts,
+};
 pub use limits::{MARKDOWN_READ_CAP, YAML_READ_CAP, source_read_cap};
 pub use locator::{Locator, SourceSnapshot, fingerprint, read_capped, read_source_capped};
 mod safe_fs;
