@@ -1,31 +1,16 @@
 #![cfg(feature = "pg-tests")]
 
-use awr_team_pg::{Bootstrap, ExecutionStore, LeaseStore, PgError, ReviewStore, migrate};
+mod common;
+
+use awr_team_pg::{ExecutionStore, LeaseStore, PgError, ReviewStore};
+use common::{fresh_team_schema, test_config, with_app_role};
 use serde_json::json;
 use sha2::Digest as _;
-use std::sync::{Mutex, MutexGuard};
-use tokio_postgres::{Client, NoTls};
+use std::sync::MutexGuard;
+use tokio_postgres::Client;
 
-static DB: Mutex<()> = Mutex::new(());
 const TENANT: &str = "tenant-a";
 const PROJECT: &str = "project-a";
-
-fn admin_url() -> String {
-    std::env::var("AWR_TEAM_DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://postgres:awr-test@127.0.0.1:55432/awr_team_test".into())
-}
-fn app_url() -> String {
-    admin_url().replacen("postgres:awr-test", "awr_app:app-test", 1)
-}
-async fn connect(url: &str) -> Client {
-    let (client, connection) = tokio_postgres::connect(url, NoTls)
-        .await
-        .expect("postgres 17 must be running for TEAM-P11");
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
-    client
-}
 
 async fn setup() -> (
     MutexGuard<'static, ()>,
@@ -35,20 +20,8 @@ async fn setup() -> (
     ExecutionStore,
     ReviewStore,
 ) {
-    let guard = DB.lock().unwrap_or_else(|e| e.into_inner());
-    let admin = connect(&admin_url()).await;
-    admin
-        .batch_execute("DROP SCHEMA IF EXISTS awr_team CASCADE")
-        .await
-        .unwrap();
-    migrate(&admin).await.unwrap();
-    admin
-        .batch_execute(
-            "DO $$ BEGIN CREATE ROLE awr_app LOGIN PASSWORD 'app-test' NOSUPERUSER NOBYPASSRLS; EXCEPTION WHEN duplicate_object THEN NULL; END $$",
-        )
-        .await
-        .unwrap();
-    Bootstrap::grant_app(&admin, "awr_app").await.unwrap();
+    let (guard, admin, db) = fresh_team_schema().await;
+    let config = with_app_role(&test_config(), &db);
     admin
         .batch_execute(
             r#"
@@ -82,10 +55,10 @@ INSERT INTO awr_team.work_contracts(
     (
         guard,
         admin,
-        LeaseStore::new(app_url()),
-        LeaseStore::new(app_url()),
-        ExecutionStore::new(app_url()),
-        ReviewStore::new(app_url()),
+        LeaseStore::from_config(config.clone()),
+        LeaseStore::from_config(config.clone()),
+        ExecutionStore::from_config(config.clone()),
+        ReviewStore::from_config(config),
     )
 }
 
@@ -151,6 +124,11 @@ async fn two_actors_handoff_review_and_complete_with_independent_oracle() {
         err,
         PgError::StaleFence | PgError::LeaseExpired | PgError::Forbidden
     ));
+    let stale = right
+        .require_fence(TENANT, PROJECT, "main", "work-a", "actor-b", claim.fence)
+        .await
+        .unwrap_err();
+    assert!(matches!(stale, PgError::StaleFence));
     right
         .require_fence(TENANT, PROJECT, "main", "work-a", "actor-b", handed.fence)
         .await
@@ -184,12 +162,12 @@ async fn two_actors_handoff_review_and_complete_with_independent_oracle() {
         .decide_review(TENANT, PROJECT, "reviewer-a", &round.id, "approve", "ok")
         .await
         .unwrap();
-    review
+    let receipt = review
         .complete(
             TENANT,
             PROJECT,
-            "reviewer-a",
-            "client-reviewer",
+            "actor-b",
+            "c2",
             "flow-complete-1",
             "work-a",
             "main",
@@ -199,6 +177,86 @@ async fn two_actors_handoff_review_and_complete_with_independent_oracle() {
         )
         .await
         .unwrap();
+
+    // Read persisted relationships through the independent admin connection,
+    // rather than asking the Store that performed the completion to verify it.
+    assert_eq!(receipt.work_id, "work-a");
+    assert_eq!(receipt.contract_hash, "hash-a");
+    assert_eq!(receipt.policy, "trusted_execution_and_review");
+    let runtime = admin
+        .query_one(
+            "SELECT state, selected_completion_id FROM awr_team.work_runtime
+             WHERE tenant_id=$1 AND project_id=$2 AND scope_id='main' AND work_id='work-a'",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap();
+    assert_eq!(runtime.get::<_, String>("state"), "completed");
+    assert_eq!(
+        runtime
+            .get::<_, Option<String>>("selected_completion_id")
+            .as_deref(),
+        Some(receipt.id.as_str())
+    );
+    let saved = admin
+        .query_one(
+            "SELECT id, contract_hash, policy, evidence_bundle_hash, approved_by_json
+             FROM awr_team.completion_receipts
+             WHERE tenant_id=$1 AND project_id=$2 AND scope_id='main' AND work_id='work-a'",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap();
+    assert_eq!(saved.get::<_, String>("id"), receipt.id);
+    assert_eq!(
+        saved.get::<_, String>("contract_hash"),
+        receipt.contract_hash
+    );
+    assert_eq!(saved.get::<_, String>("policy"), receipt.policy);
+    assert_eq!(
+        saved.get::<_, String>("evidence_bundle_hash"),
+        evidence.digest
+    );
+    assert_eq!(
+        saved.get::<_, serde_json::Value>("approved_by_json"),
+        json!({"approved_by": "reviewer-a", "submitted_by": "actor-b"})
+    );
+    let linked = admin
+        .query_one(
+            "SELECT e.id, e.execution_id, e.work_id, e.contract_hash, e.digest, ce.criterion_id
+             FROM awr_team.completion_evidence ce
+             JOIN awr_team.evidence e
+               ON (e.tenant_id, e.project_id, e.id) = (ce.tenant_id, ce.project_id, ce.evidence_id)
+             WHERE ce.tenant_id=$1 AND ce.project_id=$2 AND ce.completion_id=$3",
+            &[&TENANT, &PROJECT, &receipt.id],
+        )
+        .await
+        .unwrap();
+    assert_eq!(linked.get::<_, String>("id"), evidence.id);
+    assert_eq!(
+        linked.get::<_, Option<String>>("execution_id").as_deref(),
+        Some(prepared.id.as_str())
+    );
+    assert_eq!(linked.get::<_, String>("work_id"), "work-a");
+    assert_eq!(linked.get::<_, String>("contract_hash"), "hash-a");
+    assert_eq!(linked.get::<_, String>("digest"), evidence.digest);
+    assert_eq!(linked.get::<_, String>("criterion_id"), "contract");
+    let approval = admin
+        .query_one(
+            "SELECT r.author_actor_id, r.state, r.bundle_hash, d.reviewer_actor_id, d.decision
+             FROM awr_team.review_rounds r
+             JOIN awr_team.review_decisions d
+               ON (d.tenant_id, d.project_id, d.review_round_id) = (r.tenant_id, r.project_id, r.id)
+             WHERE r.tenant_id=$1 AND r.project_id=$2 AND r.id=$3 AND r.work_id='work-a'",
+            &[&TENANT, &PROJECT, &round.id],
+        )
+        .await
+        .unwrap();
+    assert_eq!(approval.get::<_, String>("author_actor_id"), "actor-b");
+    assert_eq!(approval.get::<_, String>("state"), "approved");
+    assert_eq!(approval.get::<_, String>("bundle_hash"), evidence.digest);
+    assert_eq!(approval.get::<_, String>("reviewer_actor_id"), "reviewer-a");
+    assert_eq!(approval.get::<_, String>("decision"), "approve");
 
     let receipts: i64 = admin
         .query_one(
