@@ -9,11 +9,11 @@ mod lease;
 mod lock_order;
 mod migrate;
 mod operator_access;
-mod operator_recovery;
-mod operator_history;
 mod operator_backup;
-mod operator_quarantine;
 mod operator_execution_attribution;
+mod operator_history;
+mod operator_quarantine;
+mod operator_recovery;
 mod path;
 mod pool;
 mod read;
@@ -28,22 +28,33 @@ mod workstream_read;
 
 pub use bootstrap::Bootstrap;
 pub use error::{PgError, PgResult};
-pub use execution::{ExecutionRecord, ExecutionStore, OutboxDelivery, admit_live_fence, exactly_once_supported, unknown_effect_retains_resources};
+pub use execution::{
+    ExecutionRecord, ExecutionStore, OutboxDelivery, admit_live_fence, exactly_once_supported,
+    unknown_effect_retains_resources,
+};
 pub use graph::{
     DependencyEdge, GraphStore, ResourceBound, ResourceDomain, ResourceLeaseBind, SplitProposal,
-    paths_conflict, require_main_scope, resource_domain, resources_conflict, validate_required_graph,
-    validate_resource_kind,
+    paths_conflict, require_main_scope, resource_domain, resources_conflict,
+    validate_required_graph, validate_resource_kind,
 };
 pub use import::{BackupRecord, FencingBarrier, ImportJob, ImportStore, InspectReport, RestoreRun};
 pub use lease::{ClaimRecord, LeaseStore, SessionRecord};
-pub use lock_order::{ResourceLockKey, lock_claim_after_work, lock_resources_sorted, lock_works_sorted, sort_resource_keys, sort_work_ids};
+pub use lock_order::{
+    ResourceLockKey, lock_claim_after_work, lock_resources_sorted, lock_works_sorted,
+    sort_resource_keys, sort_work_ids,
+};
 pub use migrate::{EXPECTED_SCHEMA_VERSION, check_schema, migrate};
-pub use operator_access::{AccessActor, AccessCredential, AccessGrant, AccessPlan, AdminAccessPlan, OperatorAccess, ProjectAccessStore};
-pub use operator_recovery::OperatorRecovery;
-pub use operator_history::OperatorHistory;
+pub use operator_access::{
+    AccessActor, AccessCredential, AccessGrant, AccessPlan, AdminAccessPlan, OperatorAccess,
+    ProjectAccessStore,
+};
 pub use operator_backup::OperatorBackup;
+pub use operator_execution_attribution::{
+    ExecutionAttributionEntry, ExecutionAttributionPlan, OperatorExecutionAttribution,
+};
+pub use operator_history::OperatorHistory;
 pub use operator_quarantine::OperatorQuarantine;
-pub use operator_execution_attribution::{ExecutionAttributionEntry, ExecutionAttributionPlan, OperatorExecutionAttribution};
+pub use operator_recovery::OperatorRecovery;
 pub use path::{
     MAX_FILE_BYTES, MAX_PACKAGE_BYTES, MAX_SOURCE_FILES, validate_package, validate_source_path,
 };
@@ -60,11 +71,11 @@ pub use scoped_runner::{
     ReferenceReportRequest, ReferenceRunRequest, ReferenceWrite, ReferenceWritePlan,
     ScopedReferenceRunner,
 };
+pub use source::planning::{DraftCandidateCreate, SuggestionSubmit};
 pub use source::{
     CandidateRecord, CurrentSource, CurrentWorkstreamSource, IngestRequest, SOURCE_BINDING_FILE,
     SoleSourceBinding, SoleSourceKind, SourceFile, SourceStore, WORKSTREAMS_FILE,
 };
-pub use source::planning::{DraftCandidateCreate, SuggestionSubmit};
 pub use tx::{CommandOutcome, CommandRequest, TeamStore};
 pub use workstream_auth::{
     command_business_action, map_membership_role, query_business_action, workstream_credential_hash,

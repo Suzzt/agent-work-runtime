@@ -129,10 +129,19 @@ pub fn router(
     let mut router = Router::new()
         .route("/v1/projects/{project}/query", post(query))
         .route("/v1/projects/{project}/command", post(command))
-        .route("/v1/projects/{project}/access/inspect", post(access_inspect))
-        .route("/v1/projects/{project}/access/preview", post(access_preview))
+        .route(
+            "/v1/projects/{project}/access/inspect",
+            post(access_inspect),
+        )
+        .route(
+            "/v1/projects/{project}/access/preview",
+            post(access_preview),
+        )
         .route("/v1/projects/{project}/access/apply", post(access_apply))
-        .route("/v1/projects/{project}/access/outcome", post(access_outcome))
+        .route(
+            "/v1/projects/{project}/access/outcome",
+            post(access_outcome),
+        )
         .layer(DefaultBodyLimit::max(65536))
         .with_state(state.clone());
     for project in state.projects.values() {
@@ -244,7 +253,6 @@ async fn dispatch(
         Err(_) => unavailable(),
     }
 }
-
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

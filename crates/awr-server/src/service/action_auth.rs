@@ -71,7 +71,6 @@ pub fn reject_forged_authority_fields(value: &Value) -> Result<(), &'static str>
     Ok(())
 }
 
-
 /// Access-management tools may name a *subject* membership plan, but still
 /// refuse caller-identity forgery and raw secret material in ordinary MCP args.
 pub fn reject_access_management_forgeries(value: &Value) -> Result<(), &'static str> {
@@ -139,7 +138,10 @@ mod tests {
 
     #[test]
     fn shared_maps_match_pg_exports() {
-        assert_eq!(command_action_name("claim.acquire"), Some("claim.manage_own"));
+        assert_eq!(
+            command_action_name("claim.acquire"),
+            Some("claim.manage_own")
+        );
         assert_eq!(
             command_action_name("execution.report"),
             Some("execution.request_and_report_own")
@@ -184,8 +186,11 @@ mod tests {
         assert!(reject_access_management_forgeries(&plan).is_ok());
         assert!(reject_access_management_forgeries(&json!({"tenant_id":"x","plan":{}})).is_err());
         assert!(reject_access_management_forgeries(&json!({"bearer":"awr1.x","plan":{}})).is_err());
-        assert!(reject_access_management_forgeries(&json!({
-            "plan":{"subject":{"id":"a","kind":"agent","display_name":"A","bearer":"nope"}}
-        })).is_err());
+        assert!(
+            reject_access_management_forgeries(&json!({
+                "plan":{"subject":{"id":"a","kind":"agent","display_name":"A","bearer":"nope"}}
+            }))
+            .is_err()
+        );
     }
 }

@@ -6,9 +6,9 @@
 
 use awr_team::{SourceActivationPlan, WorkContract, WorkId};
 use awr_team_pg::{
-    DependencyEdge, GraphStore, IngestRequest, LeaseStore, PgError, ResourceBound, ResourceLeaseBind,
-    SourceFile, SourceStore, paths_conflict, require_main_scope, resources_conflict,
-    validate_required_graph,
+    DependencyEdge, GraphStore, IngestRequest, LeaseStore, PgError, ResourceBound,
+    ResourceLeaseBind, SourceFile, SourceStore, paths_conflict, require_main_scope,
+    resources_conflict, validate_required_graph,
 };
 use serde_json::json;
 use std::sync::MutexGuard;
@@ -585,7 +585,6 @@ async fn removed_claimed_child_blocks_activation_but_expired_claim_does_not() {
         .await
         .expect("expired claim must not block activation");
 }
-
 
 #[tokio::test]
 async fn worktree_local_and_shared_external_resources_are_distinct() {
