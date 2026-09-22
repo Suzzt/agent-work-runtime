@@ -251,7 +251,7 @@ fn catalog() -> Vec<Tool> {
             "candidate_digest":{"type":"string","pattern":"^[0-9a-f]{64}$"},
             "activate":{"type":"boolean","default":false},
             "impact_proven":{"type":"boolean","default":false},
-            "stopped_work_ids":{"type":"array","maxItems":256,"items":{"type":"string","maxLength":128}}
+            "publish_receipt_id":{"type":["string","null"],"maxLength":128},"stopped_work_ids":{"type":"array","maxItems":256,"items":{"type":"string","maxLength":128}}
         }
     });
     let planning_outcome = json!({

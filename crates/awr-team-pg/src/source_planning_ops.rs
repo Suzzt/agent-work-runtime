@@ -88,6 +88,10 @@ pub struct PlanningPublishRequest {
     /// When true, also activate writeback using the registered sole source.
     #[serde(default)]
     pub activate: bool,
+    /// When activating after a prior publish-only receipt, pass that receipt id
+    /// (and omit re-publish). Uses a fresh request_id for the activate receipt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publish_receipt_id: Option<String>,
     #[serde(default)]
     pub impact_proven: bool,
     #[serde(default)]
@@ -404,36 +408,54 @@ impl SourceStore {
             }
             return Ok(existing);
         }
-        let published = self
-            .publish_planning_candidate(
-                tenant_id,
-                project_id,
-                bearer,
-                &req.candidate_id,
-                &req.candidate_digest,
-            )
-            .await?;
         let result = if req.activate {
-            let receipt_id = published["receipt_id"]
-                .as_str()
-                .ok_or_else(|| PgError::Protocol("publish receipt missing".into()))?;
+            let receipt_id = if let Some(id) = req.publish_receipt_id.as_deref() {
+                id.to_string()
+            } else {
+                let published = self
+                    .publish_planning_candidate(
+                        tenant_id,
+                        project_id,
+                        bearer,
+                        &req.candidate_id,
+                        &req.candidate_digest,
+                    )
+                    .await?;
+                published["receipt_id"]
+                    .as_str()
+                    .ok_or_else(|| PgError::Protocol("publish receipt missing".into()))?
+                    .to_string()
+            };
             let activated = self
                 .activate_planning_writeback_registered(
                     tenant_id,
                     project_id,
                     bearer,
                     &req.request_id,
-                    receipt_id,
+                    &receipt_id,
                     req.impact_proven,
                     &req.stopped_work_ids,
                 )
                 .await?;
-            json!({"publish": published, "activation": activated})
+            json!({
+                "publish_receipt_id": receipt_id,
+                "activation": activated,
+                "next_step": null
+            })
         } else {
+            let published = self
+                .publish_planning_candidate(
+                    tenant_id,
+                    project_id,
+                    bearer,
+                    &req.candidate_id,
+                    &req.candidate_digest,
+                )
+                .await?;
             json!({
                 "publish": published,
                 "activation": null,
-                "next_step": "query planning.outcome with this request_id after disconnect; to activate, resubmit same request_id only after stop/reconcile of affected in-flight work with activate=true"
+                "next_step": "after disconnect query planning.outcome with this request_id; to activate later call publish with activate=true, publish_receipt_id from this result, and a new request_id after stop/reconcile"
             })
         };
         self.commit_planning_receipt(
