@@ -49,7 +49,9 @@ accept).
 - Demo/tests: `--demo` serves fixtures from
   `tests/fixtures/workstreams/team-web-loop/`.
 - Live Team proxy: `--team-url http://127.0.0.1:9908` forwards to the server Web
-  entry (cookie session).
+  entry (cookie session). The proxy rewrites upstream `Path=/v1/web` cookies to
+  `Path=/api/team` so the browser sends them to Inspector team routes. Live
+  overview/action never serve fixtures; writes go through `/v1/web/projects/{key}/command`.
 
 Member/role/grant changes reuse the existing `access.inspect|preview|apply|outcome`
 server path behind the Web entry — no second admin plane and no enterprise org /

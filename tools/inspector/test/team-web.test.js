@@ -190,3 +190,247 @@ test('i18n keys for team web exist in en and zh-CN', () => {
     assert.ok(zhText.includes('"' + key + '"'), key + ' zh');
   }
 });
+
+test('rewriteOwnedCookiePath maps upstream Path=/v1/web to /api/team', () => {
+  const { rewriteOwnedCookiePath } = require('../team-bridge');
+  const set = rewriteOwnedCookiePath(
+    'awr_web_session=ws_abc; HttpOnly; Path=/v1/web; SameSite=Strict; Max-Age=28800'
+  );
+  assert.ok(set.includes('Path=/api/team'));
+  assert.ok(!set.includes('Path=/v1/web'));
+  const clear = rewriteOwnedCookiePath(
+    'awr_web_session=; HttpOnly; Path=/v1/web; SameSite=Strict; Max-Age=0'
+  );
+  assert.ok(clear.includes('Path=/api/team'));
+  assert.ok(clear.includes('Max-Age=0'));
+});
+
+function startMockUpstream(handler) {
+  const server = http.createServer((req, res) => handler(req, res));
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address();
+      resolve({
+        base: `http://127.0.0.1:${port}`,
+        close: () => new Promise((r) => server.close(r)),
+        port,
+      });
+    });
+  });
+}
+
+function startLiveBridge(teamUrl) {
+  const bridge = createTeamBridge({ teamUrl, teamFixtureDir: FIXTURE_DIR, port: 0 });
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    const key = `${req.method} ${url.pathname}`;
+    const handler = bridge.routes[key];
+    if (!handler) {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end('{}');
+      return;
+    }
+    let body = null;
+    if (req.method === 'POST') {
+      const chunks = [];
+      for await (const c of req) chunks.push(c);
+      const raw = Buffer.concat(chunks).toString('utf8');
+      body = raw ? JSON.parse(raw) : {};
+    }
+    try {
+      const json = await handler(url, body, req, res);
+      const cookie = res.getHeader('set-cookie');
+      const headers = { 'content-type': 'application/json' };
+      if (cookie) headers['set-cookie'] = cookie;
+      res.writeHead(200, headers);
+      res.end(JSON.stringify(json));
+    } catch (err) {
+      res.writeHead(500, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: { message: String(err.message || err) } }));
+    }
+  });
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address();
+      resolve({
+        base: `http://127.0.0.1:${port}`,
+        close: () => new Promise((r) => server.close(r)),
+        bridge,
+      });
+    });
+  });
+}
+
+test('live mode never invents demo receipts; proxies command store', async () => {
+  const calls = [];
+  const upstream = await startMockUpstream((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      const raw = Buffer.concat(chunks).toString('utf8');
+      calls.push({ method: req.method, url: req.url, cookie: req.headers.cookie || null, body: raw });
+      if (req.url === '/v1/web/login' && req.method === 'POST') {
+        res.writeHead(200, {
+          'content-type': 'application/json',
+          'set-cookie':
+            'awr_web_session=ws_live1; HttpOnly; Path=/v1/web; SameSite=Strict; Max-Age=28800',
+        });
+        res.end(JSON.stringify({ ok: true, session_id: 'ws_live1', projects: ['demo'] }));
+        return;
+      }
+      if (req.url === '/v1/web/session' && req.method === 'GET') {
+        if (!req.headers.cookie || !req.headers.cookie.includes('awr_web_session=ws_live1')) {
+          res.writeHead(401, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ code: 'Unauthenticated', message: 'no web session' }));
+          return;
+        }
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, session_id: 'ws_live1', expires_at_ms: Date.now() + 60000 }));
+        return;
+      }
+      if (req.url === '/v1/web/projects/demo/query' && req.method === 'POST') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ data: { items: [{ external_key: 'TW-LIVE', status: 'open' }] } }));
+        return;
+      }
+      if (req.url === '/v1/web/projects/demo/command' && req.method === 'POST') {
+        const body = JSON.parse(raw || '{}');
+        if (body.request_id === 'req-replay') {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              replayed: true,
+              receipt: { id: 'rcpt_store', request_id: 'req-replay', op: 'review.accept' },
+            })
+          );
+          return;
+        }
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            replayed: false,
+            receipt: { id: 'rcpt_store', request_id: body.request_id, op: body.op },
+          })
+        );
+        return;
+      }
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ code: 'NotFound' }));
+    });
+  });
+
+  const b = await startLiveBridge(upstream.base);
+  try {
+    const login = await req(b.base, 'POST', '/api/team/login', {
+      body: { bearer: 'awr1.test.0123456789abcdef' },
+    });
+    assert.equal(login.json.ok, true);
+    assert.ok(login.setCookie.some((c) => c.includes('Path=/api/team')));
+    assert.ok(!login.setCookie.some((c) => c.includes('Path=/v1/web')));
+    const cookie = login.setCookie[0].split(';')[0];
+
+    const overviewNoCookie = await req(b.base, 'GET', '/api/team/overview?project=demo');
+    assert.equal(overviewNoCookie.json.ok, false);
+    assert.equal(overviewNoCookie.json.error.code, 'Unauthenticated');
+
+    const overview = await req(b.base, 'GET', '/api/team/overview?project=demo', { cookie });
+    assert.equal(overview.json.ok, true);
+    assert.equal(overview.json.works[0].key, 'TW-LIVE');
+    assert.equal(overview.json.schema, 'awr-team-web-loop-live/v1');
+
+    const denyAction = await req(b.base, 'POST', '/api/team/action', {
+      body: { project: 'demo', action: 'accept', request_id: 'x', work_key: 'TW-LIVE' },
+    });
+    assert.equal(denyAction.json.ok, false);
+    assert.equal(denyAction.json.error.code, 'Unauthenticated');
+
+    const accept = await req(b.base, 'POST', '/api/team/action', {
+      cookie,
+      body: {
+        project: 'demo',
+        command: {
+          protocol_version: 1,
+          request_id: 'req-1',
+          op: 'review.accept',
+          workstream_id: '1',
+          work_id: 'TW-LIVE',
+          coordinator_epoch: 'e',
+          expected_project_revision: '1',
+          expected_authority_version: '1',
+          expected_ownership_version: '1',
+          expected_contract_hash: 'a'.repeat(64),
+          args: {},
+        },
+      },
+    });
+    assert.equal(accept.json.ok, true);
+    assert.equal(accept.json.replayed, false);
+    assert.equal(accept.json.receipt.op, 'review.accept');
+    assert.equal(accept.json.receipt.id, 'rcpt_store');
+    assert.ok(!String(accept.json.receipt.id).startsWith('rcpt_req'));
+
+    const replay = await req(b.base, 'POST', '/api/team/action', {
+      cookie,
+      body: {
+        project: 'demo',
+        command: {
+          protocol_version: 1,
+          request_id: 'req-replay',
+          op: 'review.accept',
+          workstream_id: '1',
+          work_id: 'TW-LIVE',
+          coordinator_epoch: 'e',
+          expected_project_revision: '1',
+          expected_authority_version: '1',
+          expected_ownership_version: '1',
+          expected_contract_hash: 'a'.repeat(64),
+          args: {},
+        },
+      },
+    });
+    assert.equal(replay.json.ok, true);
+    assert.equal(replay.json.replayed, true);
+    assert.equal(replay.json.receipt.id, 'rcpt_store');
+
+    assert.ok(calls.some((c) => c.url === '/v1/web/login'));
+    assert.ok(calls.some((c) => c.url === '/v1/web/projects/demo/query'));
+    assert.ok(calls.some((c) => c.url === '/v1/web/projects/demo/command'));
+    // Overview + action must not invent fixture receipts without upstream.
+    assert.ok(!calls.every((c) => c.url === '/v1/web/login'));
+  } finally {
+    await b.close();
+    await upstream.close();
+  }
+});
+
+test('live mode expired session denies overview and action', async () => {
+  const upstream = await startMockUpstream((req, res) => {
+    if (req.url === '/v1/web/session') {
+      res.writeHead(401, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ code: 'SessionExpired', message: 'web session expired or revoked' }));
+      return;
+    }
+    res.writeHead(500, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ code: 'Unexpected' }));
+  });
+  const b = await startLiveBridge(upstream.base);
+  try {
+    const overview = await req(b.base, 'GET', '/api/team/overview?project=demo', {
+      cookie: 'awr_web_session=ws_expired',
+    });
+    assert.equal(overview.json.ok, false);
+    assert.equal(overview.json.error.code, 'SessionExpired');
+    const action = await req(b.base, 'POST', '/api/team/action', {
+      cookie: 'awr_web_session=ws_expired',
+      body: {
+        project: 'demo',
+        command: { protocol_version: 1, request_id: 'r', op: 'review.accept' },
+      },
+    });
+    assert.equal(action.json.ok, false);
+    assert.equal(action.json.error.code, 'SessionExpired');
+  } finally {
+    await b.close();
+    await upstream.close();
+  }
+});
