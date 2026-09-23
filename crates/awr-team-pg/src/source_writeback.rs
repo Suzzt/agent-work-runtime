@@ -222,7 +222,10 @@ impl SourceStore {
         }
 
         // --- Build + validate the complete candidate BEFORE any source mutation.
-        // Resume source_written / pg_activating without re-applying CreateTask. ---
+        // `validated` is committed before the file write, so a crash after the
+        // write and before `source_written` must not apply the patch again.
+        // Resume source_written / pg_activating / validated without re-applying
+        // CreateTask. ---
         let ledger_path = req.source_root.join(&req.ledger_relative_path);
         let location =
             SoleSourceLocation::server_directory(&req.source_root, &req.ledger_relative_path)
@@ -232,7 +235,10 @@ impl SourceStore {
         let prior_phase = prior.as_ref().map(|j| j.phase.as_str()).unwrap_or("");
 
         let (before_fingerprint, after_fingerprint, after_bytes, package, source_already_written) =
-            if matches!(prior_phase, "source_written" | "pg_activating") {
+            if matches!(
+                prior_phase,
+                "validated" | "source_written" | "pg_activating"
+            ) {
                 let journal = prior.expect("phase implies journal row");
                 let disk = std::fs::read(&ledger_path).map_err(|e| {
                     PgError::Protocol(format!("cannot read ledger for resume: {e}"))
