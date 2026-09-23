@@ -18,8 +18,10 @@ CREATE TABLE awr_team.planning_command_receipts (
     request_hash TEXT NOT NULL,
     actor_id TEXT NOT NULL,
     client_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('reserved', 'completed')),
     result_json JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
     PRIMARY KEY (tenant_id, project_id, request_id),
     FOREIGN KEY (tenant_id, project_id) REFERENCES awr_team.projects(tenant_id, id)
 );

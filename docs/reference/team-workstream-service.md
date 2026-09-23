@@ -592,7 +592,7 @@ Store APIs (SQLite + Team PG) persist:
 | `adoption_credentials` | Historical proof that a consumer adopted a verified delivery; fixed-delivery credentials keep the original selected version. |
 | `delivery_credential_receipts` | Idempotent request-key receipts for register/revoke/grant/adopt. |
 
-Author self-reported done (`author_self_report` / `personal_self_review` / non-`team_independent` completion) cannot produce an adoption credential and cannot unlock execution. Cross-project bindings are refused. Team PG tables use FORCE RLS with transaction-local `awr.tenant_id` / `awr.project_id` (schema 23).
+Author self-reported done (`author_self_report` / `personal_self_review` / non-`team_independent` completion) cannot produce an adoption credential and cannot unlock execution. Cross-project bindings are refused. Team PG tables use FORCE RLS with transaction-local `awr.tenant_id` / `awr.project_id` (schema 26).
 
 Graph coordination (WS-031) keeps the same-project task DAG acyclic across
 workstreams (`A1 → B1 → A2` legal), returns explainable hard cycle paths, applies
@@ -605,7 +605,7 @@ Selective invalidation (WS-032) re-evaluates only affected consumers under
 complete under the project lock (revoke-race safe; mid-execution keeps effects
 + recovery duty), and persists scoped planning changes for newly discovered
 dependencies (block affected actions → authorized confirm of new graph +
-acceptance contract). Team PG schema 24.
+acceptance contract). Team PG schema 27.
 
 Artifact/contract changes invalidate prior open/approved rounds for other
 bundles; reject/return/rework keep historical rounds.

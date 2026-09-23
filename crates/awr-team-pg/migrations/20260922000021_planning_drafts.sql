@@ -138,5 +138,5 @@ CREATE POLICY planning_publish_receipts_isolation ON awr_team.planning_publish_r
     WITH CHECK (tenant_id = current_setting('awr.tenant_id', true)
         AND project_id = current_setting('awr.project_id', true));
 
-UPDATE awr_team.schema_state SET version=26 WHERE component='awr_team';
+UPDATE awr_team.schema_state SET version=21 WHERE component='awr_team';
 COMMIT;
