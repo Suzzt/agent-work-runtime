@@ -1376,3 +1376,56 @@ async fn planning_change_blocks_execution_prepare_for_affected_work() {
         "unexpected error: {err}"
     );
 }
+
+#[tokio::test]
+async fn planning_change_blocks_work_complete_for_affected_work() {
+    let (_g, admin, db, store) = setup().await;
+    enable_writes(&admin).await;
+    let inv = SelectiveInvalidationStore::from_config(with_app_role(&test_config(), &db));
+    let _claim = claim(&store).await;
+    inv.record_planning_change(
+        TENANT,
+        PROJECT,
+        &RecordPlanningChangeRequest {
+            request_key: "plan-complete-block".into(),
+            change_id: "chg-complete".into(),
+            discovered_by: "agent".into(),
+            old_graph_version: "g0".into(),
+            new_graph_version: "g1".into(),
+            old_acceptance_contract: "acc0".into(),
+            new_acceptance_contract: "acc1".into(),
+            affected_work_ids: vec!["a".into()],
+            cancel_split_relations: vec![],
+            continue_conditions: vec!["human_confirm".into()],
+            all_project_work_ids: vec!["a".into(), "b-private".into(), "c".into()],
+            now_ms: 70,
+        },
+    )
+    .await
+    .unwrap();
+    let prepared = prepare(&store, A, "a").await;
+    let err = store
+        .commands()
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            command(
+                &prepared,
+                "complete-blocked",
+                "work.complete",
+                json!({
+                    "session_id": "session-a",
+                    "expected_session_version": "1",
+                    "evidence_id": "evidence-blocked",
+                    "context_complete": true
+                }),
+            ),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, PgError::ActionBlockedByInvalidation(ref id) if id == "chg-complete"),
+        "unexpected error: {err}"
+    );
+}
