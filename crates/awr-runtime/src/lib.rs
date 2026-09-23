@@ -32,6 +32,7 @@ mod organization;
 mod read;
 mod responsibility;
 mod resume;
+mod source_concurrency;
 mod work_action;
 mod work_create;
 mod work_edit;
@@ -61,6 +62,10 @@ pub use operation_readset::{append_work_observation, classify_operation_replay_r
 pub use organization::{OrganizationReport, OrganizationState, inspect_organization};
 pub use response_view::summarize_work_response;
 pub use resume::{ResumeReport, ResumeRequest, resume_bound_session, resume_session};
+pub use source_concurrency::{
+    SourceConcurrencyReport, activate_precise_patch, activate_shard_candidate,
+    classify_whole_file_gate, recover_shard_candidate,
+};
 pub use work_action::{WorkActionRequest, perform_work_action};
 pub use work_create::{
     CreateWorkInput, CreationReport, create_work, creation_status, recover_creation,

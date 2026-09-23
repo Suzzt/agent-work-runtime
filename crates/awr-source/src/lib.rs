@@ -13,6 +13,7 @@ mod markdown_ledger;
 mod mutation;
 mod publish_prep;
 mod query_snapshot;
+mod source_concurrency;
 pub use query_snapshot::{
     QuerySnapshot, recorded_snapshot, refresh_snapshot, source_state_fingerprint,
 };
@@ -55,6 +56,11 @@ pub use mutation::{
     MutationSourceCheck, inspect_mutation_source, inspect_registered_source, verify_mutation_source,
 };
 pub use safe_fs::{open_dir_exact, open_file_exact, read_under_root};
+pub use source_concurrency::{
+    ShardCandidate, ShardObservation, ShardWrite, SourceWriteMode, form_shard_candidate,
+    observe_candidate, observe_shard, refuse_stale_proposal_base, refuse_stale_whole_file,
+    require_write_mode, source_write_mode,
+};
 pub use yaml_create::{
     PreparedWorkCreation, prepare_work_creation, prepare_work_creation_with_fields,
 };

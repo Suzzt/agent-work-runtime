@@ -72,9 +72,13 @@ the original receipt; changed intent conflicts. Unknown effects are inspected
 before another dispatch.
 
 Same-work ownership and overlapping resources remain exclusive. Source writers
-use reviewed patches, source fingerprints and recovery journals. Multi-source
-activation requires a coherent candidate and atomic activation; unsupported
-adapters reject the operation. SQLite remains a single-writer database.
+use reviewed patches, source fingerprints and recovery journals
+(`awr-source` / `awr-runtime` source-concurrency helpers). Stale whole-file
+installs that no longer match the reviewed fingerprint are refused. Supported
+sharded multi-source updates form a coherent candidate and activate under a
+recovery journal; unsupported adapters reject the operation. External edits and
+half-writes remain recoverable without overwriting foreign bytes. SQLite remains
+a single-writer database.
 
 Project freeze, permission revocation and restore remain barriers. A restore
 changes the coordinator epoch. Lease expiry does not prove process termination;
