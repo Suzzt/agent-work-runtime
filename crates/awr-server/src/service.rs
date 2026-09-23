@@ -1,6 +1,12 @@
 //! Operator-bound multi-project HTTP/MCP service. Every request authenticates
 //! inside PostgreSQL; tenant/actor/client/grants are never taken from its JSON.
+mod action_auth;
 mod mcp;
+
+pub use action_auth::{
+    action_authorization_capabilities, command_action_name, query_action_name,
+    reject_forged_authority_fields,
+};
 
 use awr_team_pg::{
     PgError, WorkstreamCommand, WorkstreamCommandStore, WorkstreamQuery, WorkstreamReadStore,
@@ -186,6 +192,12 @@ async fn dispatch(
     enum Request {
         Query(WorkstreamQuery),
         Command(WorkstreamCommand),
+    }
+    // Body/selectors never supply identity or grants (TMCP-011).
+    if let Ok(raw) = serde_json::from_slice::<Value>(&body) {
+        if reject_forged_authority_fields(&raw).is_err() {
+            return denied();
+        }
     }
     let parsed = if write {
         serde_json::from_slice(&body).map(Request::Command)

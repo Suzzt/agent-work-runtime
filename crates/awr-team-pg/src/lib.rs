@@ -67,7 +67,9 @@ pub use source::{
     WORKSTREAMS_FILE,
 };
 pub use tx::{CommandOutcome, CommandRequest, TeamStore};
-pub use workstream_auth::workstream_credential_hash;
+pub use workstream_auth::{
+    command_business_action, map_membership_role, query_business_action, workstream_credential_hash,
+};
 pub use workstream_command::{WorkstreamCommand, WorkstreamCommandStore};
 pub use workstream_read::{WorkstreamQuery, WorkstreamReadStore};
 
