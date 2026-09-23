@@ -297,3 +297,92 @@ async fn responsibility_rls_blocks_unscoped_and_cross_tenant_app_reads() {
     );
     scoped.rollback().await.unwrap();
 }
+
+#[tokio::test]
+async fn request_key_cannot_replay_onto_a_different_work_item() {
+    let (_g, _admin, store) = setup().await;
+    let alice = PersonId::new("alice").unwrap();
+    store
+        .ensure_person(TENANT, PROJECT, alice.as_str(), "Alice")
+        .await
+        .unwrap();
+    store
+        .assign(
+            TENANT,
+            PROJECT,
+            "work-a",
+            &AssignResponsibilityRequest {
+                request_key: "same-key".into(),
+                expected_version: 0,
+                owner: Some(alice.clone()),
+                collaborators: vec![],
+                independent_reviewer: None,
+                allow_unassigned: false,
+                authorized_by: alice.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    let err = store
+        .assign(
+            TENANT,
+            PROJECT,
+            "work-b",
+            &AssignResponsibilityRequest {
+                request_key: "same-key".into(),
+                expected_version: 0,
+                owner: Some(alice.clone()),
+                collaborators: vec![],
+                independent_reviewer: None,
+                allow_unassigned: false,
+                authorized_by: alice,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, awr_team_pg::PgError::IdempotencyConflict));
+    let other = store.get(TENANT, PROJECT, "work-b").await.unwrap();
+    assert!(other.owner.is_none());
+    assert_eq!(other.version, 0);
+}
+
+#[tokio::test]
+async fn concurrent_first_assigns_do_not_overwrite_each_other() {
+    let (_g, _admin, store) = setup().await;
+    let alice = PersonId::new("alice").unwrap();
+    let bob = PersonId::new("bob").unwrap();
+    store
+        .ensure_person(TENANT, PROJECT, alice.as_str(), "Alice")
+        .await
+        .unwrap();
+    store
+        .ensure_person(TENANT, PROJECT, bob.as_str(), "Bob")
+        .await
+        .unwrap();
+    let alice_req = AssignResponsibilityRequest {
+        request_key: "race-alice".into(),
+        expected_version: 0,
+        owner: Some(alice.clone()),
+        collaborators: vec![],
+        independent_reviewer: None,
+        allow_unassigned: false,
+        authorized_by: alice.clone(),
+    };
+    let bob_req = AssignResponsibilityRequest {
+        request_key: "race-bob".into(),
+        expected_version: 0,
+        owner: Some(bob.clone()),
+        collaborators: vec![],
+        independent_reviewer: None,
+        allow_unassigned: false,
+        authorized_by: bob.clone(),
+    };
+    let left = store.assign(TENANT, PROJECT, "work-race", &alice_req);
+    let right = store.assign(TENANT, PROJECT, "work-race", &bob_req);
+    let (left, right) = tokio::join!(left, right);
+    let wins = [&left, &right].iter().filter(|r| r.is_ok()).count();
+    assert_eq!(wins, 1, "left={left:?} right={right:?}");
+    let task = store.get(TENANT, PROJECT, "work-race").await.unwrap();
+    assert_eq!(task.version, 1);
+    assert!(task.owner == Some(alice) || task.owner == Some(bob));
+}

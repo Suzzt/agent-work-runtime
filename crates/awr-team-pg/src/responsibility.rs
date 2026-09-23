@@ -337,7 +337,19 @@ impl ResponsibilityStore {
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
         bind_workstream_scope(&tx, tenant, project).await?;
+        // Serialize first-insert races. FOR UPDATE cannot lock a missing row, so two
+        // creators would otherwise both observe "unassigned" and the later upsert
+        // would erase the earlier owner.
+        let lock_key = format!("{tenant}\u{1f}{project}\u{1f}{work_id}");
+        tx.execute(
+            "SELECT pg_advisory_xact_lock(hashtext($1)::bigint)",
+            &[&lock_key],
+        )
+        .await?;
         if let Some(receipt) = load_receipt(&tx, tenant, project, request_key, op).await? {
+            if receipt.work_item_id != work_id {
+                return Err(PgError::IdempotencyConflict);
+            }
             let after = load_task_tx(&tx, tenant, project, work_id)
                 .await?
                 .unwrap_or_else(|| TaskResponsibility::unassigned(project, work_id));
@@ -574,7 +586,7 @@ async fn persist_task(
         ),
     };
     let version = task.version as i64;
-    tx.execute(
+    let written = tx.execute(
         "INSERT INTO awr_team.task_responsibilities(
             tenant_id,project_id,work_id,owner_person_id,independent_reviewer_person_id,
             executor_kind,executor_person_id,executor_agent_id,executor_binding_id,version,
@@ -595,7 +607,8 @@ async fn persist_task(
             pending_transfer_request_key=EXCLUDED.pending_transfer_request_key,
             pending_detail=EXCLUDED.pending_detail,
             personal_mode_default=EXCLUDED.personal_mode_default,
-            updated_at=clock_timestamp()",
+            updated_at=clock_timestamp()
+         WHERE awr_team.task_responsibilities.version = EXCLUDED.version - 1",
         &[
             &tenant,
             &project,
@@ -616,6 +629,9 @@ async fn persist_task(
         ],
     )
     .await?;
+    if written != 1 {
+        return Err(PgError::PreconditionsChanged);
+    }
     tx.execute(
         "DELETE FROM awr_team.task_collaborators WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3",
         &[&tenant, &project, &task.work_item_id],
