@@ -65,8 +65,10 @@ PostgreSQL authorization, business acceptance or release readiness.
 ## Team MCP business action permissions (AWR-TMCP-010)
 
 This section freezes the Team MCP **business** permission contract. It is separate
-from the command-envelope validation above. Enforcement at live MCP/HTTP domain
-entry points is AWR-TMCP-011; this item only freezes types, fixtures and rules.
+from the command-envelope validation above. Enforcement at live MCP/HTTP/PG domain entry points is AWR-TMCP-011 (shared
+`authorize_command` / `authorize_query` decision). This section freezes types,
+fixtures and rules; the live gate maps current workstream commands onto these
+actions and refuses planning/access/audit ops for roles that lack them.
 
 ### Role templates
 

@@ -99,7 +99,7 @@ async fn issue_list_revoke_roundtrip() {
             &RevokeAuthorizationRequest {
                 request_key: "rev-1".into(),
                 authorization_id: "auth-1".into(),
-                revoked_by: alice,
+                revoked_by: alice.clone(),
                 revoked_at_ms: 3_000,
                 reason: "done".into(),
             },
@@ -107,6 +107,45 @@ async fn issue_list_revoke_roundtrip() {
         .await
         .unwrap();
     assert!(matches!(revoked.status, AuthorizationStatus::Revoked));
+
+    let mut changed = stored.clone();
+    changed.client_id = "other-client".into();
+    let changed_issue = store
+        .issue(
+            TENANT,
+            PROJECT,
+            &IssueAuthorizationRequest {
+                request_key: "iss-1".into(),
+                authorization: changed,
+            },
+        )
+        .await;
+    assert!(
+        matches!(
+            changed_issue,
+            Err(awr_team_pg::PgError::IdempotencyConflict)
+        ),
+        "same request key with a different grant must conflict: {changed_issue:?}"
+    );
+    let mut foreign = sample(&alice);
+    foreign.id = "auth-foreign".into();
+    foreign.scope = AuthorizationScope::Project {
+        project_id: "other-project".into(),
+    };
+    let denied = store
+        .issue(
+            TENANT,
+            PROJECT,
+            &IssueAuthorizationRequest {
+                request_key: "iss-foreign".into(),
+                authorization: foreign,
+            },
+        )
+        .await;
+    assert!(
+        matches!(denied, Err(awr_team_pg::PgError::Forbidden)),
+        "scope project must match the addressed project: {denied:?}"
+    );
 }
 
 #[tokio::test]

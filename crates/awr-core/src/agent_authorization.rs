@@ -445,6 +445,17 @@ pub fn validate_issue(req: &IssueAuthorizationRequest) -> Result<()> {
     Ok(())
 }
 
+/// The grant's scope project is the project it may admit. Callers must not
+/// store it under a different project id.
+pub fn require_authorization_project(auth: &AgentAuthorization, project_id: &str) -> Result<()> {
+    if auth.scope.project_id() != project_id {
+        return Err(Error::RuleViolation(
+            "authorization scope project does not match the addressed project".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub fn apply_revoke(
     current: &AgentAuthorization,
     req: &RevokeAuthorizationRequest,

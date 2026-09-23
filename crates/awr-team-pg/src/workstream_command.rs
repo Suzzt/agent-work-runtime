@@ -1,5 +1,9 @@
 //! Authenticated journals, coordination leases and scoped execution operations.
-//! Project serialization is retained until task-level read sets are implemented.
+//! Ordinary commands validate work-scoped read sets (epoch, authority, ownership,
+//! contract and action tokens). The project revision remains an ordered audit
+//! cursor and is not treated as business CAS, so unrelated advances do not force
+//! a semantic refresh. Writers still serialize on the project admission lock.
+pub(crate) mod action_auth;
 pub(crate) mod claims;
 pub(crate) mod executions;
 
@@ -205,7 +209,13 @@ impl WorkstreamCommandStore {
         // still requires a current explicit write grant at admission. Effect-phase
         // active-stream / attest / reconcile checks run after idempotent replay.
         // Project freeze/import/restore barriers remain stricter for all writes.
-        authorize_command(&auth, stream, &command.op, CommandAuthPhase::Admission)?;
+        authorize_command(
+            &auth,
+            stream,
+            &command.work_id,
+            &command.op,
+            CommandAuthPhase::Admission,
+        )?;
         if auth.epoch != command.coordinator_epoch {
             return Err(PgError::EpochChanged);
         }
@@ -233,13 +243,22 @@ impl WorkstreamCommandStore {
         if auth.project_status != "active" {
             return Err(PgError::ProjectNotAvailable);
         }
-        if auth.revision != version(&command.expected_project_revision)?
-            || auth.catalog.get(stream)?.authority_version
-                != version(&command.expected_authority_version)? as u64
+        // expected_project_revision remains on the wire for legacy clients and is
+        // validated as a decimal, but it is an audit cursor — not a business CAS.
+        // Authority/ownership/contract/epoch (and action tokens) form the read set.
+        let _audit_cursor = version(&command.expected_project_revision)?;
+        if auth.catalog.get(stream)?.authority_version
+            != version(&command.expected_authority_version)? as u64
         {
             return Err(PgError::PreconditionsChanged);
         }
-        authorize_command(&auth, stream, &command.op, CommandAuthPhase::Effect)?;
+        authorize_command(
+            &auth,
+            stream,
+            &command.work_id,
+            &command.op,
+            CommandAuthPhase::Effect,
+        )?;
         let stored = tx.query_one("SELECT contract_json,contract_hash FROM awr_team.work_contracts
             WHERE tenant_id=$1 AND project_id=$2 AND snapshot_id=$3 AND scope_id='main' AND work_id=$4",
             &[&tenant,&project,&auth.snapshot,&command.work_id]).await?;
@@ -276,10 +295,18 @@ impl WorkstreamCommandStore {
         if command.op.starts_with("execution.") {
             data["execution_state_basis"] = json!("at_commit");
         }
+        // Project writers still take an exclusive admission lock (SQLite single-writer
+        // compatible serialization). The audit cursor advances here without treating
+        // the caller's expected_project_revision as business CAS.
         let next = auth
             .revision
             .checked_add(1)
             .ok_or(PgError::PreconditionsChanged)?;
+        tx.execute(
+            "UPDATE awr_team.projects SET project_revision=$3 WHERE tenant_id=$1 AND id=$2",
+            &[&tenant, &project, &next],
+        )
+        .await?;
         let receipt = json!({"protocol":RECEIPT_PROTOCOL,"request_id":command.request_id,"op":command.op,
             "request_hash":request_hash,
             "work_id":command.work_id,"workstream_id":stream,"scope_id":"main","ownership_version":ownership.to_string(),
@@ -288,11 +315,6 @@ impl WorkstreamCommandStore {
             "committed_project_revision":next.to_string(),"data":data,"execution_authorized":false});
         // State, attribution, monotonically ordered event and replay receipt are
         // one transaction. No network work or source scan occurs under this lock.
-        tx.execute(
-            "UPDATE awr_team.projects SET project_revision=$3 WHERE tenant_id=$1 AND id=$2",
-            &[&tenant, &project, &next],
-        )
-        .await?;
         for (index, (kind, payload)) in applied
             .preceding_events
             .iter()

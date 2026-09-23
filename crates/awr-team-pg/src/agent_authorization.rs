@@ -5,7 +5,7 @@ use awr_core::{
     AgentAuthorization, AuthorizationStatus, ClaimEligibilityExplanation, ClaimEvaluationInput,
     DelegateAuthorizationRequest, ExecutionSubjectKind, IssueAuthorizationRequest, PersonId,
     RevokeAuthorizationRequest, apply_delegate, apply_revoke, explain_claim_eligibility,
-    validate_issue,
+    require_authorization_project, validate_issue,
 };
 use serde_json::Value;
 use tokio_postgres::Row;
@@ -144,6 +144,7 @@ impl AuthorizationStore {
         req: &IssueAuthorizationRequest,
     ) -> PgResult<(AgentAuthorization, AuthorizationReceipt)> {
         validate_issue(req).map_err(map_core)?;
+        require_authorization_project(&req.authorization, project).map_err(map_core)?;
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
         bind_workstream_scope(&tx, tenant, project).await?;
@@ -154,6 +155,9 @@ impl AuthorizationStore {
             let auth = load_auth_tx(&tx, tenant, project, &receipt.authorization_id)
                 .await?
                 .ok_or_else(|| PgError::Protocol("authorization missing for receipt".into()))?;
+            if auth != req.authorization {
+                return Err(PgError::IdempotencyConflict);
+            }
             tx.commit().await?;
             return Ok((
                 auth,
@@ -212,6 +216,11 @@ impl AuthorizationStore {
             let auth = load_auth_tx(&tx, tenant, project, &receipt.authorization_id)
                 .await?
                 .ok_or_else(|| PgError::Protocol("authorization missing for receipt".into()))?;
+            if auth.revoked_by.as_ref() != Some(&req.revoked_by)
+                || auth.revoked_at_ms != Some(req.revoked_at_ms)
+            {
+                return Err(PgError::IdempotencyConflict);
+            }
             tx.commit().await?;
             return Ok((
                 auth,
@@ -260,6 +269,7 @@ impl AuthorizationStore {
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
         bind_workstream_scope(&tx, tenant, project).await?;
+        require_authorization_project(&req.child, project).map_err(map_core)?;
         if let Some(receipt) = load_receipt_tx(&tx, tenant, project, &req.request_key).await? {
             if receipt.op != "delegate" || receipt.authorization_id != req.child.id {
                 return Err(PgError::IdempotencyConflict);
@@ -267,6 +277,11 @@ impl AuthorizationStore {
             let auth = load_auth_tx(&tx, tenant, project, &receipt.authorization_id)
                 .await?
                 .ok_or_else(|| PgError::Protocol("authorization missing for receipt".into()))?;
+            let mut expected = req.child.clone();
+            expected.parent_authorization_id = Some(req.parent_authorization_id.clone());
+            if auth != expected {
+                return Err(PgError::IdempotencyConflict);
+            }
             tx.commit().await?;
             return Ok((
                 auth,
@@ -415,9 +430,10 @@ async fn load_receipt_tx(
             request_key: request_key.into(),
             authorization_id: r.get(0),
             op: match op.as_str() {
+                "issue" => "issue",
                 "revoke" => "revoke",
                 "delegate" => "delegate",
-                _ => "issue",
+                _ => "unknown",
             },
             event_id: r.get(2),
             replayed: false,

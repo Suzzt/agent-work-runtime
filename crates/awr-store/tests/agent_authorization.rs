@@ -3,7 +3,7 @@ use awr_core::*;
 use std::collections::BTreeSet;
 use support::Fixture;
 
-fn sample_auth(id: &str, person: &PersonId) -> AgentAuthorization {
+fn sample_auth(id: &str, project: &str, person: &PersonId) -> AgentAuthorization {
     AgentAuthorization {
         id: id.into(),
         authorizer_person_id: person.clone(),
@@ -14,7 +14,7 @@ fn sample_auth(id: &str, person: &PersonId) -> AgentAuthorization {
         session_id: Some("sess-1".into()),
         model_id: Some("model-a".into()),
         scope: AuthorizationScope::Project {
-            project_id: "proj".into(),
+            project_id: project.into(),
         },
         actions: BTreeSet::from([
             AuthorizedAction::OccupyCollaboratively,
@@ -44,10 +44,11 @@ fn sample_auth(id: &str, person: &PersonId) -> AgentAuthorization {
 fn issue_revoke_list_and_explain_separate_start_work() {
     let mut f = Fixture::new();
     let project = f.project.id;
+    let project_id = project.to_string();
     let alice = PersonId::new("alice").unwrap();
     f.store.ensure_person(project, &alice, "Alice").unwrap();
 
-    let auth = sample_auth("auth-1", &alice);
+    let auth = sample_auth("auth-1", &project_id, &alice);
     let (stored, receipt) = f
         .store
         .issue_agent_authorization(
@@ -73,6 +74,33 @@ fn issue_revoke_list_and_explain_separate_start_work() {
         .unwrap();
     assert!(replay.replayed);
 
+    let mut changed = auth.clone();
+    changed.actions.remove(&AuthorizedAction::StartWork);
+    let changed_issue = f.store.issue_agent_authorization(
+        project,
+        &IssueAuthorizationRequest {
+            request_key: "iss-1".into(),
+            authorization: changed,
+        },
+    );
+    assert!(
+        changed_issue.is_err(),
+        "same request key with a different grant must not replay the old authorization"
+    );
+    let foreign = sample_auth("auth-foreign", "other-project", &alice);
+    assert!(
+        f.store
+            .issue_agent_authorization(
+                project,
+                &IssueAuthorizationRequest {
+                    request_key: "iss-foreign".into(),
+                    authorization: foreign,
+                },
+            )
+            .is_err(),
+        "a grant scoped to another project must not be stored here"
+    );
+
     assert_eq!(
         f.store
             .list_agent_authorizations(project, Some(&alice), None, true)
@@ -81,7 +109,7 @@ fn issue_revoke_list_and_explain_separate_start_work() {
         1
     );
 
-    let task = TaskResponsibility::unassigned("proj", "work-1");
+    let task = TaskResponsibility::unassigned(&project_id, "work-1");
     let resources = BTreeSet::from(["cpu".into()]);
     let caps = BTreeSet::from(["shell.exec".into()]);
     let executor = ExecutionInstance::AgentRun {
@@ -92,7 +120,7 @@ fn issue_revoke_list_and_explain_separate_start_work() {
     let explanation = f
         .store
         .explain_claim(&ClaimEvaluationInput {
-            project_id: "proj",
+            project_id: &project_id,
             work_item_id: "work-1",
             task_workstream_id: None,
             candidate_person: &alice,

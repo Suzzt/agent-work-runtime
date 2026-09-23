@@ -17,6 +17,7 @@ pub use mcp::with_mcp_operation;
 mod mutation;
 mod mutation_apply;
 mod object_catalog;
+mod operation_readset;
 mod preview_snapshot;
 mod projection;
 mod query;
@@ -48,6 +49,7 @@ pub use delta::{
 };
 pub use events::{BranchFilter, EventCursor, EventPage, EventQuery};
 pub use object_catalog::{CatalogCursor, CatalogKind, CatalogPage, CatalogRow, CatalogScope};
+pub use operation_readset::SQLITE_COORDINATOR_EPOCH;
 pub use reconcile::{ReconcileAction, ReconcileReceipt, RuntimeFinding, RuntimeInspection};
 use rusqlite::{Connection, OpenFlags, TransactionBehavior};
 pub use scoped_read::{ScopedCursor, WorkstreamRead, WorkstreamReadSelection};
@@ -59,10 +61,12 @@ pub use work::{ScopedDependencyGraph, UnavailableDependency};
 
 const APPLICATION_ID: i64 = 0x41575231;
 /// Schema written by this build. Exposed for offline host compatibility negotiation.
-pub const SCHEMA_VERSION: i64 = 9;
+pub const SCHEMA_VERSION: i64 = 10;
 const CONTENT_REVIEWS_SQL: &str = include_str!("../migrations/007_content_reviews.sql");
 const RESPONSIBILITY_SQL: &str = include_str!("../migrations/008_responsibility.sql");
-const AGENT_AUTHORIZATION_SQL: &str = include_str!("../migrations/009_agent_authorization.sql");
+const OPERATION_READSET_RECEIPTS_SQL: &str =
+    include_str!("../migrations/009_operation_readset_receipts.sql");
+const AGENT_AUTHORIZATION_SQL: &str = include_str!("../migrations/010_agent_authorization.sql");
 const CATALOG_SQL: &str = include_str!("../migrations/001_catalog.sql");
 const DOMAIN_SQL: &str = include_str!("../migrations/002_domain.sql");
 const SEARCH_SQL: &str = include_str!("../migrations/003_search.sql");
@@ -434,9 +438,18 @@ impl Store {
                 tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(8,'responsibility',?1)",[now_millis()?]).map_err(db_error)?;
             }
             if version < 9 {
+                tx.execute_batch(OPERATION_READSET_RECEIPTS_SQL)
+                    .map_err(db_error)?;
+                tx.execute(
+                    "INSERT INTO schema_migrations(version,name,applied_at) VALUES(9,'operation_readset_receipts',?1)",
+                    [now_millis()?],
+                )
+                .map_err(db_error)?;
+            }
+            if version < 10 {
                 tx.execute_batch(AGENT_AUTHORIZATION_SQL)
                     .map_err(db_error)?;
-                tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(9,'agent_authorization',?1)",[now_millis()?]).map_err(db_error)?;
+                tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(10,'agent_authorization',?1)",[now_millis()?]).map_err(db_error)?;
             }
             tx.pragma_update(None, "user_version", SCHEMA_VERSION)
                 .map_err(db_error)?;
