@@ -9,7 +9,8 @@ pub use action_auth::{
 };
 
 use awr_team_pg::{
-    AdminAccessPlan, PgError, WorkstreamCommand, WorkstreamCommandStore, WorkstreamQuery,
+    AdminAccessPlan, PgError, PlanningApproveRequest, PlanningDraftRequest, PlanningPublishRequest,
+    PlanningSuggestRequest, WorkstreamCommand, WorkstreamCommandStore, WorkstreamQuery,
     WorkstreamReadStore,
 };
 use axum::{
@@ -141,6 +142,30 @@ pub fn router(
         .route(
             "/v1/projects/{project}/access/outcome",
             post(access_outcome),
+        )
+        .route(
+            "/v1/projects/{project}/planning/suggest",
+            post(planning_suggest),
+        )
+        .route(
+            "/v1/projects/{project}/planning/draft",
+            post(planning_draft),
+        )
+        .route(
+            "/v1/projects/{project}/planning/preview",
+            post(planning_preview),
+        )
+        .route(
+            "/v1/projects/{project}/planning/approve",
+            post(planning_approve),
+        )
+        .route(
+            "/v1/projects/{project}/planning/publish",
+            post(planning_publish),
+        )
+        .route(
+            "/v1/projects/{project}/planning/outcome",
+            post(planning_outcome),
         )
         .layer(DefaultBodyLimit::max(65536))
         .with_state(state.clone());
@@ -457,6 +482,184 @@ fn bearer(headers: &HeaderMap) -> Option<&str> {
         .map(|(_, token)| token)
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PlanningPreviewBody {
+    protocol_version: u32,
+    candidate_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PlanningOutcomeBody {
+    protocol_version: u32,
+    request_id: String,
+}
+
+async fn planning_suggest(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    planning_dispatch(state, key, headers, body, PlanningOp::Suggest).await
+}
+async fn planning_draft(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    planning_dispatch(state, key, headers, body, PlanningOp::Draft).await
+}
+async fn planning_preview(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    planning_dispatch(state, key, headers, body, PlanningOp::Preview).await
+}
+async fn planning_approve(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    planning_dispatch(state, key, headers, body, PlanningOp::Approve).await
+}
+async fn planning_publish(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    planning_dispatch(state, key, headers, body, PlanningOp::Publish).await
+}
+async fn planning_outcome(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    planning_dispatch(state, key, headers, body, PlanningOp::Outcome).await
+}
+
+enum PlanningOp {
+    Suggest,
+    Draft,
+    Preview,
+    Approve,
+    Publish,
+    Outcome,
+}
+
+async fn planning_dispatch(
+    state: Arc<StateData>,
+    key: String,
+    headers: HeaderMap,
+    body: Bytes,
+    op: PlanningOp,
+) -> Response {
+    if !allowed_request(&state, &headers) {
+        return denied();
+    }
+    let Some(token) = bearer(&headers) else {
+        return denied();
+    };
+    let Some(project) = state.projects.get(&key) else {
+        return denied();
+    };
+    if let Ok(raw) = serde_json::from_slice::<Value>(&body) {
+        if reject_forged_authority_fields(&raw).is_err() {
+            return denied();
+        }
+    }
+    let Ok(_permit) = state.permits.try_acquire() else {
+        return response(StatusCode::SERVICE_UNAVAILABLE, json!({"code":"Busy"}));
+    };
+    let result = tokio::time::timeout(Duration::from_secs(30), async {
+        let source = state.store.source();
+        match op {
+            PlanningOp::Suggest => {
+                let req: PlanningSuggestRequest = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid planning suggest".into()))?;
+                // protocol_version is transport-level; strip if present via wrapper
+                source
+                    .planning_suggest(&project.tenant_id, &project.project_id, token, &req)
+                    .await
+            }
+            PlanningOp::Draft => {
+                let req: PlanningDraftRequest = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid planning draft".into()))?;
+                source
+                    .planning_draft(&project.tenant_id, &project.project_id, token, &req)
+                    .await
+            }
+            PlanningOp::Preview => {
+                let req: PlanningPreviewBody = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid planning preview".into()))?;
+                if req.protocol_version != 1 {
+                    return Err(PgError::Protocol("invalid planning preview".into()));
+                }
+                source
+                    .preview_planning_candidate(
+                        &project.tenant_id,
+                        &project.project_id,
+                        token,
+                        &req.candidate_id,
+                    )
+                    .await
+            }
+            PlanningOp::Approve => {
+                let req: PlanningApproveRequest = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid planning approve".into()))?;
+                source
+                    .planning_approve(&project.tenant_id, &project.project_id, token, &req)
+                    .await
+            }
+            PlanningOp::Publish => {
+                let req: PlanningPublishRequest = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid planning publish".into()))?;
+                source
+                    .planning_publish(&project.tenant_id, &project.project_id, token, &req)
+                    .await
+            }
+            PlanningOp::Outcome => {
+                let req: PlanningOutcomeBody = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid planning outcome".into()))?;
+                if req.protocol_version != 1 {
+                    return Err(PgError::Protocol("invalid planning outcome".into()));
+                }
+                match source
+                    .get_planning_command_receipt(
+                        &project.tenant_id,
+                        &project.project_id,
+                        token,
+                        &req.request_id,
+                    )
+                    .await?
+                {
+                    Some(v) => Ok(v),
+                    None => Ok(json!({
+                        "protocol":"awr-team-planning-command-v1",
+                        "request_id":req.request_id,
+                        "already_recorded":false,
+                        "result":null,
+                        "next_step":"absent receipt is unknown — wait/retry outcome before submitting a new request_id"
+                    })),
+                }
+            }
+        }
+    })
+    .await;
+    match result {
+        Ok(Ok(value)) => response(StatusCode::OK, value),
+        Ok(Err(error)) => error_response(error),
+        Err(_) => unavailable(),
+    }
+}
+
 fn unavailable_value() -> Value {
     json!({"code":"Unavailable","message":"request outcome unavailable; inspect a command before retrying with its original identity"})
 }
@@ -484,9 +687,53 @@ fn public_error(error: PgError) -> (StatusCode, Value) {
                 json!({"code":e.code(),"message":e.to_string()}),
             ),
         },
-        PgError::Unsupported(_) => (
+        PgError::Unsupported(msg) => (
             StatusCode::NOT_IMPLEMENTED,
-            json!({"code":"Unsupported","message":"operation or protocol is unavailable"}),
+            json!({
+                "code":"Unsupported",
+                "message": msg,
+                "next_step":"use a supported adapter (server_directory sole source) or an implemented planning op; do not hand-edit JSON/SQL"
+            }),
+        ),
+        PgError::ClaimBlocksActivation => (
+            StatusCode::CONFLICT,
+            json!({
+                "code":"ClaimBlocksActivation",
+                "message":"publish/activation blocked by in-flight claimed work",
+                "next_step":"stop/reconcile/replan affected works, then replay the same request_id with activate=true and stopped_work_ids"
+            }),
+        ),
+        PgError::ActivationImpactUnproven(msg) => (
+            StatusCode::CONFLICT,
+            json!({
+                "code":"ActivationImpactUnproven",
+                "message": msg,
+                "next_step":"prove impact scope or stop affected in-flight work; cancel/expiry/session-end do not prove process stopped"
+            }),
+        ),
+        PgError::WritebackRefused(msg) => (
+            StatusCode::CONFLICT,
+            json!({
+                "code":"WritebackRefused",
+                "message": msg,
+                "next_step":"fix the refused source write condition, then inspect planning.outcome before any new request_id"
+            }),
+        ),
+        PgError::CandidateNotApproved => (
+            StatusCode::CONFLICT,
+            json!({
+                "code":"CandidateNotApproved",
+                "message":"candidate is not approved for publish",
+                "next_step":"approve the current candidate_digest, then publish with the same digest"
+            }),
+        ),
+        PgError::ContextIncomplete => (
+            StatusCode::CONFLICT,
+            json!({
+                "code":"ContextIncomplete",
+                "message":"required context exceeds the requested budget or required specs are missing",
+                "next_step":"raise max_context_bytes, fetch source.content/artifact.content for missing refs, or restore authorized published specs"
+            }),
         ),
         PgError::Protocol(_) => (
             StatusCode::BAD_REQUEST,
@@ -527,10 +774,6 @@ fn public_error(error: PgError) -> (StatusCode, Value) {
                 json!({"code":code,"message":e.to_string()}),
             )
         }
-        PgError::ContextIncomplete => (
-            StatusCode::CONFLICT,
-            json!({"code":"ContextIncomplete","message":"required context exceeds the requested budget"}),
-        ),
         PgError::ResponseTooLarge => (
             StatusCode::CONFLICT,
             json!({"code":"ResponseTooLarge","message":"response exceeds service limit; use a smaller page or a narrower selector; inspect a command before retrying"}),

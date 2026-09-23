@@ -40,6 +40,7 @@ impl Bootstrap {
                  GRANT SELECT, INSERT, UPDATE ON awr_team.planning_writeback_journals TO {ident};
                  REVOKE DELETE ON awr_team.planning_writeback_journals FROM {ident};
                  GRANT SELECT, INSERT ON awr_team.planning_activation_receipts TO {ident};
+                 GRANT SELECT, INSERT ON awr_team.planning_command_receipts TO {ident};
                  REVOKE UPDATE, DELETE ON awr_team.planning_activation_receipts FROM {ident};
                  -- The app role must read the schema version (check_schema at
                  -- the command entry) but must never modify it (CR #36 P2-1).

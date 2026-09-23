@@ -88,6 +88,9 @@ pub use selective_invalidation::{
     SelectiveInvalidationStore, revalidate_execution_boundary, select_downstream_reevaluation,
 };
 pub use source::planning::{DraftCandidateCreate, SuggestionSubmit};
+pub use source::planning_ops::{
+    PlanningApproveRequest, PlanningDraftRequest, PlanningPublishRequest, PlanningSuggestRequest,
+};
 pub use source::writeback::{ActivationImpactGate, WritebackActivateRequest};
 pub use source::{
     CandidateRecord, CurrentSource, CurrentWorkstreamSource, IngestRequest, SOURCE_BINDING_FILE,
@@ -117,6 +120,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 28);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 29);
     }
 }

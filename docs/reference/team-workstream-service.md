@@ -117,13 +117,16 @@ Unsupported operations or protocol versions fail explicitly.
 | `workstreams.list` | Authorized workstreams only; `limit`, `cursor` |
 | `work.list` | Selected workstream's work summaries and count; `limit`, `cursor` |
 | `work.search` | Same visibility boundary; required literal substring `search` |
-| `work.prepare` | Required `work_id` or `session_id`; optional `max_context_bytes` |
+| `work.prepare` | Required `work_id` or `session_id`; optional `max_context_bytes`; returns published contract, required_specs and authorized_readable_refs (TMCP-023) |
 | `events.list` | Selected workstream, optionally narrowed by work/session; metadata only |
 | `session.inspect` | Required `session_id`; its current-ownership checkpoint |
 | `work.recovery` | Required work/session; up to two current-ownership recovery candidates |
 | `command.inspect` | Required work/session and `request_id`; this actor/client's committed receipt or unknown outcome |
 | `claim.inspect` | Required work/session and `claim_id`; current lease state, ownership, fence and epoch validity |
 | `execution.inspect` | Required work/session and `execution_id`; current intent state/version, cancellation and contract/epoch validity |
+| `source.content` | Required relative `source_path` on the **active** snapshot; optional `expected_sha256`, `max_context_bytes`. Rejects `..`, absolute paths, URLs and history selectors (TMCP-023). |
+| `artifact.content` | Required `work_id` + `artifact_id` bound to that work's evidence; optional digest/budget (TMCP-023). |
+| `planning.outcome` | Required `request_id`; planning mutation receipt or unknown (TMCP-023). |
 
 Work/session selectors derive the workstream. An explicit `workstream_id` must
 agree with them. Without work/session, a unique authorized workstream can be
@@ -170,12 +173,20 @@ No process is started for an individual connection or work session.
 The transport uses the repository's RMCP SDK for protocol negotiation,
 initialization and tool dispatch. It is stateless, including for older supported
 MCP protocol versions: no `Mcp-Session-Id` carries permissions or selects work.
-It exposes two tools, with arguments identical to the corresponding HTTP JSON:
+It exposes query/command tools plus access and planning tools, with arguments
+identical to the corresponding HTTP JSON:
 
 - `awr_team_query`: the query operations above. Start with
-  `{"protocol_version":1,"op":"capabilities"}`.
-- `awr_team_command`: the eight session/claim/intent commands below, with the same request
+  `{"protocol_version":1,"op":"capabilities"}`. Includes controlled
+  `source.content` / `artifact.content` and `planning.outcome`.
+- `awr_team_command`: durable session/claim/execution/review commands below, with the same request
   identity and preconditions. Tool discovery is not a write grant.
+- `awr_team_access_*`: project-admin member/role/credential management (TMCP-012).
+- `awr_team_planning_suggest` / `_draft` / `_preview` / `_approve` / `_publish` /
+  `_outcome`: authenticated planning ops (TMCP-023) calling the same business
+  entrypoints as HTTP. No SQL tools, arbitrary file edit, or direct `done`.
+  Stable `request_id` receipts; on disconnect call `_outcome` / `planning.outcome`
+  before any new ID.
 
 Initialization, discovery and notifications require current project/workstream
 read access. Each tool call additionally checks authorization inside the same
@@ -191,7 +202,40 @@ HTTP and MCP share command identities and receipts: a command submitted through
 one transport can be inspected or exactly replayed through the other. A timeout,
 disconnection or oversized response leaves the command outcome uncertain until
 `command.inspect` returns its committed receipt. An absent receipt is still
-`unknown`, not proof of non-execution.
+`unknown`, not proof of non-execution. Planning mutations follow the same rule
+via `awr_team_planning_outcome` / `planning.outcome`.
+
+## Planning operations (TMCP-023)
+
+HTTP routes under `/v1/projects/<alias>/planning/*` and the matching MCP tools
+call SourceStore planning entrypoints only:
+
+| HTTP / MCP | TMCP-010 action | Notes |
+| --- | --- | --- |
+| `POST .../planning/suggest` / `awr_team_planning_suggest` | `planning.propose` | Suggestion is not claimable and does not add formal work. |
+| `POST .../planning/draft` / `awr_team_planning_draft` | `planning.edit_draft` | `mode=create|edit`; split/cancel/archive are `changes[].op`. |
+| `POST .../planning/preview` / `awr_team_planning_preview` | read (propose/edit/approve/publish/work.read) | Exact diff + impact; no mutation. |
+| `POST .../planning/approve` / `awr_team_planning_approve` | `planning.approve` | Bound to current `candidate_digest`. |
+| `POST .../planning/publish` / `awr_team_planning_publish` | `planning.publish` | Optional `activate` uses the **registered** sole source only; client paths/URLs are refused. |
+| `POST .../planning/outcome` / `awr_team_planning_outcome` / query `planning.outcome` | work.read or planning.* | Idempotent receipt by original `request_id`. |
+
+Unsupported adapters (for example private management repo writeback), publish
+blocked by in-flight claims, and missing context return sanitized `code` /
+`message` / `next_step` on both HTTP and MCP. Members, planners and admins use
+these surfaces for daily planning — not hand-edited JSON or SQL.
+
+### Controlled context and content reads
+
+`work.prepare` returns the published contract, `required_specs` (authorized
+active-snapshot paths under the contract scope with size/digest checks) and
+`authorized_readable_refs`. Dedicated queries:
+
+- `source.content` — active snapshot path only; rejects `..`, absolute paths,
+  URLs, and historical snapshot selectors.
+- `artifact.content` — artifact bytes bound to evidence for an authorized
+  `work_id`; metadata-only artifacts are refused.
+
+Capabilities advertise `artifact_content` / `source_content` / `planning_mcp`.
 
 ## Durable session commands
 

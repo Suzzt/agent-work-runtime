@@ -32,6 +32,9 @@ pub struct SuggestionSubmit {
     /// Must match the authenticated actor when present. Not a separate credential.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author_person_id: Option<String>,
+    /// When set (TMCP-023 receipt resume), reuse this suggestion identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predetermined_suggestion_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -49,6 +52,9 @@ pub struct DraftCandidateCreate {
     /// Must match the authenticated actor when present. Not a separate credential.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author_person_id: Option<String>,
+    /// When set (TMCP-023 receipt resume), reuse this candidate identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predetermined_candidate_id: Option<String>,
 }
 
 fn map_team(err: awr_team::TeamError) -> PgError {
@@ -88,11 +94,10 @@ impl SourceStore {
     ) -> PgResult<Value> {
         let mut client = self.connect().await?;
         crate::check_schema(&client).await?;
-        let tx = client
-            .build_transaction()
-            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
-            .start()
-            .await?;
+        // Read committed: a concurrent resume of the same predetermined id uses
+        // ON CONFLICT DO NOTHING, and repeatable read turns that into a
+        // serialization failure instead of revealing the committed row.
+        let tx = client.transaction().await?;
         let auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningPropose, None, None)?;
         let scope = crate::workstream_auth::authority_scope(&auth, None, None);
@@ -104,7 +109,11 @@ impl SourceStore {
         }
         let (baseline_digest, baseline_epoch) =
             current_baseline(&tx, tenant_id, project_id).await?;
-        let suggestion_id = new_id();
+        let suggestion_id = submit
+            .predetermined_suggestion_id
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(new_id);
         let person = attested_actor_person(&auth.actor_id, submit.author_person_id.as_deref())
             .map_err(map_team)?;
         let suggestion = PlanningSuggestion {
@@ -128,41 +137,64 @@ impl SourceStore {
         suggestion.validate().map_err(map_team)?;
         let keys = serde_json::to_value(&suggestion.affected_work_keys)
             .map_err(|e| PgError::Protocol(e.to_string()))?;
-        tx.execute(
-            "INSERT INTO awr_team.planning_suggestions(
-                tenant_id, project_id, id, author_person_id, author_actor_id, author_client_id,
-                rationale, version, baseline_digest, baseline_epoch, affected_work_keys,
-                proposed_notes, state)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'open')",
-            &[
-                &tenant_id,
-                &project_id,
-                &suggestion_id,
-                &suggestion.author_person_id,
-                &auth.actor_id,
-                &auth.client_id,
-                &suggestion.rationale,
-                &(suggestion.version as i32),
-                &baseline_digest,
-                &baseline_epoch,
-                &keys,
-                &suggestion.proposed_notes,
-            ],
-        )
-        .await?;
+        let inserted = tx
+            .execute(
+                "INSERT INTO awr_team.planning_suggestions(
+                    tenant_id, project_id, id, author_person_id, author_actor_id, author_client_id,
+                    rationale, version, baseline_digest, baseline_epoch, affected_work_keys,
+                    proposed_notes, state)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'open')
+                 ON CONFLICT (tenant_id, project_id, id) DO NOTHING",
+                &[
+                    &tenant_id,
+                    &project_id,
+                    &suggestion_id,
+                    &suggestion.author_person_id,
+                    &auth.actor_id,
+                    &auth.client_id,
+                    &suggestion.rationale,
+                    &(suggestion.version as i32),
+                    &baseline_digest,
+                    &baseline_epoch,
+                    &keys,
+                    &suggestion.proposed_notes,
+                ],
+            )
+            .await?;
+        // On resume, reload the durable row so callers always see one identity.
+        let row = if inserted == 0 {
+            tx.query_one(
+                "SELECT id, version, author_person_id, author_actor_id, rationale,
+                        baseline_digest, baseline_epoch, state
+                 FROM awr_team.planning_suggestions
+                 WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+                &[&tenant_id, &project_id, &suggestion_id],
+            )
+            .await?
+        } else {
+            // Synthesize from just-inserted values via a round-trip for uniformity.
+            tx.query_one(
+                "SELECT id, version, author_person_id, author_actor_id, rationale,
+                        baseline_digest, baseline_epoch, state
+                 FROM awr_team.planning_suggestions
+                 WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+                &[&tenant_id, &project_id, &suggestion_id],
+            )
+            .await?
+        };
         let result = json!({
-            "suggestion_id": suggestion_id,
-            "version": suggestion.version,
-            "author_person_id": suggestion.author_person_id,
-            "author_actor_id": auth.actor_id,
-            "rationale": suggestion.rationale,
-            "baseline_digest": baseline_digest,
-            "baseline_epoch": baseline_epoch,
+            "suggestion_id": row.get::<_, String>(0),
+            "version": row.get::<_, i32>(1),
+            "author_person_id": row.get::<_, String>(2),
+            "author_actor_id": row.get::<_, String>(3),
+            "rationale": row.get::<_, String>(4),
+            "baseline_digest": row.get::<_, String>(5),
+            "baseline_epoch": row.get::<_, String>(6),
             "claimable": false,
             "adds_formal_work": false,
             "mutates_live_deps": false,
             "mutates_live_acceptance": false,
-            "state": "open"
+            "state": row.get::<_, String>(7),
         });
         tx.commit().await?;
         Ok(result)
@@ -199,7 +231,31 @@ impl SourceStore {
         .map_err(map_team)?;
         let person = attested_actor_person(&auth.actor_id, create.author_person_id.as_deref())
             .map_err(map_team)?;
-        let candidate_id = new_id();
+        let candidate_id = create
+            .predetermined_candidate_id
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(new_id);
+        // Resume: if the reserved candidate already exists, return its digest.
+        if let Some(row) = tx
+            .query_opt(
+                "SELECT id, draft_revision, candidate_digest, state
+                 FROM awr_team.planning_candidates
+                 WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+                &[&tenant_id, &project_id, &candidate_id],
+            )
+            .await?
+        {
+            let result = json!({
+                "candidate_id": row.get::<_, String>(0),
+                "draft_revision": row.get::<_, i32>(1),
+                "candidate_digest": row.get::<_, String>(2),
+                "state": row.get::<_, String>(3),
+                "resumed": true,
+            });
+            tx.commit().await?;
+            return Ok(result);
+        }
         let candidate = PlanningCandidate {
             codec: PLANNING_CODEC.into(),
             candidate_id: candidate_id.clone(),

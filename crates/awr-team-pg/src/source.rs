@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 #[path = "source_workstreams.rs"]
 mod workstreams;
@@ -13,6 +14,8 @@ use workstreams::SourceProjection;
 
 #[path = "source_planning.rs"]
 pub mod planning;
+#[path = "source_planning_ops.rs"]
+pub mod planning_ops;
 #[path = "source_writeback.rs"]
 pub mod writeback;
 
@@ -88,21 +91,26 @@ pub struct CurrentWorkstreamSource {
 /// Trusted source coordinator API. This is not an authenticated transport;
 /// callers must authorize source administration before invoking these methods.
 pub struct SourceStore {
-    pool: crate::PgPool,
+    pool: Arc<crate::PgPool>,
 }
 
 impl SourceStore {
     pub fn new(url: impl Into<String>) -> Self {
         Self {
-            pool: crate::PgPool::new(url),
+            pool: Arc::new(crate::PgPool::new(url)),
         }
     }
 
     /// Build from a validated `tokio_postgres::Config` (see PgPool::from_config).
     pub fn from_config(config: tokio_postgres::Config) -> Self {
         Self {
-            pool: crate::PgPool::from_config(config),
+            pool: Arc::new(crate::PgPool::from_config(config)),
         }
+    }
+
+    /// Share the Team read/command pool (HTTP/MCP).
+    pub fn from_pool(pool: Arc<crate::PgPool>) -> Self {
+        Self { pool }
     }
 
     async fn connect(&self) -> PgResult<crate::PgClient> {
