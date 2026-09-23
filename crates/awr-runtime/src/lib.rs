@@ -41,8 +41,8 @@ mod work_create;
 mod work_edit;
 pub use work_edit::edit_work;
 mod selective_invalidation;
-mod workstream_accounting;
 mod work_graph;
+mod workstream_accounting;
 pub use selective_invalidation::{
     AdoptedConsumerEdge, BoundaryDecision, BoundaryRevalidation, BoundarySnapshot,
     CancelSplitRelation, DiscoverDependencyRequest, ExecutionBoundary, PlanningChangeApplication,
