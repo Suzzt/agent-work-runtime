@@ -63,6 +63,7 @@ fn draft(id: &str, deps: &[&str]) -> TaskDraft {
         definition_state: DraftDefinitionState::Draft,
         split_from: None,
         split_children: vec![],
+        workstream: None,
     }
 }
 
@@ -131,6 +132,28 @@ async fn maintainer_store() -> (MutexGuard<'static, ()>, Client, String, SourceS
         .unwrap();
     let store = SourceStore::from_config(common::with_app_role(&common::test_config(), &db));
     (guard, admin, db, store)
+}
+
+async fn enable_admin_manage(owner: &Client) {
+    owner
+        .batch_execute(
+            "UPDATE awr_team.workstream_grants
+             SET can_write=true, can_manage=true, grant_version=grant_version+1
+             WHERE client_id='cli-a'",
+        )
+        .await
+        .unwrap();
+    owner
+        .execute(
+            "INSERT INTO awr_team.workstream_grants(
+                tenant_id,project_id,actor_id,client_id,workstream_id,authority_version,
+                can_read,can_write,can_manage,can_attest_execution,can_reconcile_execution,active)
+             VALUES($1,$2,'agent','cli-a',$3,1,true,true,true,false,false,true)
+             ON CONFLICT DO NOTHING",
+            &[&TENANT, &PROJECT, &Id::from(2).to_string()],
+        )
+        .await
+        .unwrap();
 }
 
 fn member_plan(role: &str, token: &str, cred_id: &str, client: &str) -> AdminAccessPlan {
@@ -271,6 +294,7 @@ async fn execution_not_planning() {
                 affected_work_keys: vec!["CLIENT-1".into()],
                 proposed_notes: json!({"add":"SHARED-1"}),
                 author_person_id: Some("agent".into()),
+                predetermined_suggestion_id: None,
             },
         )
         .await
@@ -289,6 +313,7 @@ async fn execution_not_planning() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let err = store
         .create_planning_candidate(TENANT, PROJECT, A, &create)
@@ -646,6 +671,7 @@ async fn least_privilege_delegation() {
 #[tokio::test]
 async fn scoped_admin_and_last_admin() {
     let (_g, owner, db, _) = setup().await;
+    enable_admin_manage(&owner).await;
     let access =
         ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     // Positive: admin can preview adding a developer.
@@ -667,7 +693,7 @@ async fn scoped_admin_and_last_admin() {
     // Negative: tenant-wide credential revoke refused.
     let revoke_tenant: AdminAccessPlan = serde_json::from_value(json!({
         "protocol_version":1,
-        "subject":{"id":"agent","kind":"agent","display_name":"Worker"},
+        "subject":{"id":"agent","kind":"human","display_name":"Worker"},
         "subject_client_id":"cli-a",
         "role":"admin",
         "grants":[],
@@ -683,7 +709,7 @@ async fn scoped_admin_and_last_admin() {
     // Negative: last admin cannot remove self without handoff.
     let remove_self: AdminAccessPlan = serde_json::from_value(json!({
         "protocol_version":1,
-        "subject":{"id":"agent","kind":"agent","display_name":"Worker"},
+        "subject":{"id":"agent","kind":"human","display_name":"Worker"},
         "subject_client_id":"cli-a",
         "role":"reader",
         "grants":[],
@@ -712,7 +738,8 @@ async fn scoped_admin_and_last_admin() {
 
 #[tokio::test]
 async fn secret_delivery_boundary() {
-    let (_g, _admin, db, _) = setup().await;
+    let (_g, admin, db, _) = setup().await;
+    enable_admin_manage(&admin).await;
     let access =
         ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     let plan = member_plan("developer", NEW_TOKEN, "secret-member", "secret-cli");
@@ -763,6 +790,7 @@ async fn proposal_approval_binding() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let created = store
         .create_planning_candidate(TENANT, PROJECT, A, &create)
@@ -832,6 +860,7 @@ async fn source_cas_and_crash() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let created = planning
         .create_planning_candidate(TENANT, PROJECT, A, &create)
@@ -871,6 +900,7 @@ async fn source_cas_and_crash() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let created2 = planning
         .create_planning_candidate(TENANT, PROJECT, A, &create2)
@@ -1039,6 +1069,7 @@ async fn live_source_publication() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let created = planning
         .create_planning_candidate(TENANT, PROJECT, A, &create)
@@ -1225,6 +1256,7 @@ async fn graph_integrity() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: None,
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let cycle_result = store
         .create_planning_candidate(TENANT, PROJECT, A, &cyclic)
@@ -1251,6 +1283,7 @@ async fn graph_integrity() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let created = store
         .create_planning_candidate(TENANT, PROJECT, A, &ok_create)
@@ -1420,7 +1453,8 @@ async fn review_person_and_version() {
 
 #[tokio::test]
 async fn audit_atomicity() {
-    let (_g, _admin, db, _) = setup().await;
+    let (_g, admin, db, _) = setup().await;
+    enable_admin_manage(&admin).await;
     let access =
         ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     let plan = member_plan("developer", NEW_TOKEN, "audit-member", "audit-cli");
