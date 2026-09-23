@@ -168,7 +168,7 @@ Two policies are explicit:
   selection drifts from the adopted delivery.
 
 Export authorizations are grant/revoke auditable. Cross-project dependencies are
-refused. Persist in SQLite (`011_delivery_deps`) and Team PG (schema 23) with
+refused. Persist in SQLite (`012_delivery_deps`) and Team PG (schema 26) with
 tenant/project RLS matching the responsibility-table CR pattern.
 
 ## Cross-stream dependency graph and atomic cycle checks (WS-031)
@@ -199,4 +199,4 @@ When implementation discovers a new required dependency, persist a scoped
 planning change (old/new graph versions, acceptance contracts, cancel/split
 relations, continue conditions), block affected actions first, then require
 authorized confirmation of the new graph and acceptance contract. Unrelated
-tasks keep advancing. Persist in Team PG schema 24.
+tasks keep advancing. Persist in Team PG schema 27.

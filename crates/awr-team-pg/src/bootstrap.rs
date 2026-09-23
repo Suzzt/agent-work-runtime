@@ -18,6 +18,9 @@ impl Bootstrap {
                  REVOKE UPDATE, DELETE ON awr_team.completion_receipts FROM {ident};
                  REVOKE UPDATE, DELETE ON awr_team.workstream_catalogs FROM {ident};
                  REVOKE UPDATE, DELETE ON awr_team.workstream_snapshot_ownership FROM {ident};
+                 REVOKE UPDATE, DELETE ON awr_team.responsibility_events FROM {ident};
+                 REVOKE UPDATE, DELETE ON awr_team.responsibility_receipts FROM {ident};
+                 REVOKE UPDATE, DELETE ON awr_team.agent_authorization_receipts FROM {ident};
                  REVOKE ALL ON awr_team.access_changes FROM {ident};
                  REVOKE ALL ON awr_team.history_migrations FROM {ident};
                  REVOKE ALL ON awr_team.backup_operations FROM {ident};

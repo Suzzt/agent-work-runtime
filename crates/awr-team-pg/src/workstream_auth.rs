@@ -266,15 +266,19 @@ pub fn command_business_action(op: &str) -> Option<awr_team::Action> {
     use awr_team::Action::*;
     Some(match op {
         "session.start" | "session.checkpoint" | "session.end" => SessionMaintainOwn,
-        "claim.acquire" | "claim.renew" | "claim.release" | "handoff.propose"
-        | "handoff.accept" | "handoff.reject" | "handoff.cancel" | "handoff.timeout"
-        | "handoff.inspect" => ClaimManageOwn,
-        "execution.prepare" | "execution.start" | "execution.cancel" | "execution.report" => {
-            ExecutionRequestAndReportOwn
+        "claim.acquire" | "claim.renew" | "claim.release" => ClaimManageOwn,
+        "execution.prepare" | "execution.start" | "execution.cancel" | "execution.report"
+        | "handoff.propose" | "handoff.accept" | "handoff.inspect" | "handoff.reject"
+        | "handoff.cancel" | "handoff.timeout" => ExecutionRequestAndReportOwn,
+        "evidence.submit" | "review.open" | "work.rework" | "work.complete" => {
+            DeliverySubmitAndRequestReview
         }
-        "evidence.submit" | "review.open" => DeliverySubmitAndRequestReview,
-        "review.accept" | "review.return" | "work.rework" => ReviewDecide,
-        "work.complete" => DeliveryFinalize,
+        // Accept/return is the human decision. Role name `reviewer` is still a
+        // reader template for every other action; the domain gate grants
+        // `review.decide` only for that membership label, matching
+        // `validate_reviewer` (admin/reviewer). Workers submit evidence but
+        // cannot decide.
+        "review.accept" | "review.return" => ReviewDecide,
         "planning.propose" => PlanningPropose,
         "planning.edit_draft" => PlanningEditDraft,
         "planning.approve" => PlanningApprove,
@@ -304,6 +308,10 @@ pub fn query_business_action(op: &str) -> Option<awr_team::Action> {
         "command.inspect",
         "claim.inspect",
         "execution.inspect",
+        "handoff.inspect",
+        "evidence.inspect",
+        "review.inspect",
+        "completion.inspect",
     ];
     if QUERIES.contains(&op) {
         Some(awr_team::Action::WorkRead)
@@ -357,7 +365,14 @@ pub(crate) fn authorize_domain_action(
     if live != auth.role_template || auth.membership_version < 1 {
         return Err(PgError::Forbidden);
     }
-    let scope = authority_scope(auth, stream, work_id);
+    let mut scope = authority_scope(auth, stream, work_id);
+    // `validate_reviewer` already treats membership role `reviewer` as the
+    // approval-capable label. Do not grant this to readers, workers, or admins:
+    // `review.decide` stays a separate grant for every other template.
+    if action == awr_team::Action::ReviewDecide && auth.role == "reviewer" {
+        scope.independent_review_grant = true;
+        scope.allowed_actions.insert(awr_team::Action::ReviewDecide);
+    }
     let resource = awr_team::ResourceRef {
         tenant_id: auth.tenant_id.clone(),
         project_id: auth.access.project_id.clone(),
@@ -840,6 +855,26 @@ mod tests {
             ),
             Err(PgError::Forbidden)
         ));
+        assert!(matches!(
+            authorize_command(
+                &reader,
+                id(1),
+                "w",
+                "review.accept",
+                CommandAuthPhase::Admission
+            ),
+            Err(PgError::Forbidden)
+        ));
+        assert!(matches!(
+            authorize_command(
+                &reader,
+                id(1),
+                "w",
+                "work.complete",
+                CommandAuthPhase::Admission
+            ),
+            Err(PgError::Forbidden)
+        ));
 
         let developer =
             authority_with_role("worker", true, false, false, false, WorkstreamState::Active);
@@ -863,6 +898,54 @@ mod tests {
             )
             .is_ok()
         );
+        assert!(
+            authorize_command(
+                &developer,
+                id(1),
+                "w",
+                "evidence.submit",
+                CommandAuthPhase::Admission
+            )
+            .is_ok()
+        );
+        assert!(matches!(
+            authorize_command(
+                &developer,
+                id(1),
+                "w",
+                "review.accept",
+                CommandAuthPhase::Admission
+            ),
+            Err(PgError::Forbidden)
+        ));
+        let reviewer = authority_with_role(
+            "reviewer",
+            true,
+            false,
+            false,
+            false,
+            WorkstreamState::Active,
+        );
+        assert!(
+            authorize_command(
+                &reviewer,
+                id(1),
+                "w",
+                "review.accept",
+                CommandAuthPhase::Admission
+            )
+            .is_ok()
+        );
+        assert!(matches!(
+            authorize_command(
+                &reviewer,
+                id(1),
+                "w",
+                "evidence.submit",
+                CommandAuthPhase::Admission
+            ),
+            Err(PgError::Forbidden)
+        ));
         assert!(matches!(
             authorize_domain_action(
                 &developer,

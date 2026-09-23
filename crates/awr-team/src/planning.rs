@@ -689,6 +689,28 @@ pub fn authorize_planning_action(
     }
 }
 
+/// A request may repeat the authenticated actor's id, but it cannot name a
+/// different person. Planning records use the actor from the credential.
+pub fn attested_actor_person(
+    authenticated_actor: &str,
+    asserted: Option<&str>,
+) -> TeamResult<String> {
+    let actor = authenticated_actor.trim();
+    if actor.is_empty() {
+        return Err(TeamError::InvalidInput(
+            "authenticated actor is empty".into(),
+        ));
+    }
+    if let Some(asserted) = asserted.map(str::trim).filter(|value| !value.is_empty()) {
+        if asserted != actor {
+            return Err(TeamError::PermissionDenied(
+                "asserted person id does not match the authenticated actor".into(),
+            ));
+        }
+    }
+    Ok(actor.to_owned())
+}
+
 /// Readers cannot write via suggestion APIs.
 pub fn refuse_reader_suggestion_write(scope: &AuthorityScope) -> TeamResult<()> {
     if !scope.allowed_actions.contains(&Action::PlanningPropose) {
@@ -717,6 +739,11 @@ pub fn authorize_planning_approve(
     prior_delivery_policy: &str,
 ) -> TeamResult<bool> {
     authorize_planning_action(scope, Action::PlanningApprove, resource, now_unix_ms)?;
+    if candidate.state != CandidateState::Drafting {
+        return Err(TeamError::InvalidInput(
+            "approve requires a drafting candidate".into(),
+        ));
+    }
     policy.validate_no_delivery_downgrade(prior_delivery_policy)?;
     let current = candidate.candidate_digest()?;
     if current != presented_digest {
@@ -797,7 +824,7 @@ pub fn edit_candidate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::permission::{RoleTemplate, authority_from_template};
+    use crate::permission::{AuthorityScope, RoleTemplate, authority_from_template};
 
     fn draft(id: &str, deps: &[&str]) -> TaskDraft {
         TaskDraft {
@@ -1127,5 +1154,90 @@ mod tests {
         assert!(
             authorize_planning_action(&developer, Action::PlanningPublish, &resource, 1).is_err()
         );
+    }
+
+    fn maintainer_scope() -> (AuthorityScope, ResourceRef) {
+        let scope = authority_from_template(
+            RoleTemplate::Maintainer,
+            "tenant-a",
+            "project-a",
+            "person-maint",
+            "actor-maint",
+        );
+        let resource = ResourceRef {
+            tenant_id: "tenant-a".into(),
+            project_id: "project-a".into(),
+            workstream_id: None,
+            work_id: None,
+        };
+        (scope, resource)
+    }
+
+    #[test]
+    fn attested_person_rejects_substitution_that_would_clear_self_approve() {
+        assert_eq!(
+            attested_actor_person("person-maint", None).unwrap(),
+            "person-maint"
+        );
+        assert_eq!(
+            attested_actor_person("person-maint", Some(" person-maint ")).unwrap(),
+            "person-maint"
+        );
+        let forged = attested_actor_person("person-maint", Some("other-person")).unwrap_err();
+        assert!(forged.to_string().contains("does not match"), "{forged}");
+
+        let c = candidate(vec![DraftChange {
+            op: DraftOpKind::EditFields,
+            before: Some(draft("A", &[])),
+            after: draft("A", &[]),
+        }]);
+        let digest = c.candidate_digest().unwrap();
+        let (real, resource) = maintainer_scope();
+        let mut banned = OrdinaryPlanningSelfApprovePolicy::ordinary_default();
+        banned.allow_self_approve_ordinary = false;
+        let denied = authorize_planning_approve(
+            &real,
+            &resource,
+            1,
+            &c,
+            &digest,
+            &banned,
+            "independent_review",
+        )
+        .unwrap_err();
+        assert!(denied.to_string().contains("self-approve"), "{denied}");
+    }
+
+    #[test]
+    fn approve_and_publish_refuse_when_candidate_is_already_published() {
+        let mut c = candidate(vec![DraftChange {
+            op: DraftOpKind::EditFields,
+            before: Some(draft("A", &[])),
+            after: draft("A", &[]),
+        }]);
+        let digest = c.candidate_digest().unwrap();
+        c.state = CandidateState::Published;
+        c.approval = Some(PlanningApproval {
+            approval_id: "ap-1".into(),
+            candidate_digest: digest.clone(),
+            approver_person_id: "person-maint".into(),
+            approver_actor_id: "actor-maint".into(),
+            self_approved: true,
+        });
+        let (scope, resource) = maintainer_scope();
+        let policy = OrdinaryPlanningSelfApprovePolicy::ordinary_default();
+        assert!(
+            authorize_planning_approve(
+                &scope,
+                &resource,
+                1,
+                &c,
+                &digest,
+                &policy,
+                "independent_review",
+            )
+            .is_err()
+        );
+        assert!(authorize_planning_publish(&scope, &resource, 1, &c, &digest).is_err());
     }
 }

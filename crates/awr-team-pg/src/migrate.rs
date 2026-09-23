@@ -77,35 +77,35 @@ const MIGRATIONS: &[(&str, i32)] = &[
         19,
     ),
     (
-        include_str!("../migrations/20260922000020_agent_authorization.sql"),
+        include_str!("../migrations/20260922000020_project_admin_access.sql"),
         20,
     ),
     (
-        include_str!("../migrations/20260922000021_team_handoff.sql"),
+        include_str!("../migrations/20260922000021_planning_drafts.sql"),
         21,
     ),
     (
-        include_str!("../migrations/20260923000022_review_person_independence.sql"),
+        include_str!("../migrations/20260922000022_execution_resource_bounds.sql"),
         22,
     ),
     (
-        include_str!("../migrations/20260923000023_delivery_deps.sql"),
+        include_str!("../migrations/20260922000023_agent_authorization.sql"),
         23,
     ),
     (
-        include_str!("../migrations/20260923000024_selective_invalidation.sql"),
+        include_str!("../migrations/20260922000024_team_handoff.sql"),
         24,
     ),
     (
-        include_str!("../migrations/20260923000025_project_admin_access.sql"),
+        include_str!("../migrations/20260923000025_review_person_independence.sql"),
         25,
     ),
     (
-        include_str!("../migrations/20260923000026_planning_drafts.sql"),
+        include_str!("../migrations/20260923000026_delivery_deps.sql"),
         26,
     ),
     (
-        include_str!("../migrations/20260923000027_execution_resource_bounds.sql"),
+        include_str!("../migrations/20260923000027_selective_invalidation.sql"),
         27,
     ),
     (
