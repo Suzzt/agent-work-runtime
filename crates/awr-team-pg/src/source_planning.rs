@@ -94,11 +94,10 @@ impl SourceStore {
     ) -> PgResult<Value> {
         let mut client = self.connect().await?;
         crate::check_schema(&client).await?;
-        let tx = client
-            .build_transaction()
-            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
-            .start()
-            .await?;
+        // Read committed: a concurrent resume of the same predetermined id uses
+        // ON CONFLICT DO NOTHING, and repeatable read turns that into a
+        // serialization failure instead of revealing the committed row.
+        let tx = client.transaction().await?;
         let auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningPropose, None, None)?;
         let scope = crate::workstream_auth::authority_scope(&auth, None, None);

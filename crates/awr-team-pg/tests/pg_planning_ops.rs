@@ -90,6 +90,40 @@ async fn planning_suggest_resume_after_reserved_does_not_duplicate() {
 }
 
 #[tokio::test]
+async fn concurrent_planning_suggest_same_request_does_not_abort() {
+    let (_g, admin, db, _read) = setup().await;
+    elev_maintainer(&admin).await;
+    let store = SourceStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let req = PlanningSuggestRequest {
+        protocol_version: 1,
+        request_id: "suggest-race-1".into(),
+        rationale: "race types".into(),
+        affected_work_keys: vec!["a".into()],
+        proposed_notes: json!({"note": "race"}),
+        author_person_id: Some("agent".into()),
+    };
+    let (left, right) = tokio::join!(
+        store.planning_suggest(TENANT, PROJECT, A, &req),
+        store.planning_suggest(TENANT, PROJECT, A, &req),
+    );
+    let left = left.expect("concurrent reserve must not abort the loser");
+    let right = right.expect("concurrent reserve must not abort the loser");
+    let left_id = left["result"]["suggestion_id"].as_str().unwrap();
+    let right_id = right["result"]["suggestion_id"].as_str().unwrap();
+    assert_eq!(left_id, right_id);
+    let count: i64 = admin
+        .query_one(
+            "SELECT count(*) FROM awr_team.planning_suggestions
+             WHERE tenant_id=$1 AND project_id=$2 AND rationale='race types'",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(count, 1, "raced suggest must keep a single suggestion");
+}
+
+#[tokio::test]
 async fn source_content_refuses_mixed_catalog_without_full_stream_grants() {
     let (_g, admin, db, read) = setup().await;
     let q_deny: WorkstreamQuery = serde_json::from_value(json!({

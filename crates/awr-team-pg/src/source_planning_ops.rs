@@ -195,11 +195,10 @@ impl SourceStore {
     ) -> PgResult<std::result::Result<Value, String>> {
         let mut client = self.connect().await?;
         crate::check_schema(&client).await?;
-        let tx = client
-            .build_transaction()
-            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
-            .start()
-            .await?;
+        // Read committed so a unique-conflict loser can see the winner's row
+        // after rolling back to a savepoint. Repeatable read would keep the
+        // pre-insert snapshot and could not replay the concurrent reserve.
+        let mut tx = client.transaction().await?;
         let auth = authenticate(&tx, tenant_id, project_id, bearer).await?;
         let scope = crate::workstream_auth::authority_scope(&auth, None, None);
         let can = [
@@ -255,7 +254,8 @@ impl SourceStore {
             "domain_id": domain_id,
             "already_recorded": false
         });
-        match tx
+        let reserve_sp = tx.savepoint("planning_reserve").await?;
+        match reserve_sp
             .execute(
                 "INSERT INTO awr_team.planning_command_receipts(
                     tenant_id, project_id, request_id, op, request_hash,
@@ -274,9 +274,13 @@ impl SourceStore {
             )
             .await
         {
-            Ok(_) => {}
+            Ok(_) => {
+                reserve_sp.commit().await?;
+            }
             Err(e) if e.code() == Some(&tokio_postgres::error::SqlState::UNIQUE_VIOLATION) => {
-                // Concurrent reserve — re-read.
+                // The failed insert aborts the transaction unless we roll back
+                // to the savepoint first. Then the committed winner is visible.
+                reserve_sp.rollback().await?;
                 let row = tx
                     .query_one(
                         "SELECT request_hash, status, result_json
@@ -323,11 +327,9 @@ impl SourceStore {
         result: Value,
     ) -> PgResult<Value> {
         let mut client = self.connect().await?;
-        let tx = client
-            .build_transaction()
-            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
-            .start()
-            .await?;
+        // Read committed: two finishes of the same reserved receipt must not
+        // turn the second UPDATE into a serialization failure.
+        let tx = client.transaction().await?;
         let _auth = authenticate(&tx, tenant_id, project_id, bearer).await?;
         bind_workstream_scope(&tx, tenant_id, project_id).await?;
         let wrapped = json!({
