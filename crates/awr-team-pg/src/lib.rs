@@ -2,6 +2,7 @@
 //! Personal SQLite runtime does not depend on this crate.
 mod agent_authorization;
 mod bootstrap;
+mod delivery_adoption;
 mod error;
 mod execution;
 mod graph;
@@ -31,6 +32,7 @@ mod workstream_read;
 
 pub use agent_authorization::AuthorizationStore;
 pub use bootstrap::Bootstrap;
+pub use delivery_adoption::DeliveryAdoptionStore;
 pub use error::{PgError, PgResult};
 pub use execution::{
     ExecutionRecord, ExecutionStore, OutboxDelivery, admit_live_fence, exactly_once_supported,
@@ -105,6 +107,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 25);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 26);
     }
 }

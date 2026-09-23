@@ -15,8 +15,8 @@ explicitly enable workstreams. The shared personal MCP service has an explicit
 authenticated read boundary; unsupported shared operations are rejected for
 enabled workstreams. Team PostgreSQL has authenticated HTTP/MCP queries,
 session journaling, claims, execution admission and authorized recovery, with a
-bounded local reference runner. Versioned cross-stream adoption remains separate integration work.
-File/dir/workspace versus shared external/integration resource bounds are enforced
+bounded local reference runner. Versioned cross-stream hard dependencies and adoption credentials are available
+in core/store/team-pg (WS-030). File/dir/workspace versus shared external/integration resource bounds are enforced
 at reservation and admission; physical strong isolation still requires a verified
 host sandbox or OS boundary, not AWR metadata alone.
 These paths do not establish complete isolation for every CLI, MCP or Team operation.
@@ -109,8 +109,9 @@ version of the contract.
 
 The Team source bundle can already represent and validate the acyclic
 `interface → sdk → integration` example across workstream ownership. This is
-source graph validation only. Delivery receipts, adoption, dispatch admission
-and selective invalidation are not yet implemented by that source path.
+source graph validation only. Delivery receipts and adoption credentials are persisted (WS-030); dispatch
+admission and selective invalidation remain separate integration work on the
+source path.
 
 ## Accounting and compatibility
 

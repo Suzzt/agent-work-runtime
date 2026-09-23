@@ -6,6 +6,7 @@ mod checkpoint;
 mod checkpoint_save;
 mod client;
 mod compaction;
+mod delivery_adoption;
 mod delta;
 mod events;
 mod evidence;
@@ -62,13 +63,14 @@ pub use work::{ScopedDependencyGraph, UnavailableDependency};
 
 const APPLICATION_ID: i64 = 0x41575231;
 /// Schema written by this build. Exposed for offline host compatibility negotiation.
-pub const SCHEMA_VERSION: i64 = 11;
+pub const SCHEMA_VERSION: i64 = 12;
 const CONTENT_REVIEWS_SQL: &str = include_str!("../migrations/007_content_reviews.sql");
 const RESPONSIBILITY_SQL: &str = include_str!("../migrations/008_responsibility.sql");
 const OPERATION_READSET_RECEIPTS_SQL: &str =
     include_str!("../migrations/009_operation_readset_receipts.sql");
 const AGENT_AUTHORIZATION_SQL: &str = include_str!("../migrations/010_agent_authorization.sql");
 const TEAM_HANDOFF_SQL: &str = include_str!("../migrations/011_team_handoff.sql");
+const DELIVERY_DEPS_SQL: &str = include_str!("../migrations/012_delivery_deps.sql");
 const CATALOG_SQL: &str = include_str!("../migrations/001_catalog.sql");
 const DOMAIN_SQL: &str = include_str!("../migrations/002_domain.sql");
 const SEARCH_SQL: &str = include_str!("../migrations/003_search.sql");
@@ -456,6 +458,10 @@ impl Store {
             if version < 11 {
                 tx.execute_batch(TEAM_HANDOFF_SQL).map_err(db_error)?;
                 tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(11,'team_handoff',?1)",[now_millis()?]).map_err(db_error)?;
+            }
+            if version < 12 {
+                tx.execute_batch(DELIVERY_DEPS_SQL).map_err(db_error)?;
+                tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(12,'delivery_deps',?1)",[now_millis()?]).map_err(db_error)?;
             }
             tx.pragma_update(None, "user_version", SCHEMA_VERSION)
                 .map_err(db_error)?;
