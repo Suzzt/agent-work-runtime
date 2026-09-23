@@ -11,12 +11,9 @@
     {
       "adapter_id": "codex_cli",
       "control_mode": "named_controlled",
-      "auto_startable": true,
+      "auto_startable": false,
       "capabilities": [
-        "start",
         "status_read",
-        "stop_confirmation",
-        "reconnect_resume",
         "result_forensics"
       ]
     },
@@ -24,7 +21,7 @@
       "adapter_id": "claude_code",
       "control_mode": "named_controlled",
       "auto_startable": false,
-      "capabilities": ["status_read", "reconnect_resume", "result_forensics"]
+      "capabilities": ["status_read", "result_forensics"]
     }
   ],
   "coordination_not_process_control": [

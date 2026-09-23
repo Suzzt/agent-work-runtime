@@ -22,12 +22,23 @@ fn server_advertises_two_usable_named_clients() {
         false
     );
 
-    let codex = negotiate_named_adapter(
+    let codex = negotiate_named_adapter("codex_cli", &[AdapterCapability::StatusRead], &[]);
+    assert_eq!(codex.decision, NegotiationDecision::Usable);
+    let codex_start = negotiate_named_adapter(
         "codex_cli",
         &[AdapterCapability::Start, AdapterCapability::StatusRead],
         &[],
     );
-    assert_eq!(codex.decision, NegotiationDecision::Usable);
+    assert_eq!(
+        codex_start.decision,
+        NegotiationDecision::HumanContinuationRequired
+    );
+    assert!(
+        codex_start
+            .missing_required
+            .contains(&AdapterCapability::Start)
+    );
+    assert!(codex_start.human_continuation.is_some());
 
     let claude_start = negotiate_named_adapter("claude_code", &[AdapterCapability::Start], &[]);
     assert_eq!(

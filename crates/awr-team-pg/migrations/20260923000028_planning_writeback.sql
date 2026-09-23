@@ -11,7 +11,7 @@ CREATE TABLE awr_team.planning_writeback_journals (
     candidate_digest TEXT NOT NULL,
     publish_receipt_id TEXT NOT NULL,
     phase TEXT NOT NULL CHECK (phase IN (
-        'planned', 'source_written', 'pg_activating', 'completed', 'refused', 'rolled_back'
+        'planned', 'validated', 'source_written', 'pg_activating', 'completed', 'refused', 'rolled_back'
     )),
     before_fingerprint TEXT NOT NULL,
     after_fingerprint TEXT NOT NULL,

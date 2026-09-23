@@ -454,16 +454,6 @@ pub struct MigrationPreview {
     pub notes: Vec<String>,
 }
 
-fn withhold_new(actions: &mut BTreeSet<Action>) -> BTreeSet<Action> {
-    let mut withheld = BTreeSet::new();
-    for action in Action::new_privileged_actions() {
-        if actions.remove(&action) {
-            withheld.insert(action);
-        }
-    }
-    withheld
-}
-
 pub fn preview_legacy_migration(
     legacy_role: Option<LegacyRole>,
     legacy_grant: Option<LegacyGrant>,
@@ -484,93 +474,95 @@ pub fn preview_legacy_migration(
         };
     }
 
-    let mut suggested = None;
-    let mut granted = BTreeSet::new();
-
+    let mut role_template = None;
+    let mut role_actions: Option<BTreeSet<Action>> = None;
     if let Some(role) = legacy_role {
         match role {
             LegacyRole::Reader => {
-                suggested = Some(RoleTemplate::Reader);
-                granted = template_actions(RoleTemplate::Reader);
+                role_template = Some(RoleTemplate::Reader);
+                role_actions = Some(template_actions(RoleTemplate::Reader));
                 notes.push("legacy reader maps to reader template".into());
             }
             LegacyRole::Reviewer => {
-                suggested = Some(RoleTemplate::Reader);
-                granted = template_actions(RoleTemplate::Reader);
+                role_template = Some(RoleTemplate::Reader);
+                role_actions = Some(template_actions(RoleTemplate::Reader));
                 notes.push(
                     "legacy reviewer maps to reader; review.decide needs a separate grant".into(),
                 );
             }
             LegacyRole::Worker => {
-                suggested = Some(RoleTemplate::Developer);
-                granted = template_actions(RoleTemplate::Developer);
+                role_template = Some(RoleTemplate::Developer);
+                role_actions = Some(template_actions(RoleTemplate::Developer));
                 notes.push("legacy worker maps to developer template before withholding".into());
             }
             LegacyRole::Admin => {
-                suggested = Some(RoleTemplate::ProjectAdmin);
-                granted = template_actions(RoleTemplate::ProjectAdmin);
+                role_template = Some(RoleTemplate::ProjectAdmin);
+                role_actions = Some(template_actions(RoleTemplate::ProjectAdmin));
                 notes.push("legacy admin maps to project_admin template before withholding".into());
             }
         }
     }
 
+    let mut grant_template = None;
+    let mut grant_actions: Option<BTreeSet<Action>> = None;
     if let Some(grant) = legacy_grant {
         match grant {
             LegacyGrant::Read => {
-                if suggested.is_none() {
-                    suggested = Some(RoleTemplate::Reader);
-                }
-                granted.extend(template_actions(RoleTemplate::Reader));
-                notes.push("legacy read grant contributes work.read only".into());
+                grant_template = Some(RoleTemplate::Reader);
+                grant_actions = Some(template_actions(RoleTemplate::Reader));
+                notes.push("legacy read grant contributes reader-template actions".into());
             }
             LegacyGrant::Write => {
-                if suggested.is_none() {
-                    suggested = Some(RoleTemplate::Developer);
-                }
-                granted.extend(template_actions(RoleTemplate::Developer));
-                notes.push(
-                    "legacy write starts from developer actions then withholds new privileges"
-                        .into(),
-                );
+                grant_template = Some(RoleTemplate::Developer);
+                grant_actions = Some(template_actions(RoleTemplate::Developer));
+                notes.push("legacy write grant contributes developer-template actions".into());
             }
             LegacyGrant::Manage => {
-                if suggested.is_none() {
-                    suggested = Some(RoleTemplate::ProjectAdmin);
-                }
-                granted.extend(template_actions(RoleTemplate::ProjectAdmin));
-                notes.push(
-                    "legacy manage starts from project_admin actions then withholds new privileges"
-                        .into(),
-                );
+                grant_template = Some(RoleTemplate::ProjectAdmin);
+                grant_actions = Some(template_actions(RoleTemplate::ProjectAdmin));
+                notes.push("legacy manage grant contributes project_admin-template actions".into());
             }
         }
     }
 
-    let withheld = match legacy_grant {
-        Some(LegacyGrant::Write) | Some(LegacyGrant::Manage) => withhold_new(&mut granted),
-        _ => {
-            let mut withheld = BTreeSet::new();
-            if matches!(legacy_role, Some(LegacyRole::Reviewer)) {
-                withheld.insert(Action::ReviewDecide);
-            }
-            for action in Action::new_privileged_actions() {
-                if !granted.contains(&action) {
-                    withheld.insert(action);
-                }
-            }
-            withheld
+    // Effective legacy authority is membership ∩ client grant (never union).
+    // Missing either side contributes no actions from that side.
+    let (suggested, mut granted) = match (role_actions, grant_actions) {
+        (Some(role_set), Some(grant_set)) => {
+            notes.push(
+                "legacy membership and client grant are intersected; neither side expands the other"
+                    .into(),
+            );
+            let suggested = role_template.or(grant_template);
+            let intersection: BTreeSet<_> = role_set.intersection(&grant_set).copied().collect();
+            (suggested, intersection)
+        }
+        (Some(role_set), None) => {
+            notes.push("legacy grant missing; membership actions used before withholding".into());
+            (role_template, role_set)
+        }
+        (None, Some(grant_set)) => {
+            notes.push(
+                "legacy membership missing; client grant actions used before withholding".into(),
+            );
+            (grant_template, grant_set)
+        }
+        (None, None) => {
+            notes.push("legacy membership and grant both missing; no actions granted".into());
+            (None, BTreeSet::new())
         }
     };
 
-    if matches!(
-        legacy_grant,
-        Some(LegacyGrant::Write) | Some(LegacyGrant::Manage)
-    ) {
-        notes.push(
-            "historical write/manage do not auto-receive planning.*, access.manage_project, or review.decide"
-                .into(),
-        );
+    // Newly introduced privileges are always withheld, independent of grant branch
+    // and whether they appeared in the intersection.
+    let withheld: BTreeSet<Action> = Action::new_privileged_actions().into_iter().collect();
+    for action in &withheld {
+        granted.remove(action);
     }
+    notes.push(
+        "newly introduced privileges (planning.*, access.manage_project, review.decide) are withheld from migration"
+            .into(),
+    );
     notes.push("independent review is never granted by migration preview".into());
 
     MigrationPreview {
