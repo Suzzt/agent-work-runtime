@@ -1,0 +1,99 @@
+{
+  "namespace": "team-mcp-v1/biz-pr-reconnect",
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "潮汐网关兼容修订 交付"
+    }
+  ],
+  "work_items": [
+    {
+      "id": "RC-REWORK",
+      "title": "按审阅意见返工",
+      "status": "ready",
+      "depends_on": [],
+      "owner": null,
+      "intended_person": "person.blair-nguyen",
+      "intended_role": "executor",
+      "acceptance": [
+        "按审阅意见返工 完成并可复核"
+      ],
+      "next_action": "由 Blair Nguyen 推进"
+    },
+    {
+      "id": "RC-RECONNECT",
+      "title": "确认服务重连后续传",
+      "status": "planned",
+      "depends_on": [
+        "RC-REWORK"
+      ],
+      "owner": null,
+      "intended_person": "person.blair-nguyen",
+      "intended_role": "executor",
+      "acceptance": [
+        "确认服务重连后续传 完成并可复核"
+      ],
+      "next_action": "由 Blair Nguyen 推进"
+    },
+    {
+      "id": "RC-ROOT",
+      "title": "根因修复请求号复用",
+      "status": "planned",
+      "depends_on": [
+        "RC-RECONNECT"
+      ],
+      "owner": null,
+      "intended_person": "person.alex-chen",
+      "intended_role": "executor_peer",
+      "acceptance": [
+        "根因修复请求号复用 完成并可复核"
+      ],
+      "next_action": "由 Alex Chen 推进"
+    },
+    {
+      "id": "RC-COMPAT",
+      "title": "兼容性字段修订",
+      "status": "planned",
+      "depends_on": [
+        "RC-ROOT"
+      ],
+      "owner": null,
+      "intended_person": "person.blair-nguyen",
+      "intended_role": "executor",
+      "acceptance": [
+        "兼容性字段修订 完成并可复核"
+      ],
+      "next_action": "由 Blair Nguyen 推进"
+    },
+    {
+      "id": "RC-REVIEW",
+      "title": "独立复核交付",
+      "status": "planned",
+      "depends_on": [
+        "RC-COMPAT"
+      ],
+      "owner": null,
+      "intended_person": "person.riley-park",
+      "intended_role": "reviewer",
+      "acceptance": [
+        "独立复核交付 完成并可复核"
+      ],
+      "next_action": "由 Riley Park 推进"
+    },
+    {
+      "id": "RC-DELIVER",
+      "title": "关联 PR 并完成交付",
+      "status": "planned",
+      "depends_on": [
+        "RC-REVIEW"
+      ],
+      "owner": null,
+      "intended_person": "person.blair-nguyen",
+      "intended_role": "executor",
+      "acceptance": [
+        "关联 PR 并完成交付 完成并可复核"
+      ],
+      "next_action": "由 Blair Nguyen 推进"
+    }
+  ]
+}

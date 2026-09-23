@@ -1,0 +1,70 @@
+{
+  "namespace": "team-mcp-v1/biz-parallel-replan",
+  "nodes": [
+    {
+      "key": "PR-CLIENT",
+      "role": "executor",
+      "person_id": "person.blair-nguyen",
+      "client_adapter": "claude_code",
+      "depends_on": []
+    },
+    {
+      "key": "PR-SERVER",
+      "role": "executor_peer",
+      "person_id": "person.alex-chen",
+      "client_adapter": "codex_cli",
+      "depends_on": []
+    },
+    {
+      "key": "PR-REPLAN",
+      "role": "executor",
+      "person_id": "person.blair-nguyen",
+      "client_adapter": "claude_code",
+      "depends_on": [
+        "PR-CLIENT",
+        "PR-SERVER"
+      ]
+    },
+    {
+      "key": "PR-CONV",
+      "role": "executor_peer",
+      "person_id": "person.alex-chen",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "PR-REPLAN"
+      ]
+    },
+    {
+      "key": "PR-ALIGN",
+      "role": "executor",
+      "person_id": "person.blair-nguyen",
+      "client_adapter": "claude_code",
+      "depends_on": [
+        "PR-CONV"
+      ]
+    },
+    {
+      "key": "PR-REVIEW",
+      "role": "reviewer",
+      "person_id": "person.riley-park",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "PR-ALIGN"
+      ]
+    },
+    {
+      "key": "PR-DELIVER",
+      "role": "executor",
+      "person_id": "person.blair-nguyen",
+      "client_adapter": "claude_code",
+      "depends_on": [
+        "PR-REVIEW"
+      ]
+    }
+  ],
+  "reviewer_distinct_from": [
+    "executor",
+    "executor_peer"
+  ],
+  "handoff_requirement": "执行、同伴与复核必须是不同 person；禁止同一 agent 会话同时签署执行与独立复核。"
+}
