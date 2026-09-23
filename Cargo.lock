@@ -224,6 +224,7 @@ version = "0.4.0"
 dependencies = [
  "awr-core",
  "awr-store",
+ "awr-team",
  "cap-fs-ext",
  "cap-std",
  "pulldown-cmark",

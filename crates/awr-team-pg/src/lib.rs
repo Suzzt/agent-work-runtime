@@ -16,6 +16,7 @@ mod operator_recovery;
 mod path;
 mod pool;
 mod read;
+mod responsibility;
 mod review;
 mod runner;
 mod scoped_runner;
@@ -51,6 +52,7 @@ pub use read::{
     EventCursor, EventPage, EventRecord, PreparedWork, ReadStore, WorkGraph, capabilities,
     dispatch_query,
 };
+pub use responsibility::ResponsibilityStore;
 pub use review::{CompletionReceipt, EvidenceRecord, ReviewRound, ReviewStore};
 #[doc(hidden)]
 pub use runner::fence_key;
@@ -60,7 +62,9 @@ pub use scoped_runner::{
     ScopedReferenceRunner,
 };
 pub use source::{
-    CandidateRecord, CurrentSource, CurrentWorkstreamSource, IngestRequest, SourceFile, SourceStore,
+    CandidateRecord, CurrentSource, CurrentWorkstreamSource, IngestRequest, SOURCE_BINDING_FILE,
+    SOURCE_PROVENANCE_FILE, SoleSourceBinding, SoleSourceKind, SourceFile, SourceStore,
+    WORKSTREAMS_FILE,
 };
 pub use tx::{CommandOutcome, CommandRequest, TeamStore};
 pub use workstream_auth::{
@@ -84,6 +88,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 18);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 19);
     }
 }

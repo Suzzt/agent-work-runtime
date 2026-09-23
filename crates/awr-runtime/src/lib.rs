@@ -29,6 +29,7 @@ mod mutation;
 mod mutation_apply;
 mod organization;
 mod read;
+mod responsibility;
 mod resume;
 mod work_action;
 mod work_create;
