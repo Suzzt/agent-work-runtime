@@ -91,7 +91,15 @@ impl SourceStore {
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
             .start()
             .await?;
-        let auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
+        let mut auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        crate::delegation_auth::resolve_agent_delegation(
+            &tx, &mut auth, project_id, None, None, None, now_ms,
+        )
+        .await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningPublish, None, None)?;
 
         // Lock order (WS-023): project barrier → sorted affected works → receipts.
@@ -387,7 +395,15 @@ impl SourceStore {
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
             .start()
             .await?;
-        let auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
+        let mut auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        crate::delegation_auth::resolve_agent_delegation(
+            &tx, &mut auth, project_id, None, None, None, now_ms,
+        )
+        .await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningPublish, None, None)?;
         bind_workstream_scope(&tx, tenant_id, project_id).await?;
         lock_active_project(&tx, tenant_id, project_id).await?;

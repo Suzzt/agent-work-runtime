@@ -1,6 +1,9 @@
 //! Command-op → TMCP-010 action mapping owned beside domain command dispatch.
 //! The shared decision function lives in `workstream_auth`; this module keeps the
 //! command surface matrix explicit for HTTP/MCP/internal callers.
+//!
+//! TMCP-030 intersects WS-016 agent delegation action sets with these TMCP actions
+//! in `crate::delegation_auth` before `authorize_command` runs.
 
 #[cfg(test)]
 use crate::workstream_auth::command_authority;

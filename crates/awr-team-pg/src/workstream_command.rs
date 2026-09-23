@@ -224,6 +224,21 @@ impl WorkstreamCommandStore {
         crate::check_schema(&client).await?;
         let tx = client.transaction().await?;
         let auth = authenticate_writer(&tx, tenant, project, bearer).await?;
+        let mut auth = auth;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        crate::delegation_auth::resolve_agent_delegation(
+            &tx,
+            &mut auth,
+            project,
+            Some(command.work_id.as_str()),
+            None,
+            None,
+            now_ms,
+        )
+        .await?;
         let (binding, ownership) =
             work_binding(&tx, tenant, project, &auth, &command.work_id).await?;
         let stream = binding.workstream_id;

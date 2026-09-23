@@ -218,7 +218,21 @@ impl WorkstreamReadStore {
             .isolation_level(IsolationLevel::RepeatableRead)
             .start()
             .await?;
-        let auth = authenticate(&tx, tenant, project, bearer).await?;
+        let mut auth = authenticate(&tx, tenant, project, bearer).await?;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        crate::delegation_auth::resolve_agent_delegation(
+            &tx,
+            &mut auth,
+            project,
+            request.work_id.as_deref(),
+            None,
+            None,
+            now_ms,
+        )
+        .await?;
         let result = read(&tx, tenant, project, &auth, &request).await?;
         if serde_json::to_vec(&result)
             .map_err(|_| PgError::SourceDivergence)?

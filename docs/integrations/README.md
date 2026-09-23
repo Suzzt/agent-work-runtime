@@ -97,3 +97,5 @@ what was actually called and on which host version. An L2 adapter must keep
 Cursor, Claude Code, Windsurf and similar hosts should enter at L0 or L1.
 They do not need a Codex-shaped installer to “count” as supported.
 Cursor MCP merge paths are an [L1 note](cursor.md).
+
+- [Delegation ∩ execution authority (TMCP-030)](delegation-execution-auth.md)

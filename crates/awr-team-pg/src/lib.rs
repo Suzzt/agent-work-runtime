@@ -2,6 +2,7 @@
 //! Personal SQLite runtime does not depend on this crate.
 mod agent_authorization;
 mod bootstrap;
+mod delegation_auth;
 mod delivery_adoption;
 mod error;
 mod execution;
@@ -33,6 +34,10 @@ mod workstream_read;
 
 pub use agent_authorization::AuthorizationStore;
 pub use bootstrap::Bootstrap;
+pub use delegation_auth::{
+    actor_requires_explicit_delegation, intersect_delegation_with_template,
+    tmcp_actions_for_authorized, tmcp_actions_for_authorized_set,
+};
 pub use delivery_adoption::DeliveryAdoptionStore;
 pub use error::{PgError, PgResult};
 pub use execution::{
