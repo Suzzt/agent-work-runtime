@@ -85,7 +85,7 @@ def main():
 
     with closing(sqlite3.connect(db_path.as_uri() + '?mode=ro', uri=True)) as db:
         require(db.execute('PRAGMA journal_mode').fetchone()[0] == 'wal', 'WAL is not active')
-        require(db.execute('PRAGMA user_version').fetchone()[0] == 7, 'Unexpected schema version')
+        require(db.execute('PRAGMA user_version').fetchone()[0] == 8, 'Unexpected schema version')
         require(db.execute('SELECT version FROM schema_migrations ORDER BY version').fetchall()
                 == [(version,) for version in range(1, 8)], 'Incomplete migration history')
         require(db.execute('SELECT COUNT(*) FROM source_content_reviews').fetchone()[0] == 0,
