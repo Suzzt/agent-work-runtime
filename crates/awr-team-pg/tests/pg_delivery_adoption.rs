@@ -129,6 +129,17 @@ async fn seed_ws018_completion(admin: &Client, req: &DeliveryRequirement) {
         .unwrap();
     admin
         .execute(
+            "INSERT INTO awr_team.review_decisions(
+                tenant_id,project_id,id,review_round_id,work_id,bundle_hash,
+                reviewer_actor_id,decision,reason,reviewer_person_id,independence_kind)
+             VALUES ($1,$2,'dec-1','round-1','upstream',$3,'reviewer','approve','ok',
+                     'reviewer','team_independent')",
+            &[&TENANT, &PROJECT, &bundle],
+        )
+        .await
+        .unwrap();
+    admin
+        .execute(
             "INSERT INTO awr_team.completion_receipts(
                 tenant_id,project_id,id,work_id,scope_id,contract_hash,result_digest,
                 dependency_binding_hash,evidence_bundle_hash,policy,approved_by_json,
@@ -441,4 +452,300 @@ async fn pg_refuses_cross_project_consumer() {
         msg.contains("project") || msg.contains("binding"),
         "unexpected error: {msg}"
     );
+}
+
+async fn point_runtime_at_other_receipt(admin: &Client, req: &DeliveryRequirement) {
+    let other = Id::from(9).to_string();
+    let contract = &req.selected.contract_sha256;
+    let bundle = digest(0x11);
+    admin
+        .execute(
+            "INSERT INTO awr_team.completion_receipts(
+                tenant_id,project_id,id,work_id,scope_id,contract_hash,result_digest,
+                dependency_binding_hash,evidence_bundle_hash,policy,approved_by_json)
+             VALUES ($1,$2,$3,'upstream','main',$4,$5,'deps',$5,'review','{}'::jsonb)",
+            &[&TENANT, &PROJECT, &other, contract, &bundle],
+        )
+        .await
+        .unwrap();
+    admin
+        .execute(
+            "UPDATE awr_team.work_runtime SET selected_completion_id=$3
+             WHERE tenant_id=$1 AND project_id=$2 AND scope_id='main' AND work_id='upstream'",
+            &[&TENANT, &PROJECT, &other],
+        )
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn pg_current_contract_refuses_drift_and_fixed_delivery_survives() {
+    let (_guard, store, _, admin) = setup().await;
+    let mut req = requirement();
+    req.policy = DeliveryVersionPolicy::CurrentContract;
+    seed_ws018_completion(&admin, &req).await;
+
+    let (dep, _) = store
+        .register_dependency(
+            TENANT,
+            PROJECT,
+            &RegisterHardDependencyRequest {
+                request_key: "reg-cur".into(),
+                dependency_id: "dep-cur".into(),
+                provider: req.provider.clone(),
+                consumer: req.consumer.clone(),
+                selected: req.selected.clone(),
+                policy: req.policy,
+                minimum_level: req.minimum_level,
+                now_ms: 10,
+            },
+        )
+        .await
+        .unwrap();
+    let (export, _) = store
+        .grant_export(
+            TENANT,
+            PROJECT,
+            &GrantExportAuthorizationRequest {
+                request_key: "ex-cur".into(),
+                authorization_id: "ea-cur".into(),
+                project_id: PROJECT.into(),
+                provider_work_item_id: req.provider.work_item_id.clone(),
+                delivery: req.selected.clone(),
+                granted_by: "owner".into(),
+                now_ms: 20,
+            },
+        )
+        .await
+        .unwrap();
+    let (cred, _) = store
+        .adopt(
+            TENANT,
+            PROJECT,
+            &AdoptDeliveryRequest {
+                request_key: "ad-cur".into(),
+                credential_id: "ac-cur".into(),
+                dependency: dep,
+                completion: proof(&req),
+                export_authorization: export,
+                availability: DeliveryAvailability::Available,
+                current_selection: None,
+                now_ms: 100,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(cred.status, AdoptionCredentialStatus::Active);
+
+    point_runtime_at_other_receipt(&admin, &req).await;
+    let drifted = store
+        .get_dependency(TENANT, PROJECT, "dep-cur")
+        .await
+        .unwrap()
+        .unwrap();
+    let export = store
+        .get_export(TENANT, PROJECT, "ea-cur")
+        .await
+        .unwrap()
+        .unwrap();
+    let err = store
+        .adopt(
+            TENANT,
+            PROJECT,
+            &AdoptDeliveryRequest {
+                request_key: "ad-cur-2".into(),
+                credential_id: "ac-cur-2".into(),
+                dependency: drifted,
+                completion: proof(&req),
+                export_authorization: export,
+                availability: DeliveryAvailability::Available,
+                current_selection: Some(req.selected.clone()),
+                now_ms: 110,
+            },
+        )
+        .await
+        .unwrap_err();
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("CurrentSelectionChanged"),
+        "unexpected error: {msg}"
+    );
+
+    let fixed_req = requirement();
+    let (fixed, _) = store
+        .register_dependency(
+            TENANT,
+            PROJECT,
+            &RegisterHardDependencyRequest {
+                request_key: "reg-fix".into(),
+                dependency_id: "dep-fix".into(),
+                provider: fixed_req.provider.clone(),
+                consumer: fixed_req.consumer.clone(),
+                selected: fixed_req.selected.clone(),
+                policy: DeliveryVersionPolicy::FixedDelivery,
+                minimum_level: fixed_req.minimum_level,
+                now_ms: 12,
+            },
+        )
+        .await
+        .unwrap();
+    let (fixed_export, _) = store
+        .grant_export(
+            TENANT,
+            PROJECT,
+            &GrantExportAuthorizationRequest {
+                request_key: "ex-fix".into(),
+                authorization_id: "ea-fix".into(),
+                project_id: PROJECT.into(),
+                provider_work_item_id: fixed_req.provider.work_item_id.clone(),
+                delivery: fixed_req.selected.clone(),
+                granted_by: "owner".into(),
+                now_ms: 22,
+            },
+        )
+        .await
+        .unwrap();
+    let (fixed_cred, _) = store
+        .adopt(
+            TENANT,
+            PROJECT,
+            &AdoptDeliveryRequest {
+                request_key: "ad-fix".into(),
+                credential_id: "ac-fix".into(),
+                dependency: fixed,
+                completion: proof(&fixed_req),
+                export_authorization: fixed_export,
+                availability: DeliveryAvailability::Unavailable,
+                current_selection: None,
+                now_ms: 120,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(fixed_cred.status, AdoptionCredentialStatus::Active);
+    assert_eq!(
+        fixed_cred.completion_receipt_id,
+        fixed_req.selected.completion_receipt
+    );
+}
+
+#[tokio::test]
+async fn pg_adopt_refuses_approved_round_without_independent_decision() {
+    let (_guard, store, _, admin) = setup().await;
+    let req = requirement();
+    seed_ws018_completion(&admin, &req).await;
+    admin
+        .execute(
+            "DELETE FROM awr_team.review_decisions
+             WHERE tenant_id=$1 AND project_id=$2",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap();
+    let (dep, _) = store
+        .register_dependency(
+            TENANT,
+            PROJECT,
+            &RegisterHardDependencyRequest {
+                request_key: "reg-nd".into(),
+                dependency_id: "dep-nd".into(),
+                provider: req.provider.clone(),
+                consumer: req.consumer.clone(),
+                selected: req.selected.clone(),
+                policy: req.policy,
+                minimum_level: req.minimum_level,
+                now_ms: 10,
+            },
+        )
+        .await
+        .unwrap();
+    let (export, _) = store
+        .grant_export(
+            TENANT,
+            PROJECT,
+            &GrantExportAuthorizationRequest {
+                request_key: "ex-nd".into(),
+                authorization_id: "ea-nd".into(),
+                project_id: PROJECT.into(),
+                provider_work_item_id: req.provider.work_item_id.clone(),
+                delivery: req.selected.clone(),
+                granted_by: "owner".into(),
+                now_ms: 20,
+            },
+        )
+        .await
+        .unwrap();
+    let err = store
+        .adopt(
+            TENANT,
+            PROJECT,
+            &AdoptDeliveryRequest {
+                request_key: "ad-nd".into(),
+                credential_id: "ac-nd".into(),
+                dependency: dep,
+                completion: proof(&req),
+                export_authorization: export,
+                availability: DeliveryAvailability::Available,
+                current_selection: Some(req.selected.clone()),
+                now_ms: 100,
+            },
+        )
+        .await
+        .unwrap_err();
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("independent-review binding missing"),
+        "unexpected error: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn pg_refuses_reused_dependency_id() {
+    let (_guard, store, _, _) = setup().await;
+    let req = requirement();
+    store
+        .register_dependency(
+            TENANT,
+            PROJECT,
+            &RegisterHardDependencyRequest {
+                request_key: "reg-1".into(),
+                dependency_id: "dep-1".into(),
+                provider: req.provider.clone(),
+                consumer: req.consumer.clone(),
+                selected: req.selected.clone(),
+                policy: req.policy,
+                minimum_level: req.minimum_level,
+                now_ms: 10,
+            },
+        )
+        .await
+        .unwrap();
+    let err = store
+        .register_dependency(
+            TENANT,
+            PROJECT,
+            &RegisterHardDependencyRequest {
+                request_key: "reg-2".into(),
+                dependency_id: "dep-1".into(),
+                provider: req.provider,
+                consumer: req.consumer,
+                selected: req.selected,
+                policy: DeliveryVersionPolicy::CurrentContract,
+                minimum_level: req.minimum_level,
+                now_ms: 11,
+            },
+        )
+        .await
+        .unwrap_err();
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("already registered"),
+        "unexpected error: {msg}"
+    );
+    let kept = store
+        .get_dependency(TENANT, PROJECT, "dep-1")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(kept.policy, DeliveryVersionPolicy::FixedDelivery);
 }

@@ -124,6 +124,14 @@ impl DeliveryAdoptionStore {
                 },
             ));
         }
+        if load_dep(&tx, tenant, project, &req.dependency_id)
+            .await?
+            .is_some()
+        {
+            return Err(PgError::Protocol(
+                "hard delivery dependency id already registered".into(),
+            ));
+        }
         let dep = validate_hard_dependency_registration(req).map_err(map_delivery)?;
         persist_dep(&tx, tenant, project, &dep).await?;
         let receipt = record_receipt(
@@ -224,6 +232,14 @@ impl DeliveryAdoptionStore {
                     replayed: true,
                     ..receipt
                 },
+            ));
+        }
+        if load_export(&tx, tenant, project, &req.authorization_id)
+            .await?
+            .is_some()
+        {
+            return Err(PgError::Protocol(
+                "export authorization id already registered".into(),
             ));
         }
         let auth = validate_export_grant(req).map_err(map_delivery)?;
@@ -347,10 +363,18 @@ impl DeliveryAdoptionStore {
                 "adoption export authorization snapshot does not match store".into(),
             ));
         }
+        if load_credential(&tx, tenant, project, &req.credential_id)
+            .await?
+            .is_some()
+        {
+            return Err(PgError::Protocol(
+                "adoption credential id already registered".into(),
+            ));
+        }
         // WS-018 completion is authoritative. Request-supplied proof fields are
-        // never trusted on their own — load receipt/evidence/independence bindings
-        // from storage and refuse when no currently-selected trusted completion
-        // exists for the provider work.
+        // never trusted on their own. fixed_delivery may adopt a historical
+        // receipt after the current selection moves; current_contract revalidates
+        // against the live selected completion.
         let trusted_completion = load_trusted_completion_proof(
             &tx,
             tenant,
@@ -361,7 +385,8 @@ impl DeliveryAdoptionStore {
         .await?;
         let availability =
             availability_from_completion(&tx, tenant, project, &trusted_completion).await?;
-        let current_selection = current_selection_from_store(&stored_dep);
+        let current_selection =
+            current_selection_for_policy(&tx, tenant, project, &stored_dep).await?;
         let mut trusted_req = req.clone();
         trusted_req.dependency = stored_dep;
         trusted_req.export_authorization = stored_export;
@@ -381,10 +406,43 @@ fn missing_trusted_completion() -> PgError {
     PgError::Protocol("trusted WS-018 completion proof missing".into())
 }
 
-fn current_selection_from_store(dep: &HardDeliveryDependency) -> Option<DeliveryVersion> {
-    // FixedDelivery does not require current-selection drift checks; still bind
-    // the store's selected delivery so callers cannot invent a different current.
-    Some(dep.selected.clone())
+async fn current_selection_for_policy(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    dep: &HardDeliveryDependency,
+) -> PgResult<Option<DeliveryVersion>> {
+    if dep.policy == awr_core::DeliveryVersionPolicy::FixedDelivery {
+        return Ok(None);
+    }
+    let row = tx
+        .query_opt(
+            "SELECT state, selected_completion_id FROM awr_team.work_runtime
+             WHERE tenant_id=$1 AND project_id=$2 AND scope_id='main' AND work_id=$3",
+            &[&tenant, &project, &dep.provider.work_item_id],
+        )
+        .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let state: String = row.get(0);
+    let selected: Option<String> = row.get(1);
+    if state != "completed" {
+        return Ok(None);
+    }
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    if selected == dep.selected.completion_receipt.to_string() {
+        return Ok(Some(dep.selected.clone()));
+    }
+    let receipt_id: Id = selected
+        .parse()
+        .map_err(|_| PgError::Protocol("current completion id is not a ulid".into()))?;
+    Ok(Some(DeliveryVersion {
+        completion_receipt: receipt_id,
+        ..dep.selected.clone()
+    }))
 }
 
 async fn availability_from_completion(
@@ -426,20 +484,6 @@ async fn load_trusted_completion_proof(
     selected: &DeliveryVersion,
 ) -> PgResult<CompletionAcceptanceProof> {
     let receipt_id = selected.completion_receipt.to_string();
-    let runtime = tx
-        .query_opt(
-            "SELECT state, selected_completion_id FROM awr_team.work_runtime
-             WHERE tenant_id=$1 AND project_id=$2 AND scope_id='main' AND work_id=$3",
-            &[&tenant, &project, &provider_work_id],
-        )
-        .await?
-        .ok_or_else(missing_trusted_completion)?;
-    let runtime_state: String = runtime.get(0);
-    let selected_completion: Option<String> = runtime.get(1);
-    if runtime_state != "completed" || selected_completion.as_deref() != Some(receipt_id.as_str()) {
-        return Err(missing_trusted_completion());
-    }
-
     let receipt = tx
         .query_opt(
             "SELECT work_id, contract_hash, independence_kind, evidence_id,
@@ -497,16 +541,33 @@ async fn load_trusted_completion_proof(
         ));
     }
 
-    // Independent-review binding: a still-approved round must exist for this
-    // evidence digest when the receipt claims team independence.
+    // Independent-review binding: a still-approved round must have an approve
+    // decision by the receipt's reviewer, and that person must not be the author.
     if independence_kind == "team_independent" {
         let approved = tx
             .query_opt(
-                "SELECT 1 FROM awr_team.review_rounds
-                 WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3
-                   AND bundle_hash=$4 AND state='approved'
+                "SELECT 1
+                 FROM awr_team.review_rounds rr
+                 JOIN awr_team.review_decisions rd
+                   ON rd.tenant_id=rr.tenant_id AND rd.project_id=rr.project_id
+                  AND rd.review_round_id=rr.id
+                 WHERE rr.tenant_id=$1 AND rr.project_id=$2 AND rr.work_id=$3
+                   AND rr.bundle_hash=$4 AND rr.contract_hash=$5
+                   AND rr.state='approved'
+                   AND rd.decision='approve'
+                   AND rd.independence_kind='team_independent'
+                   AND rd.reviewer_person_id=$6
+                   AND rd.reviewer_person_id <> $7
                  LIMIT 1",
-                &[&tenant, &project, &provider_work_id, &bundle_hash],
+                &[
+                    &tenant,
+                    &project,
+                    &provider_work_id,
+                    &bundle_hash,
+                    &selected.contract_sha256,
+                    &reviewer_person,
+                    &author_person,
+                ],
             )
             .await?;
         if approved.is_none() {

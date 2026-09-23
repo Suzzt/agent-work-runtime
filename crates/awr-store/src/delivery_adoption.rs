@@ -315,6 +315,11 @@ impl Store {
                 },
             ));
         }
+        if load_dep(&self.conn, &project_s, &req.dependency_id)?.is_some() {
+            return Err(Error::InvalidInput(
+                "hard delivery dependency id already registered".into(),
+            ));
+        }
         let dep = validate_hard_dependency_registration(req).map_err(map_delivery)?;
         persist_dep(&self.conn, &project_s, &dep)?;
         let receipt = record_receipt(
@@ -393,6 +398,11 @@ impl Store {
                     replayed: true,
                     ..receipt
                 },
+            ));
+        }
+        if load_export(&self.conn, &project_s, &req.authorization_id)?.is_some() {
+            return Err(Error::InvalidInput(
+                "export authorization id already registered".into(),
             ));
         }
         let auth = validate_export_grant(req).map_err(map_delivery)?;
@@ -484,6 +494,11 @@ impl Store {
         if stored_export != req.export_authorization {
             return Err(Error::InvalidInput(
                 "adoption export authorization snapshot does not match store".into(),
+            ));
+        }
+        if load_credential(&self.conn, &project_s, &req.credential_id)?.is_some() {
+            return Err(Error::InvalidInput(
+                "adoption credential id already registered".into(),
             ));
         }
         // Residual trust boundary: SQLite has no WS-018 completion_receipts /
