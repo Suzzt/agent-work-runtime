@@ -6,14 +6,17 @@
 //! published candidates is deferred to TMCP-022.
 use super::{PgError, PgResult, SourceStore, sha256_hex};
 use crate::tx::new_id;
-use crate::workstream_auth::{authenticate, authenticate_writer, authorize_domain_action};
+use crate::workstream_auth::{
+    ReaderAuthority, authenticate, authenticate_writer, authorize_domain_action,
+};
+use awr_core::{Id, WorkstreamAction};
 use awr_team::{
     AffectedTaskImpact, BaselineView, CandidateState, DraftChange,
     OrdinaryPlanningSelfApprovePolicy, PLANNING_CODEC, PlanningApproval, PlanningCandidate,
     PlanningSuggestion, ResourceRef, SUGGESTION_ADDS_FORMAL_WORK, SUGGESTION_CLAIMABLE,
-    SuggestionState, authorize_planning_approve, authorize_planning_publish, build_candidate_diff,
-    edit_candidate, ensure_independent_review_not_downgraded, refuse_reader_suggestion_write,
-    validate_candidate,
+    SuggestionState, attested_actor_person, authorize_planning_approve, authorize_planning_publish,
+    build_candidate_diff, edit_candidate, ensure_independent_review_not_downgraded,
+    refuse_reader_suggestion_write, validate_candidate,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -26,7 +29,7 @@ pub struct SuggestionSubmit {
     pub affected_work_keys: Vec<String>,
     #[serde(default)]
     pub proposed_notes: Value,
-    /// Optional person id; defaults to authenticated actor id.
+    /// Must match the authenticated actor when present. Not a separate credential.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author_person_id: Option<String>,
 }
@@ -43,7 +46,7 @@ pub struct DraftCandidateCreate {
     pub project_goal_keys: Vec<String>,
     #[serde(default)]
     pub self_approve_policy: Option<OrdinaryPlanningSelfApprovePolicy>,
-    /// Optional person id; defaults to authenticated actor id.
+    /// Must match the authenticated actor when present. Not a separate credential.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author_person_id: Option<String>,
 }
@@ -102,10 +105,8 @@ impl SourceStore {
         let (baseline_digest, baseline_epoch) =
             current_baseline(&tx, tenant_id, project_id).await?;
         let suggestion_id = new_id();
-        let person = submit
-            .author_person_id
-            .clone()
-            .unwrap_or_else(|| auth.actor_id.clone());
+        let person = attested_actor_person(&auth.actor_id, submit.author_person_id.as_deref())
+            .map_err(map_team)?;
         let suggestion = PlanningSuggestion {
             codec: PLANNING_CODEC.into(),
             suggestion_id: suggestion_id.clone(),
@@ -196,10 +197,8 @@ impl SourceStore {
             &policy.delivery_completion_policy,
         )
         .map_err(map_team)?;
-        let person = create
-            .author_person_id
-            .clone()
-            .unwrap_or_else(|| auth.actor_id.clone());
+        let person = attested_actor_person(&auth.actor_id, create.author_person_id.as_deref())
+            .map_err(map_team)?;
         let candidate_id = new_id();
         let candidate = PlanningCandidate {
             codec: PLANNING_CODEC.into(),
@@ -229,6 +228,7 @@ impl SourceStore {
             known_external_keys: known.keys.iter().map(String::as_str).collect(),
         };
         validate_candidate(&candidate, &base_view).map_err(map_team)?;
+        authorize_candidate_writable_scope(&tx, &auth, tenant_id, project_id, &candidate).await?;
         let digest = candidate.candidate_digest().map_err(map_team)?;
         let changes_json = serde_json::to_value(&candidate.changes)
             .map_err(|e| PgError::Protocol(e.to_string()))?;
@@ -320,12 +320,13 @@ impl SourceStore {
             .await?;
         let auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningEditDraft, None, None)?;
+        lock_candidate(&tx, tenant_id, project_id, candidate_id).await?;
         let mut candidate = load_candidate(&tx, tenant_id, project_id, candidate_id).await?;
         let (baseline_digest, baseline_epoch) =
             current_baseline(&tx, tenant_id, project_id).await?;
-        // Edits must still target the live baseline; expired baselines refuse.
-        candidate.baseline_digest = baseline_digest.clone();
-        candidate.baseline_epoch = baseline_epoch.clone();
+        // Do not silently replace the stored baseline; require an explicit rebase
+        // (fresh candidate) when the authority source has moved on.
+        ensure_baseline_current(&candidate, &baseline_digest, &baseline_epoch)?;
         candidate = edit_candidate(candidate, changes).map_err(map_team)?;
         let known = known_work(&tx, tenant_id, project_id).await?;
         let base_view = BaselineView {
@@ -336,6 +337,7 @@ impl SourceStore {
             known_external_keys: known.keys.iter().map(String::as_str).collect(),
         };
         validate_candidate(&candidate, &base_view).map_err(map_team)?;
+        authorize_candidate_writable_scope(&tx, &auth, tenant_id, project_id, &candidate).await?;
         let digest = candidate.candidate_digest().map_err(map_team)?;
         let changes_json = serde_json::to_value(&candidate.changes)
             .map_err(|e| PgError::Protocol(e.to_string()))?;
@@ -399,7 +401,7 @@ impl SourceStore {
             .start()
             .await?;
         let auth = authenticate(&tx, tenant_id, project_id, bearer).await?;
-        // Preview requires at least propose or edit or approve/publish.
+        // Preview requires at least propose or edit or approve/publish or work.read.
         let scope = crate::workstream_auth::authority_scope(&auth, None, None);
         let can = [
             awr_team::Action::PlanningPropose,
@@ -414,6 +416,8 @@ impl SourceStore {
             return Err(PgError::Forbidden);
         }
         let candidate = load_candidate(&tx, tenant_id, project_id, candidate_id).await?;
+        // Membership WorkRead is not enough: confine contents to client readable scope.
+        authorize_candidate_readable_scope(&tx, &auth, tenant_id, project_id, &candidate).await?;
         let impacts = load_impacts(&tx, tenant_id, project_id, &candidate).await?;
         let diff = build_candidate_diff(&candidate, impacts).map_err(map_team)?;
         let result = json!({
@@ -465,16 +469,13 @@ impl SourceStore {
         let policy: OrdinaryPlanningSelfApprovePolicy =
             serde_json::from_value(policy_json).map_err(|e| PgError::Protocol(e.to_string()))?;
         let mut candidate = load_candidate(&tx, tenant_id, project_id, candidate_id).await?;
-        if let Some(person) = author_person_id {
-            // Allow callers to assert person identity for self-approve checks.
-            if candidate.author_person_id != person && auth.actor_id != person {
-                // keep stored author; person override only for approver scope
-            }
-        }
-        let mut scope = crate::workstream_auth::authority_scope(&auth, None, None);
-        if let Some(person) = author_person_id {
-            scope.person_id = person.into();
-        }
+        let (live_digest, live_epoch) = current_baseline(&tx, tenant_id, project_id).await?;
+        ensure_baseline_current(&candidate, &live_digest, &live_epoch)?;
+        authorize_candidate_readable_scope(&tx, &auth, tenant_id, project_id, &candidate).await?;
+        // Do not copy a caller-supplied person into the approver scope. That
+        // substitution both forges the receipt and clears the self-approve ban.
+        attested_actor_person(&auth.actor_id, author_person_id).map_err(map_team)?;
+        let scope = crate::workstream_auth::authority_scope(&auth, None, None);
         let resource = ResourceRef {
             tenant_id: tenant_id.into(),
             project_id: project_id.into(),
@@ -558,15 +559,24 @@ impl SourceStore {
             .await?;
         let auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningPublish, None, None)?;
+        lock_candidate(&tx, tenant_id, project_id, candidate_id).await?;
         let mut candidate = load_candidate(&tx, tenant_id, project_id, candidate_id).await?;
-        // Attach latest approval for publish checks.
+        let (live_digest, live_epoch) = current_baseline(&tx, tenant_id, project_id).await?;
+        ensure_baseline_current(&candidate, &live_digest, &live_epoch)?;
+        authorize_candidate_readable_scope(&tx, &auth, tenant_id, project_id, &candidate).await?;
+        if candidate.state != CandidateState::Approved {
+            return Err(PgError::CandidateNotApproved);
+        }
+        let current_digest = candidate.candidate_digest().map_err(map_team)?;
+        // Only an approval of this digest counts. Do not promote drafting or
+        // published rows back to approved just because an older approval exists.
         if let Some(row) = tx
             .query_opt(
                 "SELECT id, candidate_digest, approver_person_id, approver_actor_id, self_approved
                  FROM awr_team.planning_approvals
-                 WHERE tenant_id=$1 AND project_id=$2 AND candidate_id=$3
+                 WHERE tenant_id=$1 AND project_id=$2 AND candidate_id=$3 AND candidate_digest=$4
                  ORDER BY decided_at DESC LIMIT 1",
-                &[&tenant_id, &project_id, &candidate_id],
+                &[&tenant_id, &project_id, &candidate_id, &current_digest],
             )
             .await?
         {
@@ -582,7 +592,6 @@ impl SourceStore {
                 approver_actor_id: actor,
                 self_approved,
             });
-            candidate.state = CandidateState::Approved;
             let scope = crate::workstream_auth::authority_scope(&auth, None, None);
             let resource = ResourceRef {
                 tenant_id: tenant_id.into(),
@@ -679,6 +688,118 @@ struct KnownWork {
     keys: Vec<String>,
 }
 
+fn ensure_baseline_current(
+    candidate: &PlanningCandidate,
+    live_digest: &str,
+    live_epoch: &str,
+) -> PgResult<()> {
+    if candidate.baseline_digest != live_digest || candidate.baseline_epoch != live_epoch {
+        return Err(PgError::PreconditionsChanged);
+    }
+    Ok(())
+}
+
+/// Fail closed unless every exposed affected task is inside the client's writable
+/// workstream grants. Membership template planning rights alone are insufficient.
+async fn authorize_candidate_writable_scope(
+    tx: &Transaction<'_>,
+    auth: &ReaderAuthority,
+    tenant_id: &str,
+    project_id: &str,
+    candidate: &PlanningCandidate,
+) -> PgResult<()> {
+    if auth.access.grants.iter().all(|g| !g.write) {
+        return Err(PgError::Forbidden);
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for change in &candidate.changes {
+        let work_id = change.after.work_id.as_str();
+        if !seen.insert(work_id.to_owned()) {
+            continue;
+        }
+        let row = tx
+            .query_opt(
+                "SELECT workstream_id FROM awr_team.workstream_ownership
+                 WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3",
+                &[&tenant_id, &project_id, &work_id],
+            )
+            .await?;
+        match row {
+            Some(r) => {
+                let stream: Id = r
+                    .get::<_, String>(0)
+                    .parse()
+                    .map_err(|_| PgError::Forbidden)?;
+                auth.access
+                    .authorize(&auth.catalog, stream, WorkstreamAction::Write)
+                    .map_err(|_| PgError::Forbidden)?;
+            }
+            None => {
+                // Unbound/new draft work: require at least one live write grant
+                // (already checked) but do not invent stream authority.
+                if !auth.access.grants.iter().any(|g| g.write) {
+                    return Err(PgError::Forbidden);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Fail closed unless every exposed affected task is inside the client's readable
+/// workstream grants. Membership template WorkRead alone is insufficient.
+async fn authorize_candidate_readable_scope(
+    tx: &Transaction<'_>,
+    auth: &ReaderAuthority,
+    tenant_id: &str,
+    project_id: &str,
+    candidate: &PlanningCandidate,
+) -> PgResult<()> {
+    authorize_domain_action(auth, awr_team::Action::WorkRead, None, None)?;
+    if auth.access.grants.iter().all(|g| !g.read) {
+        return Err(PgError::Forbidden);
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for change in &candidate.changes {
+        let work_id = change.after.work_id.as_str();
+        if !seen.insert(work_id.to_owned()) {
+            continue;
+        }
+        let row = tx
+            .query_opt(
+                "SELECT workstream_id FROM awr_team.workstream_ownership
+                 WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3",
+                &[&tenant_id, &project_id, &work_id],
+            )
+            .await?;
+        match row {
+            Some(r) => {
+                let stream: Id = r
+                    .get::<_, String>(0)
+                    .parse()
+                    .map_err(|_| PgError::Forbidden)?;
+                auth.access
+                    .authorize(&auth.catalog, stream, WorkstreamAction::Read)
+                    .map_err(|_| PgError::Forbidden)?;
+                authorize_domain_action(
+                    auth,
+                    awr_team::Action::WorkRead,
+                    Some(stream),
+                    Some(work_id),
+                )?;
+            }
+            None => {
+                // Unbound/new draft work: require at least one live read grant
+                // (already checked) but do not invent stream authority.
+                if !auth.access.grants.iter().any(|g| g.read) {
+                    return Err(PgError::Forbidden);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 async fn current_baseline(
     tx: &Transaction<'_>,
     tenant_id: &str,
@@ -758,6 +879,26 @@ async fn append_history(
         ],
     )
     .await?;
+    Ok(())
+}
+
+async fn lock_candidate(
+    tx: &Transaction<'_>,
+    tenant_id: &str,
+    project_id: &str,
+    candidate_id: &str,
+) -> PgResult<()> {
+    let row = tx
+        .query_opt(
+            "SELECT id FROM awr_team.planning_candidates
+             WHERE tenant_id=$1 AND project_id=$2 AND id=$3
+             FOR UPDATE",
+            &[&tenant_id, &project_id, &candidate_id],
+        )
+        .await?;
+    if row.is_none() {
+        return Err(PgError::Protocol("planning candidate not found".into()));
+    }
     Ok(())
 }
 

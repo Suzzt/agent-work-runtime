@@ -13,10 +13,14 @@ the app-role business entry:
 | HTTP | `POST /v1/projects/{key}/access/{inspect,preview,apply,outcome}` |
 
 These paths require live `access.manage_project` (project admin / `admin` /
-`project_admin` membership). They never expose database owner privileges,
-arbitrary SQL, arbitrary server paths, or the owner-only recovery CLI.
+`project_admin` membership) **and** an authenticated client grant ceiling:
+requested role/grant changes cannot exceed the caller's explicit workstream
+`manage` grants and grant bits. Admin membership alone (for example an unscoped
+credential with zero grants) cannot bootstrap rights. They never expose database
+owner privileges, arbitrary SQL, arbitrary server paths, or the owner-only
+recovery CLI.
 
-Plans are **project-bounded**. Grant ceilings exclude special authorities
+Plans are **project-bounded**. Grant ceilings also exclude special authorities
 (`attest_execution`, `reconcile_execution`). Tenant-wide credential revoke is
 **refused** on this path — clear or replace **this project's** grants instead
 (owner `awr-server access` remains available for tenant credential revoke and

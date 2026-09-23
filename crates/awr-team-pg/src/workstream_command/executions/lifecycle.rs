@@ -213,12 +213,18 @@ pub(super) async fn start(
     if !covered {
         return Err(PgError::BindingInvalid);
     }
-    let paths: Vec<String> = serde_json::from_value(r.get("declared_scope_json"))
+    let declared: Vec<String> = serde_json::from_value(r.get("declared_scope_json"))
         .map_err(|_| PgError::SourceDivergence)?;
-    if paths.len() > 128 {
+    if declared.len() > 128 {
         return Err(PgError::SourceDivergence);
     }
-    require_paths(contract, &paths)?;
+    require_paths(contract, &declared)?;
+    // Store the same canonical key reserve_bound would. Parent segments are
+    // rejected here, not only on the graph reserve entry.
+    let paths = declared
+        .iter()
+        .map(|path| crate::graph::normalize_resource_key("dir", path))
+        .collect::<PgResult<Vec<_>>>()?;
     // Existing project locking serializes check+reserve+start. Directory
     // bounds are conservative within a worktree's lexical namespace, not OS
     // locks; shared external/integration identities remain project-global
