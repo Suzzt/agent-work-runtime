@@ -62,7 +62,9 @@ pub use scoped_runner::{
     ScopedReferenceRunner,
 };
 pub use source::{
-    CandidateRecord, CurrentSource, CurrentWorkstreamSource, IngestRequest, SourceFile, SourceStore,
+    CandidateRecord, CurrentSource, CurrentWorkstreamSource, IngestRequest, SOURCE_BINDING_FILE,
+    SOURCE_PROVENANCE_FILE, SoleSourceBinding, SoleSourceKind, SourceFile, SourceStore,
+    WORKSTREAMS_FILE,
 };
 pub use tx::{CommandOutcome, CommandRequest, TeamStore};
 pub use workstream_auth::workstream_credential_hash;
