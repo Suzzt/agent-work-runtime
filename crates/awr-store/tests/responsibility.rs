@@ -245,3 +245,46 @@ fn unassigned_pool_and_transfer_pending() {
         .unwrap();
     assert!(accepted.pending.is_none());
 }
+
+#[test]
+fn request_key_cannot_replay_onto_a_different_work_item() {
+    let mut f = Fixture::new();
+    let project = f.project.id;
+    let alice = PersonId::new("alice").unwrap();
+    f.store.ensure_person(project, &alice, "Alice").unwrap();
+    f.store
+        .assign_responsibility(
+            project,
+            "work-a",
+            &AssignResponsibilityRequest {
+                request_key: "same-key".into(),
+                expected_version: 0,
+                owner: Some(alice.clone()),
+                collaborators: vec![],
+                independent_reviewer: None,
+                allow_unassigned: false,
+                authorized_by: alice.clone(),
+            },
+        )
+        .unwrap();
+    let err = f
+        .store
+        .assign_responsibility(
+            project,
+            "work-b",
+            &AssignResponsibilityRequest {
+                request_key: "same-key".into(),
+                expected_version: 0,
+                owner: Some(alice.clone()),
+                collaborators: vec![],
+                independent_reviewer: None,
+                allow_unassigned: false,
+                authorized_by: alice,
+            },
+        )
+        .unwrap_err();
+    assert!(err.to_string().contains("different work item"), "{err}");
+    let other = f.store.task_responsibility(project, "work-b").unwrap();
+    assert!(other.owner.is_none());
+    assert_eq!(other.version, 0);
+}

@@ -51,4 +51,4 @@ ALTER TABLE awr_team.completion_receipts
     FOREIGN KEY (tenant_id, project_id, evidence_id)
     REFERENCES awr_team.evidence(tenant_id, project_id, id);
 
-UPDATE awr_team.schema_state SET version = 22 WHERE component = 'awr_team';
+UPDATE awr_team.schema_state SET version = 25 WHERE component = 'awr_team';

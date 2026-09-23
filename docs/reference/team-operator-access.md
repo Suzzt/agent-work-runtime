@@ -1,5 +1,45 @@
 # Team operator access management
 
+## Project-admin MCP/HTTP management (AWR-TMCP-012)
+
+After local owner bootstrap (database migrate + first project admin via
+`awr-server access`), **daily** member add/remove, role/scope adjust, and
+credential register/rotate are performed by authorized project admins through
+the app-role business entry:
+
+| Surface | Ops |
+| --- | --- |
+| MCP | `awr_team_access_inspect`, `awr_team_access_preview`, `awr_team_access_apply`, `awr_team_access_outcome` |
+| HTTP | `POST /v1/projects/{key}/access/{inspect,preview,apply,outcome}` |
+
+These paths require live `access.manage_project` (project admin / `admin` /
+`project_admin` membership) **and** an authenticated client grant ceiling:
+requested role/grant changes cannot exceed the caller's explicit workstream
+`manage` grants and grant bits. Admin membership alone (for example an unscoped
+credential with zero grants) cannot bootstrap rights. They never expose database
+owner privileges, arbitrary SQL, arbitrary server paths, or the owner-only
+recovery CLI.
+
+Plans are **project-bounded**. Grant ceilings also exclude special authorities
+(`attest_execution`, `reconcile_execution`). Tenant-wide credential revoke is
+**refused** on this path — clear or replace **this project's** grants instead
+(owner `awr-server access` remains available for tenant credential revoke and
+recovery). Preview/apply responses label impact on other clients that share the
+subject actor's membership and state that other projects' grants are preserved.
+
+Concurrent admin applies serialize on subject-actor + digests; exact
+`request_id` replay returns the historical receipt. Removing or demoting the
+last admin without a prior handoff is refused. Raw bearers are generated only
+via the protected install channel (`awr-server access token` → local `0600`
+file) and registered by `secret_hash` only; query/audit/MCP responses return
+redacted identity and auth metadata — never raw secrets.
+
+Owner-only surfaces (recovery-inspect, history migration, quarantine,
+execution attribution, backup/fencing/rebuild) stay on `awr-server access` and
+remain unreachable from client HTTP/MCP.
+
+---
+
 The development branch provides `awr-server access` for an operator to provision
 clients of an already enabled workstream project. It does not create a project,
 activate sources, launch an executor or announce a release. Complete the
@@ -10,7 +50,7 @@ Database operations require the schema owner's PostgreSQL privileges through
 bearers cannot use this operator interface. The running service continues to use
 its separate application connection. Upgrade explicitly with
 `awr-server migrate --app-role <service-role>` as owner; schema 18 adds operator access,
-history-migration, backup-operation, claim/execution quarantine, and explicit execution-attribution receipts; bootstrap denies the application role all access to those tables.
+history-migration, backup-operation, claim/execution quarantine, and explicit execution-attribution receipts; schema 19 adds `project_access_changes` for project-admin MCP receipts (app role may INSERT/SELECT only). Bootstrap denies the application role all access to owner-only operator tables.
 
 ## Register a client
 

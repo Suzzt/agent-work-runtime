@@ -30,6 +30,8 @@ pub enum TeamError {
     AuthProjectMismatch,
     #[error("credential reference invalid")]
     SecretRefInvalid,
+    #[error("permission denied: {0}")]
+    PermissionDenied(String),
 }
 
 impl TeamError {
@@ -42,6 +44,7 @@ impl TeamError {
             Self::OfflineWriteForbidden => "SERVICE_UNAVAILABLE",
             Self::AuthProjectMismatch => "FORBIDDEN",
             Self::SecretRefInvalid => "UNAUTHENTICATED",
+            Self::PermissionDenied(_) => "PERMISSION_DENIED",
             Self::UnknownRequiredField(_) => "PROTOCOL_UNSUPPORTED",
             Self::MissingRequiredField(_) => "PROTOCOL_UNSUPPORTED",
             Self::InvalidVersion(_) => "PROTOCOL_UNSUPPORTED",

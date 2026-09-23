@@ -532,3 +532,110 @@ async fn return_rework_keeps_history_and_contract_change_blocks_stale_approval()
         PgError::EvidenceInvalid | PgError::ReviewRequired | PgError::CompletionRejected
     ));
 }
+
+#[tokio::test]
+async fn invalidated_prior_approval_cannot_complete() {
+    let (_g, admin, _, store) = setup().await;
+    seed_review_actors(&admin).await;
+    let prepared = prepare(&store, A, "a").await;
+    let contract_hash = prepared["data"]["contract_hash"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    insert_succeeded_execution(&admin, "exec-inv", &contract_hash, 1).await;
+
+    let evidence1 = run(
+        &store,
+        RUNNER,
+        "ev-inv-1",
+        "evidence.submit",
+        submit_args("session-runner", "exec-inv", &hex_encode(b"invalidated-e1")),
+    )
+    .await;
+    let evidence_id1 = evidence1["evidence_id"].as_str().unwrap().to_string();
+    let opened1 = run(
+        &store,
+        A,
+        "open-inv-1",
+        "review.open",
+        json!({
+            "session_id":"session-a",
+            "expected_session_version":"1",
+            "evidence_id": evidence_id1
+        }),
+    )
+    .await;
+    let round1 = opened1["round_id"].as_str().unwrap().to_string();
+    run(
+        &store,
+        REVIEWER_TOKEN,
+        "acc-inv-1",
+        "review.accept",
+        json!({
+            "session_id":"session-reviewer",
+            "expected_session_version":"1",
+            "round_id": round1,
+            "reason":"approve e1"
+        }),
+    )
+    .await;
+
+    let evidence2 = run(
+        &store,
+        RUNNER,
+        "ev-inv-2",
+        "evidence.submit",
+        submit_args("session-runner", "exec-inv", &hex_encode(b"invalidated-e2")),
+    )
+    .await;
+    let evidence_id2 = evidence2["evidence_id"].as_str().unwrap().to_string();
+    run(
+        &store,
+        A,
+        "open-inv-2",
+        "review.open",
+        json!({
+            "session_id":"session-a",
+            "expected_session_version":"1",
+            "evidence_id": evidence_id2
+        }),
+    )
+    .await;
+
+    let r1_state: String = admin
+        .query_one(
+            "SELECT state FROM awr_team.review_rounds
+             WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+            &[&TENANT, &PROJECT, &round1],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(r1_state, "invalidated");
+
+    let err = run_err(
+        &store,
+        A,
+        "done-inv-stale",
+        "work.complete",
+        json!({
+            "session_id":"session-a",
+            "expected_session_version":"1",
+            "evidence_id": evidence_id1,
+            "context_complete": true
+        }),
+    )
+    .await;
+    assert!(matches!(err, PgError::ReviewRequired));
+
+    let completed: i64 = admin
+        .query_one(
+            "SELECT count(*) FROM awr_team.work_runtime
+             WHERE tenant_id=$1 AND project_id=$2 AND work_id='a' AND state='completed'",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(completed, 0);
+}

@@ -733,7 +733,7 @@ fn moves_accept_sessions_after_their_recovery_responsibility_is_resolved() {
     }
 }
 
-const DROP_V6: &str = "DROP TABLE source_content_reviews; DROP TABLE conversation_workstreams; DROP TABLE session_workstreams; DROP TRIGGER session_identity_no_update; DROP TRIGGER workstream_claim_exclusive_insert; DROP TRIGGER workstream_claim_exclusive_update; DELETE FROM schema_migrations WHERE version>=6; PRAGMA user_version=5;";
+const DROP_V6: &str = "PRAGMA foreign_keys=OFF; DROP TABLE IF EXISTS team_handoff_receipts; DROP TABLE IF EXISTS team_handoffs; DROP TABLE IF EXISTS agent_authorization_receipts; DROP TABLE IF EXISTS agent_authorizations; DROP TABLE IF EXISTS operation_readset_receipts; DROP TABLE IF EXISTS responsibility_receipts; DROP TABLE IF EXISTS responsibility_events; DROP TABLE IF EXISTS task_collaborators; DROP TABLE IF EXISTS task_responsibilities; DROP TABLE IF EXISTS person_agent_bindings; DROP TABLE IF EXISTS persons; DROP TABLE source_content_reviews; DROP TABLE conversation_workstreams; DROP TABLE session_workstreams; DROP TRIGGER session_identity_no_update; DROP TRIGGER workstream_claim_exclusive_insert; DROP TRIGGER workstream_claim_exclusive_update; DELETE FROM schema_migrations WHERE version>=6; PRAGMA user_version=5;";
 
 #[test]
 fn migration_retains_ambiguous_workless_history_without_guessing_and_rolls_back() {

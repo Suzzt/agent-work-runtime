@@ -3,8 +3,8 @@
 //! Fixture isolation comes from tests/common (CR #41 P2-13).
 
 use awr_team_pg::{
-    CrashPoint, ExecutionStore, GraphStore, LeaseStore, PgError, ReferenceRunner,
-    exactly_once_supported,
+    CrashPoint, ExecutionStore, GraphStore, LeaseStore, PgError, ReferenceRunner, admit_live_fence,
+    exactly_once_supported, unknown_effect_retains_resources,
 };
 use serde_json::json;
 use std::sync::MutexGuard;
@@ -1848,4 +1848,27 @@ async fn non_unix_refuses_protected_writes_without_side_effects() {
     assert_eq!(outcome.state, "failed");
     assert!(outcome.error.is_some());
     assert!(!base.join("worktree/src/x.txt").exists());
+}
+
+#[test]
+fn admit_live_fence_refuses_stale_after_handoff_or_expiry() {
+    assert!(admit_live_fence(1, 1, 1, true).is_ok());
+    assert!(
+        admit_live_fence(1, 1, 2, true).is_err(),
+        "handoff advanced live fence"
+    );
+    assert!(
+        admit_live_fence(1, 2, 2, true).is_err(),
+        "execution kept old fence"
+    );
+    assert!(admit_live_fence(2, 2, 2, false).is_err(), "expired claim");
+    assert!(admit_live_fence(0, 0, 0, true).is_err());
+}
+
+#[test]
+fn unknown_effects_retain_resource_protection() {
+    assert!(unknown_effect_retains_resources("unknown", "reserved"));
+    assert!(unknown_effect_retains_resources("unknown", "unknown"));
+    assert!(!unknown_effect_retains_resources("succeeded", "unknown"));
+    assert!(!unknown_effect_retains_resources("unknown", "released"));
 }
