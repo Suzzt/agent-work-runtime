@@ -37,9 +37,10 @@ Claim acquire/renew/release state machines stay in `workstream_command/claims.rs
    revoked/expired grant (`bind_runtime_identity`).
 5. **Claim coordination ≠ side effects** — `AuthorizedAction::ClaimCoordination`
    maps only to `claim.manage_own`. `execution.*` commands require
-   `execution.request_and_report_own` from `StartWork`. Claim inspect reports
-   `execution_authorized` only when that execution action is present and the
-   lease is live for the current holder.
+   `execution.request_and_report_own` from `StartWork`. Claim inspect always
+   reports `execution_authorized: false`. Eligibility is only
+   `execution_eligibility_advisory`. Only a fresh `execution.start` response
+   may set `execution_authorized: true`.
 6. **Trusted executor** — the four product templates never grant trusted-executor
    attestation or execution reconciliation. Ordinary `execution.report` stays on
    the caller-asserted → pending-verify path. `execution.attest` requires

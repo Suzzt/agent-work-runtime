@@ -11,6 +11,17 @@ use serde_json::json;
 const NEW_TOKEN: &str =
     "awr1.new-member.eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
+async fn enable_admin_manage(owner: &tokio_postgres::Client) {
+    owner
+        .batch_execute(
+            "UPDATE awr_team.workstream_grants
+             SET can_write=true, can_manage=true, grant_version=grant_version+1
+             WHERE client_id='cli-a'",
+        )
+        .await
+        .unwrap();
+}
+
 fn admin_plan_member() -> AdminAccessPlan {
     serde_json::from_value(json!({
         "protocol_version":1,
@@ -37,9 +48,10 @@ fn admin_plan_member() -> AdminAccessPlan {
 #[tokio::test]
 async fn project_admin_mcp_path_preview_apply_outcome_and_denies_non_admin() {
     let (_g, owner, db, store) = setup().await;
+    enable_admin_manage(&owner).await;
     let access =
         ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
-    // Token A is actor=agent role=admin — project admin.
+    // Token A is actor=agent role=admin — project admin with manage grant ceiling.
     let plan = admin_plan_member();
     let preview = access.preview(TENANT, PROJECT, A, &plan).await.unwrap();
     assert_eq!(preview["applied"], false);
@@ -166,6 +178,19 @@ async fn project_admin_mcp_path_preview_apply_outcome_and_denies_non_admin() {
 #[tokio::test]
 async fn tenant_credential_revoke_refused_project_revoke_preserves_other_projects_and_last_admin() {
     let (_g, mut owner, db, _) = setup().await;
+    enable_admin_manage(&owner).await;
+    // cli-b's grant is on stream 2. Replacing that client's grants requires the
+    // caller to already manage stream 2; this does not touch the other project.
+    owner
+        .execute(
+            "INSERT INTO awr_team.workstream_grants(
+                tenant_id,project_id,actor_id,client_id,workstream_id,authority_version,
+                can_read,can_write,can_manage,can_attest_execution,can_reconcile_execution,active)
+             VALUES($1,$2,'agent','cli-a',$3,1,true,true,true,false,false,true)",
+            &[&TENANT, &PROJECT, &awr_core::Id::from(2).to_string()],
+        )
+        .await
+        .unwrap();
     let access =
         ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     // Seed a grant in another project for the same actor to prove project revoke is scoped.
@@ -183,13 +208,13 @@ async fn tenant_credential_revoke_refused_project_revoke_preserves_other_project
 
     let mut revoke_tenant: AdminAccessPlan = serde_json::from_value(json!({
         "protocol_version":1,
-        "subject":{"id":"agent","kind":"agent","display_name":"Worker"},
-        "subject_client_id":"cli-a",
+        "subject":{"id":"agent","kind":"human","display_name":"Worker"},
+        "subject_client_id":"cli-b",
         "role":"admin",
         "grants":[],
         "credential":null,
         "remove_membership":false,
-        "revoke_tenant_credentials":["reader-a"]
+        "revoke_tenant_credentials":["reader-b"]
     }))
     .unwrap();
     assert!(matches!(
@@ -197,7 +222,8 @@ async fn tenant_credential_revoke_refused_project_revoke_preserves_other_project
         Err(PgError::Forbidden)
     ));
 
-    // Project grant clear for cli-a should not delete other-project grants.
+    // Project grant clear for cli-b must not delete other-project grants (cli-a).
+    // Keep the admin caller's (cli-a) manage ceiling intact for later steps.
     revoke_tenant.revoke_tenant_credentials.clear();
     let preview = access
         .preview(TENANT, PROJECT, A, &revoke_tenant)
@@ -213,7 +239,7 @@ async fn tenant_credential_revoke_refused_project_revoke_preserves_other_project
             PROJECT,
             A,
             &revoke_tenant,
-            "clear-cli-a",
+            "clear-cli-b",
             preview["state_digest"].as_str().unwrap(),
             preview["plan_digest"].as_str().unwrap(),
         )
@@ -274,7 +300,7 @@ async fn tenant_credential_revoke_refused_project_revoke_preserves_other_project
     // Now removing agent admin membership should succeed (reviewer is admin).
     let remove: AdminAccessPlan = serde_json::from_value(json!({
         "protocol_version":1,
-        "subject":{"id":"agent","kind":"agent","display_name":"Worker"},
+        "subject":{"id":"agent","kind":"human","display_name":"Worker"},
         "subject_client_id":"cli-a",
         "role":"reader",
         "grants":[],
@@ -353,6 +379,7 @@ async fn tenant_credential_revoke_refused_project_revoke_preserves_other_project
 #[tokio::test]
 async fn concurrent_admin_applies_serialize_and_owner_receipts_stay_separate() {
     let (_g, owner, db, _) = setup().await;
+    enable_admin_manage(&owner).await;
     let access =
         ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     let plan = admin_plan_member();
@@ -401,4 +428,142 @@ async fn concurrent_admin_applies_serialize_and_owner_receipts_stay_separate() {
         Err(PgError::Forbidden)
     ));
     let _ = owner;
+}
+
+#[tokio::test]
+async fn admin_membership_without_manage_grant_cannot_escalate_on_preview_or_apply() {
+    let (_g, owner, db, _) = setup().await;
+    let access =
+        ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let plan = admin_plan_member();
+    // NONE: admin membership, client unscoped, zero grants — AccessManageProject alone
+    // must not bootstrap developer membership/credential/grants.
+    assert!(
+        matches!(
+            access.preview(TENANT, PROJECT, NONE, &plan).await,
+            Err(PgError::Forbidden)
+        ),
+        "NONE preview must enforce client grant ceiling"
+    );
+    assert!(
+        matches!(
+            access
+                .apply(
+                    TENANT,
+                    PROJECT,
+                    NONE,
+                    &plan,
+                    "none-escalate",
+                    "a".repeat(64).as_str(),
+                    "b".repeat(64).as_str(),
+                )
+                .await,
+            Err(PgError::Forbidden)
+        ),
+        "NONE apply must enforce client grant ceiling"
+    );
+    assert!(
+        matches!(
+            access
+                .inspect(TENANT, PROJECT, NONE, "agent", "cli-a")
+                .await,
+            Err(PgError::Forbidden)
+        ),
+        "NONE inspect must enforce client grant ceiling"
+    );
+    assert!(
+        matches!(
+            access.outcome(TENANT, PROJECT, NONE, "any").await,
+            Err(PgError::Forbidden)
+        ),
+        "NONE outcome must enforce client grant ceiling"
+    );
+
+    // Read-only grant (no manage) on an admin membership still cannot escalate.
+    enable_admin_manage(&owner).await;
+    owner
+        .batch_execute(
+            "UPDATE awr_team.workstream_grants
+             SET can_write=false, can_manage=false, grant_version=grant_version+1
+             WHERE client_id='cli-a'",
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        access.preview(TENANT, PROJECT, A, &plan).await,
+        Err(PgError::Forbidden)
+    ));
+
+    // Restoring manage+write allows the same plan (grant ceiling satisfied).
+    enable_admin_manage(&owner).await;
+    let preview = access.preview(TENANT, PROJECT, A, &plan).await.unwrap();
+    assert_eq!(preview["applied"], false);
+}
+
+#[tokio::test]
+async fn empty_grants_cannot_wipe_unmanaged_private_stream_via_full_delta() {
+    let (_g, owner, db, _) = setup().await;
+    enable_admin_manage(&owner).await;
+    let access =
+        ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
+
+    // Token A manages only alpha (stream 1). cli-b holds private-beta (stream 2).
+    // Inspect of cli-b must already fail the ceiling.
+    assert!(
+        matches!(
+            access.inspect(TENANT, PROJECT, A, "agent", "cli-b").await,
+            Err(PgError::Forbidden)
+        ),
+        "alpha-only manager must not inspect cli-b private-beta grants"
+    );
+
+    // Replacing cli-b's grant set with [] would deactivate private-beta. Refuse.
+    let wipe: AdminAccessPlan = serde_json::from_value(json!({
+        "protocol_version":1,
+        "subject":{"id":"agent","kind":"agent","display_name":"Worker"},
+        "subject_client_id":"cli-b",
+        "role":"admin",
+        "grants":[],
+        "credential":null,
+        "remove_membership":false,
+        "revoke_tenant_credentials":[]
+    }))
+    .unwrap();
+    assert!(
+        matches!(
+            access.preview(TENANT, PROJECT, A, &wipe).await,
+            Err(PgError::Forbidden)
+        ),
+        "empty grants must authorize full delta including current private-beta"
+    );
+    assert!(
+        matches!(
+            access
+                .apply(
+                    TENANT,
+                    PROJECT,
+                    A,
+                    &wipe,
+                    "wipe-cli-b",
+                    "a".repeat(64).as_str(),
+                    "b".repeat(64).as_str(),
+                )
+                .await,
+            Err(PgError::Forbidden)
+        ),
+        "apply with grants=[] must not wipe unmanaged streams"
+    );
+
+    // private-beta grant remains active for cli-b.
+    let active: i64 = owner
+        .query_one(
+            "SELECT count(*)::bigint FROM awr_team.workstream_grants
+             WHERE client_id='cli-b' AND active
+               AND workstream_id=$1",
+            &[&awr_core::Id::from(2).to_string()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(active, 1, "private-beta grant must survive refused wipe");
 }

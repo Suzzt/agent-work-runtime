@@ -778,6 +778,13 @@ async fn complete(
     if blocked {
         return Err(PgError::RecoveryBlocked);
     }
+    crate::workstream_command::executions::require_clear_of_selective_blocks(
+        tx,
+        tenant,
+        project,
+        &command.work_id,
+    )
+    .await?;
     let policy = contract.completion_policy.as_str();
     if let Some(requested) = a.requested_policy.as_deref() {
         if requested != policy {
@@ -927,9 +934,13 @@ async fn complete(
     let mut approver_actor: Option<String> = None;
     let mut approver_person: Option<String> = None;
     if policy != "ordinary_confirm" {
+        // Only a still-valid (non-invalidated) approved round may satisfy
+        // completion. review.open invalidates prior approved rounds when a
+        // different evidence digest is opened; keep their decisions for
+        // history but refuse to complete on them.
         let pinned = tx
             .query_opt(
-                "SELECT id, contract_hash FROM awr_team.review_rounds
+                "SELECT id, contract_hash, state FROM awr_team.review_rounds
                  WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3 AND bundle_hash=$4
                  ORDER BY round_index DESC LIMIT 1",
                 &[&tenant, &project, &command.work_id, &ev_digest],
@@ -938,7 +949,8 @@ async fn complete(
             .ok_or(PgError::ReviewRequired)?;
         let round_id: String = pinned.get(0);
         let round_contract: String = pinned.get(1);
-        if round_contract != ev_contract {
+        let round_state: String = pinned.get(2);
+        if round_contract != ev_contract || round_state != "approved" {
             return Err(PgError::ReviewRequired);
         }
         let d = tx
