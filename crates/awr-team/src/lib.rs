@@ -41,9 +41,10 @@ pub use planning::{
     HARD_DELETE_HISTORY_ALLOWED, OrdinaryPlanningSelfApprovePolicy, PLANNING_CODEC,
     PlanningApproval, PlanningCandidate, PlanningSuggestion, SUGGESTION_ADDS_FORMAL_WORK,
     SUGGESTION_API_WRITABLE_BY_READER, SUGGESTION_CLAIMABLE, SUGGESTION_MUTATES_LIVE_ACCEPTANCE,
-    SUGGESTION_MUTATES_LIVE_DEPS, SuggestionState, TaskDraft, authorize_planning_action,
-    authorize_planning_approve, authorize_planning_publish, build_candidate_diff, edit_candidate,
-    ensure_independent_review_not_downgraded, refuse_reader_suggestion_write, validate_candidate,
+    SUGGESTION_MUTATES_LIVE_DEPS, SuggestionState, TaskDraft, attested_actor_person,
+    authorize_planning_action, authorize_planning_approve, authorize_planning_publish,
+    build_candidate_diff, edit_candidate, ensure_independent_review_not_downgraded,
+    refuse_reader_suggestion_write, validate_candidate,
 };
 pub use snapshot::{
     ClaimPreconditions, LeaseProof, ProjectReadSnapshot, RequiredDependencyProof,
