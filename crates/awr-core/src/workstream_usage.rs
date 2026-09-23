@@ -85,16 +85,23 @@ pub struct UsageCounterSnapshot {
     pub observed_at_ms: u64,
     pub tokens: UsageTokens,
 }
+
+/// Field checks for one snapshot. A first observation has no previous baseline,
+/// so it cannot go through `usage_counter_delta`.
+pub fn validate_usage_counter_snapshot(snapshot: &UsageCounterSnapshot) -> Result<()> {
+    snapshot.scope.validate()?;
+    snapshot.tokens.validate()?;
+    Ok(())
+}
+
 /// A known baseline is required; a first snapshot is not implicitly zero.
 /// Caller must avoid billing this delta again through per-call receipts.
 pub fn usage_counter_delta(
     previous: &UsageCounterSnapshot,
     current: &UsageCounterSnapshot,
 ) -> Result<UsageTokens> {
-    previous.scope.validate()?;
-    current.scope.validate()?;
-    previous.tokens.validate()?;
-    current.tokens.validate()?;
+    validate_usage_counter_snapshot(previous)?;
+    validate_usage_counter_snapshot(current)?;
     if previous.scope != current.scope || current.observed_at_ms <= previous.observed_at_ms {
         return Err(UsageError::CounterBoundary);
     }
