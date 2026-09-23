@@ -105,7 +105,7 @@ impl LegacyFixture {
             work,
         };
         // Reconstruct the exact shipped v4 schema; all pre-existing rows remain.
-        fixture.sql("PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE; DROP TABLE source_content_reviews; DROP TABLE conversation_workstreams; DROP TABLE session_workstreams; DROP TRIGGER session_identity_no_update; DROP TRIGGER workstream_claim_exclusive_insert; DROP TRIGGER workstream_claim_exclusive_update; DELETE FROM schema_migrations WHERE version>=6; DROP TABLE workstream_ownership; DROP TABLE workstreams; DROP TABLE workstream_catalogs; DELETE FROM schema_migrations WHERE version=5; PRAGMA user_version=4; COMMIT;");
+        fixture.sql("PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE; DROP TABLE IF EXISTS responsibility_receipts; DROP TABLE IF EXISTS responsibility_events; DROP TABLE IF EXISTS task_collaborators; DROP TABLE IF EXISTS task_responsibilities; DROP TABLE IF EXISTS person_agent_bindings; DROP TABLE IF EXISTS persons; DROP TABLE source_content_reviews; DROP TABLE conversation_workstreams; DROP TABLE session_workstreams; DROP TRIGGER session_identity_no_update; DROP TRIGGER workstream_claim_exclusive_insert; DROP TRIGGER workstream_claim_exclusive_update; DELETE FROM schema_migrations WHERE version>=6; DROP TABLE workstream_ownership; DROP TABLE workstreams; DROP TABLE workstream_catalogs; DELETE FROM schema_migrations WHERE version=5; PRAGMA user_version=4; COMMIT;");
         fixture
     }
     fn path(&self) -> PathBuf {
