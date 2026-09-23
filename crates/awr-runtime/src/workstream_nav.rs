@@ -7,8 +7,8 @@
 //! must authenticate the project / workstream before invoking it. Full Team Web
 //! collaboration writes are delivered by the Team Web entry (WS-044).
 use awr_core::{
-    ActionGuidance, Edge, EtaComponents, Project, Projected, Result, TaskResponsibility,
-    WorkItem, Workstream, WorkstreamAccounting, WorkstreamCatalog, ACTION_GUIDANCE_MAX_BYTES,
+    ACTION_GUIDANCE_MAX_BYTES, ActionGuidance, Edge, EtaComponents, Project, Projected, Result,
+    TaskResponsibility, WorkItem, Workstream, WorkstreamAccounting, WorkstreamCatalog,
 };
 use awr_store::Store;
 use serde::{Deserialize, Serialize};
@@ -194,11 +194,7 @@ fn resolve_selected_workstream(
     if ids.len() == 1 {
         let id = ids.pop_first().unwrap();
         if let Some(catalog) = catalog {
-            if let Some(stream) = catalog
-                .workstreams
-                .iter()
-                .find(|s| s.id.to_string() == id)
-            {
+            if let Some(stream) = catalog.workstreams.iter().find(|s| s.id.to_string() == id) {
                 return workstream_value(stream);
             }
         }
@@ -485,8 +481,7 @@ pub fn assemble_mainline_nav(
         }),
     };
 
-    let selected_stream =
-        resolve_selected_workstream(scope, catalog, ownership, &selected_keys);
+    let selected_stream = resolve_selected_workstream(scope, catalog, ownership, &selected_keys);
     let guidance = nav_guidance(
         &nodes,
         &blockers,
@@ -558,9 +553,7 @@ pub fn mainline_nav(
         if !extras.responsibility_by_work.contains_key(key) {
             if let Ok(task) = store.task_responsibility(project.id, &work.item.meta.id.to_string())
             {
-                extras
-                    .responsibility_by_work
-                    .insert(key.to_string(), task);
+                extras.responsibility_by_work.insert(key.to_string(), task);
             }
         }
         if !extras.eta_by_work.contains_key(key) {
@@ -742,7 +735,10 @@ mod tests {
         assert_eq!(snap["ws044_writes_deferred"], false);
         assert_eq!(snap["ws044_team_web"], true);
         assert_eq!(snap["accounting"]["available"], true);
-        assert_eq!(snap["accounting"]["is_not_goal_query_completion_rate"], true);
+        assert_eq!(
+            snap["accounting"]["is_not_goal_query_completion_rate"],
+            true
+        );
         assert_eq!(snap["accounting"]["implemented"]["recorded"], 1);
         assert_eq!(snap["cross_dependencies"].as_array().unwrap().len(), 1);
         assert_eq!(

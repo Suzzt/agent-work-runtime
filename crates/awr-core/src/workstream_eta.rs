@@ -11,7 +11,7 @@
 //! provisional or unestimable with an explicit source. Calibrated intervals
 //! require frozen sample + holdout thresholds. LLM self-report is never a
 //! precise promise.
-use crate::workstream_usage::{refuse_eta_from_cumulative_duration, UsageTimeObservationHandoff};
+use crate::workstream_usage::{UsageTimeObservationHandoff, refuse_eta_from_cumulative_duration};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
@@ -56,11 +56,7 @@ fn add_u64(a: u64, b: u64) -> Result<u64> {
 }
 
 fn max_u64(a: u64, b: u64) -> u64 {
-    if a >= b {
-        a
-    } else {
-        b
-    }
+    if a >= b { a } else { b }
 }
 
 /// Delivery or stage-checkpoint target for a forecast.
@@ -1172,9 +1168,11 @@ mod local_tests {
         };
         let result = schedule_next_acceptance(&tasks, &cap, "card").unwrap();
         assert_eq!(result.checkpoint_ready_ms, Some(55));
-        assert!(!result
-            .critical_path_work_ids
-            .iter()
-            .any(|id| id == "unrelated"));
+        assert!(
+            !result
+                .critical_path_work_ids
+                .iter()
+                .any(|id| id == "unrelated")
+        );
     }
 }

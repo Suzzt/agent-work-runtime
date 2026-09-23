@@ -241,9 +241,8 @@ fn set_session_cookie(response: &mut Response, session_id: &str, max_age: u64, s
 
 fn clear_session_cookie(response: &mut Response, secure: bool) {
     let secure_flag = if secure { "; Secure" } else { "" };
-    let value = format!(
-        "{COOKIE_NAME}=; HttpOnly; Path=/v1/web; SameSite=Strict; Max-Age=0{secure_flag}"
-    );
+    let value =
+        format!("{COOKIE_NAME}=; HttpOnly; Path=/v1/web; SameSite=Strict; Max-Age=0{secure_flag}");
     if let Ok(v) = HeaderValue::from_str(&value) {
         response.headers_mut().append(header::SET_COOKIE, v);
     }
@@ -269,9 +268,10 @@ fn cookie_session_id(headers: &HeaderMap) -> Option<String> {
 }
 
 fn secure_cookie(state: &StateData) -> bool {
-    !state.hosts.iter().all(|h| {
-        h.starts_with("127.0.0.1") || h.starts_with("localhost") || h.starts_with("[::1]")
-    })
+    !state
+        .hosts
+        .iter()
+        .all(|h| h.starts_with("127.0.0.1") || h.starts_with("localhost") || h.starts_with("[::1]"))
 }
 
 fn capabilities_query() -> WorkstreamQuery {
@@ -292,11 +292,7 @@ struct LoginBody {
     project: Option<String>,
 }
 
-async fn login(
-    State(state): State<Arc<StateData>>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Response {
+async fn login(State(state): State<Arc<StateData>>, headers: HeaderMap, body: Bytes) -> Response {
     let origin = match require_web_entry(&state, &headers) {
         Ok(o) => o,
         Err(r) => return r,
@@ -322,8 +318,12 @@ async fn login(
     {
         return with_cors(denied(), &origin);
     }
-    let authorized = match authorized_project_bindings(&state, &parsed.bearer, parsed.project.as_deref())
-        .await
+    let authorized = match authorized_project_bindings(
+        &state,
+        &parsed.bearer,
+        parsed.project.as_deref(),
+    )
+    .await
     {
         Ok(list) if !list.is_empty() => list,
         Ok(_) => return with_cors(denied(), &origin),
@@ -567,7 +567,6 @@ async fn preflight(State(state): State<Arc<StateData>>, headers: HeaderMap) -> R
     );
     with_cors(res, &origin)
 }
-
 
 /// Projects the bearer is currently authorized for (capabilities probe).
 /// `only_key` selects one binding; otherwise all configured projects are checked.

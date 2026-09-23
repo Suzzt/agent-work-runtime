@@ -10,9 +10,9 @@
 //! - preserves unique ownership, shared-outcome references, and transfer history
 //!   without double-counting or silently rewriting past contracts.
 use awr_core::{
-    account_workstream, AccountingContractIdentity, AccountingError, AccountingEvidence,
-    AccountingStage, AccountingStages, AccountingWork, Id, WorkstreamAccounting,
-    WorkstreamAccountingContract, WorkstreamWorkBinding, WORKSTREAM_ACCOUNTING_VERSION,
+    AccountingContractIdentity, AccountingError, AccountingEvidence, AccountingStage,
+    AccountingStages, AccountingWork, Id, WORKSTREAM_ACCOUNTING_VERSION, WorkstreamAccounting,
+    WorkstreamAccountingContract, WorkstreamWorkBinding, account_workstream,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;

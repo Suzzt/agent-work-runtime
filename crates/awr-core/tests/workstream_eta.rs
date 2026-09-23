@@ -304,10 +304,12 @@ fn cold_start_and_calibration_gate_and_llm_refusal() {
         record.estimate_kind,
         EtaEstimateKind::Unestimable { .. }
     ));
-    assert!(record
-        .assumptions
-        .iter()
-        .any(|a| a.starts_with("llm_narrative_recorded_not_promise:")));
+    assert!(
+        record
+            .assumptions
+            .iter()
+            .any(|a| a.starts_with("llm_narrative_recorded_not_promise:"))
+    );
     assert!(!record.calibration.gate_passed);
 
     // Below gate → provisional even with durations.

@@ -1,12 +1,12 @@
 //! Append-only persistence for calibrated ETA forecasts (WS-043).
 //! Measured usage/time (WS-041) stays in separate tables; forecast history is
 //! never rewritten in place.
-use crate::{db_error, Store};
+use crate::{Store, db_error};
 use awr_core::workstream_eta::{
     self, EtaAcceptanceDatum, EtaError, EtaEstimateKind, EtaForecastRecord, EtaHistoricalSample,
 };
-use awr_core::{now_millis, Error, Id, Result};
-use rusqlite::{params, OptionalExtension};
+use awr_core::{Error, Id, Result, now_millis};
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

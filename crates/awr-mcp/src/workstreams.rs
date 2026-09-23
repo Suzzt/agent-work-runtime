@@ -234,7 +234,8 @@ pub(crate) fn call(
             accounting: options.accounting,
             ..Default::default()
         };
-        let mut value = mainline_nav(&view.store, &view.project, &scope, extras).map_err(boundary_error)?;
+        let mut value =
+            mainline_nav(&view.store, &view.project, &scope, extras).map_err(boundary_error)?;
         value["read_only"] = json!(true);
         value["authorization_rechecked"] = json!(true);
         view.finish(root).map_err(boundary_error)?;
