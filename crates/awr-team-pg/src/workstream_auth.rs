@@ -401,7 +401,14 @@ pub(crate) fn authorize_domain_action(
     if live != auth.role_template || auth.membership_version < 1 {
         return Err(PgError::Forbidden);
     }
-    let scope = authority_scope(auth, stream, work_id);
+    let mut scope = authority_scope(auth, stream, work_id);
+    // `validate_reviewer` already treats membership role `reviewer` as the
+    // approval-capable label. Do not grant this to readers, workers, or admins:
+    // `review.decide` stays a separate grant for every other template.
+    if action == awr_team::Action::ReviewDecide && auth.role == "reviewer" {
+        scope.independent_review_grant = true;
+        scope.allowed_actions.insert(awr_team::Action::ReviewDecide);
+    }
     let resource = awr_team::ResourceRef {
         tenant_id: auth.tenant_id.clone(),
         project_id: auth.access.project_id.clone(),
@@ -910,6 +917,26 @@ mod tests {
             ),
             Err(PgError::Forbidden)
         ));
+        assert!(matches!(
+            authorize_command(
+                &reader,
+                id(1),
+                "w",
+                "review.accept",
+                CommandAuthPhase::Admission
+            ),
+            Err(PgError::Forbidden)
+        ));
+        assert!(matches!(
+            authorize_command(
+                &reader,
+                id(1),
+                "w",
+                "work.complete",
+                CommandAuthPhase::Admission
+            ),
+            Err(PgError::Forbidden)
+        ));
 
         let developer =
             authority_with_role("worker", true, false, false, false, WorkstreamState::Active);
@@ -933,6 +960,54 @@ mod tests {
             )
             .is_ok()
         );
+        assert!(
+            authorize_command(
+                &developer,
+                id(1),
+                "w",
+                "evidence.submit",
+                CommandAuthPhase::Admission
+            )
+            .is_ok()
+        );
+        assert!(matches!(
+            authorize_command(
+                &developer,
+                id(1),
+                "w",
+                "review.accept",
+                CommandAuthPhase::Admission
+            ),
+            Err(PgError::Forbidden)
+        ));
+        let reviewer = authority_with_role(
+            "reviewer",
+            true,
+            false,
+            false,
+            false,
+            WorkstreamState::Active,
+        );
+        assert!(
+            authorize_command(
+                &reviewer,
+                id(1),
+                "w",
+                "review.accept",
+                CommandAuthPhase::Admission
+            )
+            .is_ok()
+        );
+        assert!(matches!(
+            authorize_command(
+                &reviewer,
+                id(1),
+                "w",
+                "evidence.submit",
+                CommandAuthPhase::Admission
+            ),
+            Err(PgError::Forbidden)
+        ));
         assert!(matches!(
             authorize_domain_action(
                 &developer,

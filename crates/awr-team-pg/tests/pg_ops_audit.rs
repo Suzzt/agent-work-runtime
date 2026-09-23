@@ -12,6 +12,7 @@ use awr_team_pg::{
 };
 use fixture::*;
 use serde_json::json;
+use tokio_postgres::Client;
 
 const NEW_TOKEN: &str =
     "awr1.new-member.eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
@@ -41,6 +42,17 @@ fn admin_plan_member() -> AdminAccessPlan {
     .unwrap()
 }
 
+async fn enable_admin_manage(owner: &Client) {
+    owner
+        .batch_execute(
+            "UPDATE awr_team.workstream_grants
+             SET can_write=true, can_manage=true, grant_version=grant_version+1
+             WHERE client_id='cli-a'",
+        )
+        .await
+        .unwrap();
+}
+
 fn reader_plan() -> AdminAccessPlan {
     serde_json::from_value(json!({
         "protocol_version":1,
@@ -66,7 +78,8 @@ fn reader_plan() -> AdminAccessPlan {
 
 #[tokio::test]
 async fn access_apply_binds_ops_audit_same_tx_and_export_authorized() {
-    let (_g, _admin, db, _store) = setup().await;
+    let (_g, admin, db, _store) = setup().await;
+    enable_admin_manage(&admin).await;
     let access =
         ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     let plan = admin_plan_member();
@@ -215,7 +228,8 @@ async fn deny_is_capacity_bounded_redacted_and_non_mutating() {
 
 #[tokio::test]
 async fn member_history_count_cannot_cross_scope() {
-    let (_g, _admin, db, store) = setup().await;
+    let (_g, admin, db, store) = setup().await;
+    enable_admin_manage(&admin).await;
     let access =
         ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     // Add a reader member via admin.
@@ -316,7 +330,7 @@ async fn planning_suggest_binds_receipt_with_ops_audit() {
         .planning_suggest(TENANT, PROJECT, A, &req)
         .await
         .unwrap();
-    assert_eq!(out["protocol"], "awr-planning-command-receipt-v1");
+    assert_eq!(out["protocol"], "awr-team-planning-command-v1");
     assert_eq!(out["request_id"], "plan-audit-1");
     assert_eq!(out["already_recorded"], false);
 
@@ -352,4 +366,197 @@ async fn planning_suggest_binds_receipt_with_ops_audit() {
 fn digest_helper_stable() {
     assert_eq!(digest_of(&json!({"x":1})).len(), 64);
     assert_eq!(digest_of(&json!({"x":1})), digest_of(&json!({"x":1})));
+}
+
+const HEAD_SHA: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+async fn enable_delivery_writes(admin: &Client) {
+    enable_writes(admin).await;
+    admin
+        .batch_execute(
+            "UPDATE awr_team.workstream_grants
+             SET can_write=true, grant_version=grant_version+1
+             WHERE client_id='cli-a';
+             INSERT INTO awr_team.persons(tenant_id,project_id,id,display_name,status) VALUES
+                ('reader-tenant','reader-project','person-author','Author','active')
+             ON CONFLICT DO NOTHING;",
+        )
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn mcp_delivery_register_pr_binds_ops_audit_by_request_id() {
+    let (_g, admin, db, store) = setup().await;
+    enable_delivery_writes(&admin).await;
+    let prepared = prepare(&store, A, "a").await;
+    let out = store
+        .commands()
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            command(
+                &prepared,
+                "mcp-reg-pr-audit",
+                "delivery.register_pr",
+                json!({
+                    "session_id":"session-a",
+                    "expected_session_version":"1",
+                    "repository":"originoneai/awr",
+                    "pr_number":134,
+                    "pr_url":"https://github.com/originoneai/awr/pull/134",
+                    "head_sha": HEAD_SHA,
+                    "fact_source":"authorized_human_github_verification",
+                    "observed_at":"2026-09-23T04:00:00+08:00",
+                    "author_actor_id":"agent",
+                    "owner_person_id":"person-author",
+                    "executor_actor_id":"agent",
+                    "gh_submitted": true
+                }),
+            ),
+        )
+        .await
+        .unwrap();
+    assert_eq!(out["replayed"], false);
+    assert_eq!(out["receipt"]["data"]["state"], "active");
+
+    let audit = OpsAuditStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let hist = audit
+        .history(
+            TENANT,
+            PROJECT,
+            A,
+            &OpsHistoryFilter {
+                request_id: Some("mcp-reg-pr-audit".into()),
+                category: Some("delivery".into()),
+                limit: Some(10),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let records = hist["records"].as_array().unwrap();
+    assert_eq!(records.len(), 1, "{hist}");
+    assert_eq!(records[0]["action"], "delivery.register_pr");
+    assert_eq!(records[0]["request_id"], "mcp-reg-pr-audit");
+    assert_eq!(records[0]["actor_id"], "agent");
+    assert_eq!(records[0]["client_id"], "cli-a");
+    assert_eq!(records[0]["result"], "committed");
+    assert_eq!(records[0]["work_id"], "a");
+    assert_eq!(
+        records[0]["target_id"],
+        out["receipt"]["data"]["delivery_id"]
+    );
+}
+
+#[tokio::test]
+async fn mcp_delivery_ops_audit_abort_rolls_back_domain_receipt_and_audit() {
+    let (_g, admin, db, store) = setup().await;
+    enable_delivery_writes(&admin).await;
+    let before_ops: i64 = admin
+        .query_one(
+            "SELECT COUNT(*)::bigint FROM awr_team.operations
+             WHERE tenant_id=$1 AND project_id=$2 AND request_id='inject-ops-audit-abort'",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let before_pr: i64 = admin
+        .query_one(
+            "SELECT COUNT(*)::bigint FROM awr_team.pr_deliveries
+             WHERE tenant_id=$1 AND project_id=$2 AND work_id='a'",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let before_audit: i64 = admin
+        .query_one(
+            "SELECT COUNT(*)::bigint FROM awr_team.ops_audit_records
+             WHERE tenant_id=$1 AND project_id=$2 AND request_id='inject-ops-audit-abort'",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+
+    let prepared = prepare(&store, A, "a").await;
+    let err = store
+        .commands()
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            command(
+                &prepared,
+                "inject-ops-audit-abort",
+                "delivery.register_pr",
+                json!({
+                    "session_id":"session-a",
+                    "expected_session_version":"1",
+                    "repository":"originoneai/awr",
+                    "pr_number":999,
+                    "pr_url":"https://github.com/originoneai/awr/pull/999",
+                    "head_sha": HEAD_SHA,
+                    "fact_source":"operator_recorded_observation",
+                    "observed_at":"2026-09-23T04:05:00+08:00",
+                    "gh_submitted": true
+                }),
+            ),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, PgError::Protocol(ref m) if m == "injected ops audit abort"),
+        "{err:?}"
+    );
+
+    let after_ops: i64 = admin
+        .query_one(
+            "SELECT COUNT(*)::bigint FROM awr_team.operations
+             WHERE tenant_id=$1 AND project_id=$2 AND request_id='inject-ops-audit-abort'",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let after_pr: i64 = admin
+        .query_one(
+            "SELECT COUNT(*)::bigint FROM awr_team.pr_deliveries
+             WHERE tenant_id=$1 AND project_id=$2 AND work_id='a'",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let after_audit: i64 = admin
+        .query_one(
+            "SELECT COUNT(*)::bigint FROM awr_team.ops_audit_records
+             WHERE tenant_id=$1 AND project_id=$2 AND request_id='inject-ops-audit-abort'",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(before_ops, after_ops);
+    assert_eq!(before_pr, after_pr);
+    assert_eq!(before_audit, after_audit);
+
+    let audit = OpsAuditStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let hist = audit
+        .history(
+            TENANT,
+            PROJECT,
+            A,
+            &OpsHistoryFilter {
+                request_id: Some("inject-ops-audit-abort".into()),
+                category: Some("delivery".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(hist["records"].as_array().unwrap().is_empty());
 }

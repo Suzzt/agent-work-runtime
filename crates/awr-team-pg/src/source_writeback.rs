@@ -229,51 +229,164 @@ impl SourceStore {
             });
         }
 
-        // --- Source write (outside long PG locks would be ideal; we keep the
-        // project barrier and use fingerprint CAS so external edits refuse). ---
+        // --- Build + validate the complete candidate BEFORE any source mutation.
+        // `validated` is committed before the file write, so a crash after the
+        // write and before `source_written` must not apply the patch again.
+        // Resume source_written / pg_activating / validated without re-applying
+        // CreateTask. ---
         let ledger_path = req.source_root.join(&req.ledger_relative_path);
-        let before_bytes = std::fs::read(&ledger_path).map_err(|e| {
-            PgError::Protocol(format!(
-                "cannot read authoritative ledger {}: {e}",
-                ledger_path.display()
-            ))
-        })?;
-        let observed_fp = fingerprint(&before_bytes);
-        let patch = apply_planning_changes_to_ledger(&before_bytes, &changes)
-            .map_err(|e| PgError::Protocol(e.to_string()))?;
-        refuse_external_overwrite(&patch.before_fingerprint, &observed_fp)
-            .map_err(|e| PgError::Protocol(e.to_string()))?;
+        let location =
+            SoleSourceLocation::server_directory(&req.source_root, &req.ledger_relative_path)
+                .map_err(|e| PgError::Protocol(e.to_string()))?;
 
-        upsert_journal(
-            &tx,
-            tenant_id,
-            project_id,
-            &req.request_id,
-            &candidate_id,
-            &candidate_digest,
-            &req.publish_receipt_id,
-            "planned",
-            &patch.before_fingerprint,
-            &patch.after_fingerprint,
-            &publisher_actor_id,
-            Some(&approver_actor_id),
-            &affected_vec,
-            &unrelated,
-            &gate,
-            &json!({"phase":"planned"}),
-        )
-        .await?;
+        let prior = load_journal_row(&tx, tenant_id, project_id, &req.request_id).await?;
+        let prior_phase = prior.as_ref().map(|j| j.phase.as_str()).unwrap_or("");
+
+        let (before_fingerprint, after_fingerprint, after_bytes, package, source_already_written) =
+            if matches!(
+                prior_phase,
+                "validated" | "source_written" | "pg_activating"
+            ) {
+                let journal = prior.expect("phase implies journal row");
+                let disk = std::fs::read(&ledger_path).map_err(|e| {
+                    PgError::Protocol(format!("cannot read ledger for resume: {e}"))
+                })?;
+                let disk_fp = fingerprint(&disk);
+                if disk_fp == journal.after_fingerprint {
+                    // Source write landed; resume activation without re-applying creates.
+                    let package = prepare_publish_from_ledger_bytes(
+                        &location,
+                        &req.source_root,
+                        &disk,
+                        project_id,
+                        &PublishPrepOptions::default(),
+                    )
+                    .map_err(|e| PgError::Protocol(e.to_string()))?;
+                    (
+                        journal.before_fingerprint,
+                        journal.after_fingerprint,
+                        disk,
+                        package,
+                        true,
+                    )
+                } else if disk_fp == journal.before_fingerprint {
+                    // Write never persisted; rebuild, validate, then write below.
+                    let patch = apply_planning_changes_to_ledger(&disk, &changes)
+                        .map_err(|e| PgError::Protocol(e.to_string()))?;
+                    if patch.after_fingerprint != journal.after_fingerprint {
+                        return Err(PgError::Protocol(
+                            "resume rebuild fingerprint diverged from journal intent".into(),
+                        ));
+                    }
+                    let package = prepare_publish_from_ledger_bytes(
+                        &location,
+                        &req.source_root,
+                        &patch.after_bytes,
+                        project_id,
+                        &PublishPrepOptions::default(),
+                    )
+                    .map_err(|e| PgError::Protocol(e.to_string()))?;
+                    (
+                        patch.before_fingerprint,
+                        patch.after_fingerprint,
+                        patch.after_bytes,
+                        package,
+                        false,
+                    )
+                } else {
+                    return Err(PgError::Protocol(
+                        "authoritative source changed externally; refusing overwrite of others' work"
+                            .into(),
+                    ));
+                }
+            } else {
+                // Fresh / planned / refused-retry: plan patch and validate fully
+                // before the first authoritative source mutation.
+                let before_bytes = std::fs::read(&ledger_path).map_err(|e| {
+                    PgError::Protocol(format!(
+                        "cannot read authoritative ledger {}: {e}",
+                        ledger_path.display()
+                    ))
+                })?;
+                let observed_fp = fingerprint(&before_bytes);
+                let patch = apply_planning_changes_to_ledger(&before_bytes, &changes)
+                    .map_err(|e| PgError::Protocol(e.to_string()))?;
+                refuse_external_overwrite(&patch.before_fingerprint, &observed_fp)
+                    .map_err(|e| PgError::Protocol(e.to_string()))?;
+
+                let package = prepare_publish_from_ledger_bytes(
+                    &location,
+                    &req.source_root,
+                    &patch.after_bytes,
+                    project_id,
+                    &PublishPrepOptions::default(),
+                )
+                .map_err(|e| PgError::Protocol(e.to_string()))?;
+                let files_preview: Vec<SourceFile> = package
+                    .files
+                    .iter()
+                    .map(|f| SourceFile {
+                        path: f.path.clone(),
+                        bytes: f.bytes.clone(),
+                    })
+                    .collect();
+                let _binding =
+                    SourceStore::validate_publish_package(&files_preview).map_err(|e| e)?;
+
+                upsert_journal(
+                    &tx,
+                    tenant_id,
+                    project_id,
+                    &req.request_id,
+                    &candidate_id,
+                    &candidate_digest,
+                    &req.publish_receipt_id,
+                    "validated",
+                    &patch.before_fingerprint,
+                    &patch.after_fingerprint,
+                    &publisher_actor_id,
+                    Some(&approver_actor_id),
+                    &affected_vec,
+                    &unrelated,
+                    &gate,
+                    &json!({
+                        "phase": "validated",
+                        "bundle_digest": package.bundle_digest,
+                    }),
+                )
+                .await?;
+
+                (
+                    patch.before_fingerprint,
+                    patch.after_fingerprint,
+                    patch.after_bytes,
+                    package,
+                    false,
+                )
+            };
+
+        // Validate package files once more for the resume path that skipped preview.
+        let files: Vec<SourceFile> = package
+            .files
+            .iter()
+            .map(|f| SourceFile {
+                path: f.path.clone(),
+                bytes: f.bytes.clone(),
+            })
+            .collect();
+        let _binding = SourceStore::validate_publish_package(&files)?;
 
         // Release the SQL transaction before filesystem write; re-lock after.
-        // Journal phase `planned` lets recovery refuse mixed activation.
         tx.commit().await?;
 
-        // Fingerprint re-check immediately before write (external race).
-        let recheck = std::fs::read(&ledger_path)
-            .map_err(|e| PgError::Protocol(format!("re-read ledger failed: {e}")))?;
-        refuse_external_overwrite(&patch.before_fingerprint, &fingerprint(&recheck))
-            .map_err(|e| PgError::Protocol(e.to_string()))?;
-        atomic_write(&ledger_path, &patch.after_bytes)?;
+        if !source_already_written {
+            // Fingerprint re-check immediately before write (external race).
+            let recheck = std::fs::read(&ledger_path)
+                .map_err(|e| PgError::Protocol(format!("re-read ledger failed: {e}")))?;
+            refuse_external_overwrite(&before_fingerprint, &fingerprint(&recheck))
+                .map_err(|e| PgError::Protocol(e.to_string()))?;
+            atomic_write(&ledger_path, &after_bytes)?;
+        }
 
         // Re-enter PG for activation.
         let mut client = self.connect().await?;
@@ -320,8 +433,8 @@ impl SourceStore {
             &candidate_digest,
             &req.publish_receipt_id,
             "source_written",
-            &patch.before_fingerprint,
-            &patch.after_fingerprint,
+            &before_fingerprint,
+            &after_fingerprint,
             &publisher_actor_id,
             Some(&approver_actor_id),
             &affected_vec,
@@ -330,29 +443,6 @@ impl SourceStore {
             &json!({"phase":"source_written"}),
         )
         .await?;
-
-        let location =
-            SoleSourceLocation::server_directory(&req.source_root, &req.ledger_relative_path)
-                .map_err(|e| PgError::Protocol(e.to_string()))?;
-        let package = prepare_publish_from_ledger_bytes(
-            &location,
-            &req.source_root,
-            &patch.after_bytes,
-            project_id,
-            &PublishPrepOptions::default(),
-        )
-        .map_err(|e| PgError::Protocol(e.to_string()))?;
-
-        let files: Vec<SourceFile> = package
-            .files
-            .iter()
-            .map(|f| SourceFile {
-                path: f.path.clone(),
-                bytes: f.bytes.clone(),
-            })
-            .collect();
-        // Validate binding present.
-        let _binding = SourceStore::validate_publish_package(&files)?;
 
         upsert_journal(
             &tx,
@@ -363,8 +453,8 @@ impl SourceStore {
             &candidate_digest,
             &req.publish_receipt_id,
             "pg_activating",
-            &patch.before_fingerprint,
-            &patch.after_fingerprint,
+            &before_fingerprint,
+            &after_fingerprint,
             &publisher_actor_id,
             Some(&approver_actor_id),
             &affected_vec,
@@ -374,14 +464,8 @@ impl SourceStore {
         )
         .await?;
 
-        // Ingest + approve + activate inside this transaction via helpers that
-        // accept an open tx would be ideal; reuse public APIs carefully by
-        // committing journal first is already done. Perform ingest/approve/
-        // activate with selective gate through dedicated inner.
-        drop(tx); // end journal tx before nested store calls that open their own.
-        // Note: activate_inner opens its own transaction; we pass impact via
-        // thread-local-free request stored on the journal and read inside a
-        // specialized activate path below.
+        // Ingest + approve + activate via helpers that open their own txs.
+        drop(tx);
         let (candidate, _binding) = self
             .ingest_publish_candidate(IngestRequest {
                 tenant_id: tenant_id.into(),
@@ -390,8 +474,8 @@ impl SourceStore {
                 parser_version: package.parser_version.clone(),
                 files,
             })
-            .await?;
-
+            .await
+            .map_err(|e| e)?;
         // Bind source approval to the already-verified planning approval.
         // Self-approved ordinary planning is allowed under project policy; do not
         // re-impose author!=reviewer for the derived source proposal.
@@ -403,8 +487,8 @@ impl SourceStore {
             &approver_actor_id,
             &approval_id,
         )
-        .await?;
-
+        .await
+        .map_err(|e| e)?;
         let current = self
             .activate_workstreams_with_impact(
                 tenant_id,
@@ -419,8 +503,8 @@ impl SourceStore {
                 },
                 &gate,
             )
-            .await?;
-
+            .await
+            .map_err(|e| e)?;
         // Finalize receipts.
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
@@ -440,8 +524,8 @@ impl SourceStore {
             "authority_epoch": current.authority_epoch,
             "affected_work_ids": affected_vec,
             "unrelated_work_ids": unrelated,
-            "before_fingerprint": patch.before_fingerprint,
-            "after_fingerprint": patch.after_fingerprint,
+            "before_fingerprint": before_fingerprint,
+            "after_fingerprint": after_fingerprint,
             "recovery_actions": gate.recovery_actions,
         });
         tx.execute(
@@ -466,8 +550,8 @@ impl SourceStore {
                 &package.source_version_digest,
                 &current.snapshot_id,
                 &current.authority_epoch,
-                &patch.before_fingerprint,
-                &patch.after_fingerprint,
+                &before_fingerprint,
+                &after_fingerprint,
                 &json!(affected_vec),
                 &json!(unrelated),
                 &audit,
@@ -500,8 +584,8 @@ impl SourceStore {
             &candidate_digest,
             &req.publish_receipt_id,
             "completed",
-            &patch.before_fingerprint,
-            &patch.after_fingerprint,
+            &before_fingerprint,
+            &after_fingerprint,
             &publisher_actor_id,
             Some(&approver_actor_id),
             &affected_vec,
@@ -539,8 +623,8 @@ impl SourceStore {
             "source_version": package.source_version_digest,
             "activated_snapshot_id": current.snapshot_id,
             "authority_epoch": current.authority_epoch,
-            "before_fingerprint": patch.before_fingerprint,
-            "after_fingerprint": patch.after_fingerprint,
+            "before_fingerprint": before_fingerprint,
+            "after_fingerprint": after_fingerprint,
             "affected_work_ids": affected_vec,
             "unrelated_work_ids": unrelated,
             "source_bytes_written": true,
@@ -810,6 +894,34 @@ async fn build_impact_gate(
         refuse_reason: refuse,
         recovery_actions: recovery,
     })
+}
+
+#[derive(Clone, Debug)]
+struct JournalRow {
+    phase: String,
+    before_fingerprint: String,
+    after_fingerprint: String,
+}
+
+async fn load_journal_row(
+    tx: &Transaction<'_>,
+    tenant_id: &str,
+    project_id: &str,
+    request_id: &str,
+) -> PgResult<Option<JournalRow>> {
+    let row = tx
+        .query_opt(
+            "SELECT phase, before_fingerprint, after_fingerprint
+             FROM awr_team.planning_writeback_journals
+             WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3",
+            &[&tenant_id, &project_id, &request_id],
+        )
+        .await?;
+    Ok(row.map(|r| JournalRow {
+        phase: r.get(0),
+        before_fingerprint: r.get(1),
+        after_fingerprint: r.get(2),
+    }))
 }
 
 async fn upsert_journal(

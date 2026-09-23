@@ -22,6 +22,7 @@ fn draft(id: &str, deps: &[&str], state: DraftDefinitionState) -> TaskDraft {
         required_dependencies: deps.iter().map(|s| (*s).into()).collect(),
         completion_policy: "independent_review".into(),
         definition_state: state,
+        workstream: None,
         split_from: None,
         split_children: vec![],
     }
@@ -36,7 +37,7 @@ async fn store_and_roles() -> (
     let (guard, admin, db, _read) = setup().await;
     admin
         .batch_execute(
-            "UPDATE awr_team.project_memberships SET role='maintainer', membership_version=membership_version+1
+            "UPDATE awr_team.project_memberships SET role='admin', membership_version=membership_version+1
              WHERE actor_id='agent';
              UPDATE awr_team.workstream_grants SET can_write=true, grant_version=grant_version+1
              WHERE client_id='cli-a';
@@ -75,6 +76,55 @@ async fn publish_candidate(store: &SourceStore) -> (String, String, String) {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
+    };
+    let created = store
+        .create_planning_candidate(TENANT, PROJECT, A, &create)
+        .await
+        .unwrap();
+    let candidate_id = created["candidate_id"].as_str().unwrap().to_string();
+    let digest = created["candidate_digest"].as_str().unwrap().to_string();
+    store
+        .approve_planning_candidate(TENANT, PROJECT, A, &candidate_id, &digest, Some("agent"))
+        .await
+        .unwrap();
+    let published = store
+        .publish_planning_candidate(TENANT, PROJECT, A, &candidate_id, &digest)
+        .await
+        .unwrap();
+    let receipt_id = published["receipt_id"].as_str().unwrap().to_string();
+    (candidate_id, digest, receipt_id)
+}
+
+async fn publish_candidate_with_workstream(
+    store: &SourceStore,
+    workstream: &str,
+) -> (String, String, String) {
+    let mut create_task = draft("SHARED-1", &[], DraftDefinitionState::Draft);
+    create_task.workstream = Some(workstream.into());
+    let create = DraftCandidateCreate {
+        changes: vec![
+            DraftChange {
+                op: DraftOpKind::CreateTask,
+                before: None,
+                after: create_task,
+            },
+            DraftChange {
+                op: DraftOpKind::EditFields,
+                before: Some(draft("CLIENT-1", &["API-1"], DraftDefinitionState::Enabled)),
+                after: draft(
+                    "CLIENT-1",
+                    &["API-1", "SHARED-1"],
+                    DraftDefinitionState::Enabled,
+                ),
+            },
+        ],
+        suggestion_ids: vec![],
+        allowed_spec_roots: vec!["specs".into()],
+        project_goal_keys: vec!["delivery".into()],
+        self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
+        author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let created = store
         .create_planning_candidate(TENANT, PROJECT, A, &create)
@@ -193,49 +243,77 @@ fn tempfile_ledger() -> TmpLedger {
             .as_nanos()
     ));
     std::fs::create_dir_all(&root).unwrap();
+    // Workstream ids/keys must retain the fixture catalog (Id::from(1/2)).
     let ledger = r#"workstreams:
   version: 1
   definitions:
-    - id: 01K00000000000000000000001
-      external_key: api
-      title: API
+    - id: 00000000000000000000000001
+      external_key: alpha
+      title: alpha
       state: active
       authority_version: 1
-      goal_keys: [delivery]
+      goal_keys: [alpha]
       acceptance_contracts: []
-    - id: 01K00000000000000000000002
-      external_key: client
-      title: Client
+    - id: 00000000000000000000000002
+      external_key: private-beta
+      title: private-beta
       state: active
       authority_version: 1
-      goal_keys: [delivery]
+      goal_keys: [private-beta]
       acceptance_contracts: []
 goals:
-  - id: delivery
-    title: Deliver
+  - id: alpha
+    title: Alpha
+    status: active
+  - id: private-beta
+    title: Private
     status: active
 work_items:
+  - id: a
+    title: Alpha work
+    status: planned
+    workstream: alpha
+    goals: [alpha]
+    acceptance: [verified]
+    paths: [src]
+    depends_on: []
+  - id: b-private
+    title: Private work
+    status: planned
+    workstream: private-beta
+    goals: [private-beta]
+    acceptance: [verified]
+    paths: [src]
+    depends_on: []
+  - id: c
+    title: Consumer
+    status: planned
+    workstream: alpha
+    goals: [alpha]
+    acceptance: [verified]
+    paths: [src]
+    depends_on: [b-private]
   - id: API-1
     title: Define
     status: completed
-    workstream: api
-    goals: [delivery]
+    workstream: alpha
+    goals: [alpha]
     acceptance: [OpenAPI is reviewed]
     paths: [openapi.yaml]
     depends_on: []
   - id: CLIENT-1
     title: SDK
     status: planned
-    workstream: client
-    goals: [delivery]
+    workstream: alpha
+    goals: [alpha]
     acceptance: [SDK smoke test passes]
     paths: [sdk/]
     depends_on: [API-1]
   - id: OTHER-1
     title: Unrelated
     status: planned
-    workstream: client
-    goals: [delivery]
+    workstream: alpha
+    goals: [alpha]
     acceptance: [ok]
     paths: [other/]
     depends_on: []
@@ -279,4 +357,397 @@ async fn refused_writeback_journal_is_durable_and_replay_stays_refused() {
         .await
         .unwrap();
     assert!(receipt.is_none());
+}
+
+#[tokio::test]
+async fn invalid_candidate_refuses_before_source_mutation() {
+    let (_g, _admin, _db, store) = store_and_roles().await;
+    let (_cid, _digest, receipt_id) = publish_candidate(&store).await;
+    let tmp = tempfile_ledger();
+    let before = std::fs::read(tmp.root.join("ledger.yaml")).unwrap();
+    let req = WritebackActivateRequest {
+        request_id: "req-validate-before-write".into(),
+        publish_receipt_id: receipt_id,
+        source_root: tmp.root.clone(),
+        ledger_relative_path: "ledger.yaml".into(),
+        impact_proven: true,
+        stopped_work_ids: vec![],
+    };
+    let err = store
+        .activate_planning_writeback(TENANT, PROJECT, A, &req)
+        .await
+        .unwrap_err();
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("workstream"),
+        "expected workstream ownership refusal, got {msg}"
+    );
+    let after = std::fs::read(tmp.root.join("ledger.yaml")).unwrap();
+    assert_eq!(
+        before, after,
+        "authoritative ledger must remain unchanged when validation fails"
+    );
+    let err2 = store
+        .activate_planning_writeback(TENANT, PROJECT, A, &req)
+        .await
+        .unwrap_err();
+    let msg2 = format!("{err2:?}");
+    assert!(
+        msg2.contains("workstream"),
+        "retry must stay a validation refusal, not fingerprint conflict: {msg2}"
+    );
+    assert!(
+        !msg2.contains("fingerprint conflict"),
+        "retry must not hit create fingerprint conflict: {msg2}"
+    );
+}
+
+#[tokio::test]
+async fn writeback_activate_success_and_idempotent_replay() {
+    let (_g, _admin, _db, store) = store_and_roles().await;
+    let (_cid, _digest, receipt_id) = publish_candidate_with_workstream(&store, "alpha").await;
+    let tmp = tempfile_ledger();
+    let req = WritebackActivateRequest {
+        request_id: "req-success-1".into(),
+        publish_receipt_id: receipt_id,
+        source_root: tmp.root.clone(),
+        ledger_relative_path: "ledger.yaml".into(),
+        impact_proven: true,
+        stopped_work_ids: vec![],
+    };
+    let first = store
+        .activate_planning_writeback(TENANT, PROJECT, A, &req)
+        .await
+        .expect("successful writeback activation");
+    assert_eq!(first["already_recorded"], false);
+    assert_eq!(first["source_bytes_written"], true);
+    assert_eq!(first["source_writeback_pending"], false);
+    let ledger = std::fs::read_to_string(tmp.root.join("ledger.yaml")).unwrap();
+    assert!(ledger.contains("SHARED-1"));
+    assert!(ledger.contains("workstream: alpha") || ledger.contains("workstream:alpha"));
+
+    let second = store
+        .activate_planning_writeback(TENANT, PROJECT, A, &req)
+        .await
+        .expect("idempotent replay");
+    assert_eq!(second["already_recorded"], true);
+}
+
+#[tokio::test]
+async fn source_written_phase_resumes_without_reapplying_creates() {
+    use awr_source::{apply_planning_changes_to_ledger, fingerprint};
+    let (_g, admin, _db, store) = store_and_roles().await;
+    let (candidate_id, digest, receipt_id) =
+        publish_candidate_with_workstream(&store, "alpha").await;
+    let tmp = tempfile_ledger();
+    let before_bytes = std::fs::read(tmp.root.join("ledger.yaml")).unwrap();
+    let mut create_task = draft("SHARED-1", &[], DraftDefinitionState::Draft);
+    create_task.workstream = Some("alpha".into());
+    let changes = vec![
+        DraftChange {
+            op: DraftOpKind::CreateTask,
+            before: None,
+            after: create_task,
+        },
+        DraftChange {
+            op: DraftOpKind::EditFields,
+            before: Some(draft("CLIENT-1", &["API-1"], DraftDefinitionState::Enabled)),
+            after: draft(
+                "CLIENT-1",
+                &["API-1", "SHARED-1"],
+                DraftDefinitionState::Enabled,
+            ),
+        },
+    ];
+    let patch = apply_planning_changes_to_ledger(&before_bytes, &changes).unwrap();
+    // Simulate crash after authoritative source write: ledger already contains
+    // CreateTask, journal durable at source_written, PG snapshot not activated.
+    std::fs::write(tmp.root.join("ledger.yaml"), &patch.after_bytes).unwrap();
+    assert_eq!(fingerprint(&patch.after_bytes), patch.after_fingerprint);
+
+    let body = serde_json::json!({"phase": "source_written"});
+    admin
+        .execute(
+            "INSERT INTO awr_team.planning_writeback_journals(
+                tenant_id, project_id, request_id, candidate_id, candidate_digest,
+                publish_receipt_id, phase, before_fingerprint, after_fingerprint,
+                publisher_actor_id, affected_work_ids, unrelated_work_ids,
+                recovery_actions, body_json)
+             VALUES (
+                'reader-tenant','reader-project','req-resume-1',$1,$2,$3,
+                'source_written',$4,$5,'agent','[]'::jsonb,'[]'::jsonb,
+                '[]'::jsonb,$6)",
+            &[
+                &candidate_id,
+                &digest,
+                &receipt_id,
+                &patch.before_fingerprint,
+                &patch.after_fingerprint,
+                &body,
+            ],
+        )
+        .await
+        .unwrap();
+
+    let req = WritebackActivateRequest {
+        request_id: "req-resume-1".into(),
+        publish_receipt_id: receipt_id,
+        source_root: tmp.root.clone(),
+        ledger_relative_path: "ledger.yaml".into(),
+        impact_proven: true,
+        stopped_work_ids: vec![],
+    };
+    let resumed = store
+        .activate_planning_writeback(TENANT, PROJECT, A, &req)
+        .await
+        .expect("resume from source_written must complete without re-applying creates");
+    assert_eq!(resumed["already_recorded"], false);
+    assert_eq!(resumed["after_fingerprint"], patch.after_fingerprint);
+    // Ledger still has exactly one SHARED-1 identity (no duplicate create on resume).
+    let text = std::fs::read_to_string(tmp.root.join("ledger.yaml")).unwrap();
+    assert_eq!(
+        text.matches("id: SHARED-1").count(),
+        1,
+        "CreateTask must not be re-applied on resume: {text}"
+    );
+}
+
+#[tokio::test]
+async fn validated_phase_with_written_ledger_does_not_reapply_creates() {
+    use awr_source::{apply_planning_changes_to_ledger, fingerprint};
+    let (_g, admin, _db, store) = store_and_roles().await;
+    let (candidate_id, digest, receipt_id) =
+        publish_candidate_with_workstream(&store, "alpha").await;
+    let tmp = tempfile_ledger();
+    let before_bytes = std::fs::read(tmp.root.join("ledger.yaml")).unwrap();
+    let mut create_task = draft("SHARED-1", &[], DraftDefinitionState::Draft);
+    create_task.workstream = Some("alpha".into());
+    let changes = vec![
+        DraftChange {
+            op: DraftOpKind::CreateTask,
+            before: None,
+            after: create_task,
+        },
+        DraftChange {
+            op: DraftOpKind::EditFields,
+            before: Some(draft("CLIENT-1", &["API-1"], DraftDefinitionState::Enabled)),
+            after: draft(
+                "CLIENT-1",
+                &["API-1", "SHARED-1"],
+                DraftDefinitionState::Enabled,
+            ),
+        },
+    ];
+    let patch = apply_planning_changes_to_ledger(&before_bytes, &changes).unwrap();
+    // Crash window: journal committed as validated, then the ledger write landed,
+    // but phase never advanced to source_written.
+    std::fs::write(tmp.root.join("ledger.yaml"), &patch.after_bytes).unwrap();
+    assert_eq!(fingerprint(&patch.after_bytes), patch.after_fingerprint);
+
+    let body = serde_json::json!({"phase": "validated"});
+    admin
+        .execute(
+            "INSERT INTO awr_team.planning_writeback_journals(
+                tenant_id, project_id, request_id, candidate_id, candidate_digest,
+                publish_receipt_id, phase, before_fingerprint, after_fingerprint,
+                publisher_actor_id, affected_work_ids, unrelated_work_ids,
+                recovery_actions, body_json)
+             VALUES (
+                'reader-tenant','reader-project','req-resume-validated',$1,$2,$3,
+                'validated',$4,$5,'agent','[]'::jsonb,'[]'::jsonb,
+                '[]'::jsonb,$6)",
+            &[
+                &candidate_id,
+                &digest,
+                &receipt_id,
+                &patch.before_fingerprint,
+                &patch.after_fingerprint,
+                &body,
+            ],
+        )
+        .await
+        .unwrap();
+
+    let req = WritebackActivateRequest {
+        request_id: "req-resume-validated".into(),
+        publish_receipt_id: receipt_id,
+        source_root: tmp.root.clone(),
+        ledger_relative_path: "ledger.yaml".into(),
+        impact_proven: true,
+        stopped_work_ids: vec![],
+    };
+    let resumed = store
+        .activate_planning_writeback(TENANT, PROJECT, A, &req)
+        .await
+        .expect("resume from validated+written ledger must not re-apply creates");
+    assert_eq!(resumed["already_recorded"], false);
+    assert_eq!(resumed["after_fingerprint"], patch.after_fingerprint);
+    let text = std::fs::read_to_string(tmp.root.join("ledger.yaml")).unwrap();
+    assert_eq!(
+        text.matches("id: SHARED-1").count(),
+        1,
+        "CreateTask must not be re-applied after validated write: {text}"
+    );
+}
+
+#[tokio::test]
+async fn validated_phase_with_unwritten_ledger_applies_the_patch_once() {
+    use awr_source::{apply_planning_changes_to_ledger, fingerprint};
+    let (_g, admin, _db, store) = store_and_roles().await;
+    let (candidate_id, digest, receipt_id) =
+        publish_candidate_with_workstream(&store, "alpha").await;
+    let tmp = tempfile_ledger();
+    let before_bytes = std::fs::read(tmp.root.join("ledger.yaml")).unwrap();
+    let mut create_task = draft("SHARED-1", &[], DraftDefinitionState::Draft);
+    create_task.workstream = Some("alpha".into());
+    let changes = vec![
+        DraftChange {
+            op: DraftOpKind::CreateTask,
+            before: None,
+            after: create_task,
+        },
+        DraftChange {
+            op: DraftOpKind::EditFields,
+            before: Some(draft("CLIENT-1", &["API-1"], DraftDefinitionState::Enabled)),
+            after: draft(
+                "CLIENT-1",
+                &["API-1", "SHARED-1"],
+                DraftDefinitionState::Enabled,
+            ),
+        },
+    ];
+    let patch = apply_planning_changes_to_ledger(&before_bytes, &changes).unwrap();
+    assert_eq!(fingerprint(&before_bytes), patch.before_fingerprint);
+    assert_ne!(fingerprint(&before_bytes), patch.after_fingerprint);
+
+    let body = serde_json::json!({"phase": "validated"});
+    admin
+        .execute(
+            "INSERT INTO awr_team.planning_writeback_journals(
+                tenant_id, project_id, request_id, candidate_id, candidate_digest,
+                publish_receipt_id, phase, before_fingerprint, after_fingerprint,
+                publisher_actor_id, affected_work_ids, unrelated_work_ids,
+                recovery_actions, body_json)
+             VALUES (
+                'reader-tenant','reader-project','req-resume-unwritten',$1,$2,$3,
+                'validated',$4,$5,'agent','[]'::jsonb,'[]'::jsonb,
+                '[]'::jsonb,$6)",
+            &[
+                &candidate_id,
+                &digest,
+                &receipt_id,
+                &patch.before_fingerprint,
+                &patch.after_fingerprint,
+                &body,
+            ],
+        )
+        .await
+        .unwrap();
+
+    let resumed = store
+        .activate_planning_writeback(
+            TENANT,
+            PROJECT,
+            A,
+            &WritebackActivateRequest {
+                request_id: "req-resume-unwritten".into(),
+                publish_receipt_id: receipt_id,
+                source_root: tmp.root.clone(),
+                ledger_relative_path: "ledger.yaml".into(),
+                impact_proven: true,
+                stopped_work_ids: vec![],
+            },
+        )
+        .await
+        .expect("resume from validated+unwritten ledger must write the patch once");
+    assert_eq!(resumed["after_fingerprint"], patch.after_fingerprint);
+    let text = std::fs::read_to_string(tmp.root.join("ledger.yaml")).unwrap();
+    assert_eq!(
+        text.matches("id: SHARED-1").count(),
+        1,
+        "CreateTask must be applied once when the validated write never landed: {text}"
+    );
+    assert_eq!(fingerprint(text.as_bytes()), patch.after_fingerprint);
+}
+
+#[tokio::test]
+async fn validated_phase_refuses_ledger_bytes_matching_neither_fingerprint() {
+    use awr_source::{apply_planning_changes_to_ledger, fingerprint};
+    let (_g, admin, _db, store) = store_and_roles().await;
+    let (candidate_id, digest, receipt_id) =
+        publish_candidate_with_workstream(&store, "alpha").await;
+    let tmp = tempfile_ledger();
+    let before_bytes = std::fs::read(tmp.root.join("ledger.yaml")).unwrap();
+    let mut create_task = draft("SHARED-1", &[], DraftDefinitionState::Draft);
+    create_task.workstream = Some("alpha".into());
+    let changes = vec![
+        DraftChange {
+            op: DraftOpKind::CreateTask,
+            before: None,
+            after: create_task,
+        },
+        DraftChange {
+            op: DraftOpKind::EditFields,
+            before: Some(draft("CLIENT-1", &["API-1"], DraftDefinitionState::Enabled)),
+            after: draft(
+                "CLIENT-1",
+                &["API-1", "SHARED-1"],
+                DraftDefinitionState::Enabled,
+            ),
+        },
+    ];
+    let patch = apply_planning_changes_to_ledger(&before_bytes, &changes).unwrap();
+    let foreign = b"workstreams:\n  version: 9\n  definitions: []\nitems: []\n";
+    std::fs::write(tmp.root.join("ledger.yaml"), foreign).unwrap();
+    assert_ne!(fingerprint(foreign), patch.before_fingerprint);
+    assert_ne!(fingerprint(foreign), patch.after_fingerprint);
+
+    let body = serde_json::json!({"phase": "validated"});
+    admin
+        .execute(
+            "INSERT INTO awr_team.planning_writeback_journals(
+                tenant_id, project_id, request_id, candidate_id, candidate_digest,
+                publish_receipt_id, phase, before_fingerprint, after_fingerprint,
+                publisher_actor_id, affected_work_ids, unrelated_work_ids,
+                recovery_actions, body_json)
+             VALUES (
+                'reader-tenant','reader-project','req-resume-foreign',$1,$2,$3,
+                'validated',$4,$5,'agent','[]'::jsonb,'[]'::jsonb,
+                '[]'::jsonb,$6)",
+            &[
+                &candidate_id,
+                &digest,
+                &receipt_id,
+                &patch.before_fingerprint,
+                &patch.after_fingerprint,
+                &body,
+            ],
+        )
+        .await
+        .unwrap();
+
+    let err = store
+        .activate_planning_writeback(
+            TENANT,
+            PROJECT,
+            A,
+            &WritebackActivateRequest {
+                request_id: "req-resume-foreign".into(),
+                publish_receipt_id: receipt_id,
+                source_root: tmp.root.clone(),
+                ledger_relative_path: "ledger.yaml".into(),
+                impact_proven: true,
+                stopped_work_ids: vec![],
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, PgError::Protocol(ref message) if message.contains("refusing overwrite")),
+        "{err:?}"
+    );
+    assert_eq!(
+        std::fs::read(tmp.root.join("ledger.yaml")).unwrap(),
+        foreign
+    );
 }

@@ -19,7 +19,6 @@ bounded local reference runner. Versioned cross-stream hard dependencies and ado
 in core/store/team-pg (WS-030). File/dir/workspace versus shared external/integration resource bounds are enforced
 at reservation and admission; physical strong isolation still requires a verified
 host sandbox or OS boundary, not AWR metadata alone.
-
 These paths do not establish complete isolation for every CLI, MCP or Team operation.
 
 The Team source coordinator also accepts an explicit multi-work source bundle
