@@ -124,6 +124,7 @@ async fn publish_candidate_with_workstream(
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
         author_person_id: Some("agent".into()),
+        predetermined_candidate_id: None,
     };
     let created = store
         .create_planning_candidate(TENANT, PROJECT, A, &create)
