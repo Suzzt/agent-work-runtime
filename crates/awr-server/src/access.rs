@@ -1,11 +1,41 @@
+//! Schema-owner operator access CLI (bootstrap, recovery, and credential file install).
+//! Daily project member/role/credential changes after the first admin use the
+//! TMCP-012 MCP/HTTP `access.*` business entry (`ProjectAccessStore`), not this
+//! owner connection.
+
 use awr_team_pg::{
     AccessPlan, ExecutionAttributionPlan, OperatorAccess, OperatorBackup,
     OperatorExecutionAttribution, OperatorHistory, OperatorQuarantine, OperatorRecovery, PgError,
 };
 use clap::Subcommand;
+use serde::Deserialize;
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClaimExplainDocument {
+    project_id: String,
+    work_item_id: String,
+    task_workstream_id: Option<String>,
+    candidate_person: awr_core::PersonId,
+    authorization: Option<awr_core::AgentAuthorization>,
+    now_ms: i64,
+    is_project_member: bool,
+    membership_version: u64,
+    assignment_policy: String,
+    assignment_policy_allows: bool,
+    required_resources: Vec<String>,
+    available_resource_ids: BTreeSet<String>,
+    required_host_capabilities: Vec<String>,
+    verified_host_capabilities: BTreeSet<String>,
+    host_id: String,
+    dependencies_satisfied: bool,
+    task: awr_core::TaskResponsibility,
+    requested_executor: awr_core::ExecutionInstance,
+}
 
 #[derive(Subcommand)]
 pub enum AccessCommand {
@@ -274,7 +304,6 @@ pub enum AccessCommand {
         #[arg(long)]
         input: PathBuf,
     },
-
     /// Inspect a confirmed Team handoff and its duty projection (owner connection).
     HandoffInspect {
         #[arg(long)]
@@ -615,9 +644,14 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
             project_id,
             authorization_id,
         } => {
-            let auth = awr_team_pg::AuthorizationStore::new(std::env::var("AWR_TEAM_DATABASE_URL").map_err(|_| {
-                ("Unavailable", "AWR_TEAM_DATABASE_URL is required for operator access")
-            })?)
+            let auth = awr_team_pg::AuthorizationStore::new(
+                std::env::var("AWR_TEAM_DATABASE_URL").map_err(|_| {
+                    (
+                        "Unavailable",
+                        "AWR_TEAM_DATABASE_URL is required for operator access",
+                    )
+                })?,
+            )
             .get(&tenant_id, &project_id, &authorization_id)
             .await
             .map_err(pg_error)?;
@@ -631,12 +665,20 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
             active_only,
         } => {
             let person = match responsible_person_id {
-                Some(id) => Some(awr_core::PersonId::new(id).map_err(|_| ("InvalidInput", "invalid responsible_person_id"))?),
+                Some(id) => Some(
+                    awr_core::PersonId::new(id)
+                        .map_err(|_| ("InvalidInput", "invalid responsible_person_id"))?,
+                ),
                 None => None,
             };
-            let list = awr_team_pg::AuthorizationStore::new(std::env::var("AWR_TEAM_DATABASE_URL").map_err(|_| {
-                ("Unavailable", "AWR_TEAM_DATABASE_URL is required for operator access")
-            })?)
+            let list = awr_team_pg::AuthorizationStore::new(
+                std::env::var("AWR_TEAM_DATABASE_URL").map_err(|_| {
+                    (
+                        "Unavailable",
+                        "AWR_TEAM_DATABASE_URL is required for operator access",
+                    )
+                })?,
+            )
             .list(
                 &tenant_id,
                 &project_id,
@@ -666,9 +708,14 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
                 revoked_at_ms: now,
                 reason,
             };
-            let (auth, receipt) = awr_team_pg::AuthorizationStore::new(std::env::var("AWR_TEAM_DATABASE_URL").map_err(|_| {
-                ("Unavailable", "AWR_TEAM_DATABASE_URL is required for operator access")
-            })?)
+            let (auth, receipt) = awr_team_pg::AuthorizationStore::new(
+                std::env::var("AWR_TEAM_DATABASE_URL").map_err(|_| {
+                    (
+                        "Unavailable",
+                        "AWR_TEAM_DATABASE_URL is required for operator access",
+                    )
+                })?,
+            )
             .revoke(&tenant_id, &project_id, &req)
             .await
             .map_err(pg_error)?;
@@ -684,12 +731,38 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
             if bytes.len() > 65536 {
                 return Err(("InvalidInput", "claim explain input exceeds 64 KiB"));
             }
-            let value: serde_json::Value = serde_json::from_slice(&bytes)
+            let doc: ClaimExplainDocument = serde_json::from_slice(&bytes)
                 .map_err(|_| ("InvalidInput", "invalid claim explain JSON"))?;
-            Ok(json!({
-                "received": value,
-                "note": "payload accepted; evaluate with AuthorizationStore::explain_claim in-process"
-            }))
+            let explanation =
+                match awr_core::explain_claim_eligibility(&awr_core::ClaimEvaluationInput {
+                    project_id: &doc.project_id,
+                    work_item_id: &doc.work_item_id,
+                    task_workstream_id: doc.task_workstream_id.as_deref(),
+                    candidate_person: &doc.candidate_person,
+                    authorization: doc.authorization.as_ref(),
+                    now_ms: doc.now_ms,
+                    is_project_member: doc.is_project_member,
+                    membership_version: doc.membership_version,
+                    assignment_policy: &doc.assignment_policy,
+                    assignment_policy_allows: doc.assignment_policy_allows,
+                    required_resources: &doc.required_resources,
+                    available_resource_ids: &doc.available_resource_ids,
+                    required_host_capabilities: &doc.required_host_capabilities,
+                    verified_host_capabilities: &doc.verified_host_capabilities,
+                    host_id: &doc.host_id,
+                    dependencies_satisfied: doc.dependencies_satisfied,
+                    task: &doc.task,
+                    requested_executor: &doc.requested_executor,
+                }) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        return Err(("InvalidInput", "claim explain input is not admissible"));
+                    }
+                };
+            match serde_json::to_value(explanation) {
+                Ok(value) => Ok(value),
+                Err(_) => return Err(("Unavailable", "cannot encode claim explanation")),
+            }
         }
         AccessCommand::HandoffInspect {
             tenant_id,
@@ -697,17 +770,23 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
             handoff_id,
             now_ms,
         } => {
-            let store = awr_team_pg::HandoffStore::new(std::env::var("AWR_TEAM_DATABASE_URL").map_err(|_| {
-                ("Unavailable", "AWR_TEAM_DATABASE_URL is required for operator access")
-            })?);
+            let store = awr_team_pg::HandoffStore::new(
+                std::env::var("AWR_TEAM_DATABASE_URL").map_err(|_| {
+                    (
+                        "Unavailable",
+                        "AWR_TEAM_DATABASE_URL is required for operator access",
+                    )
+                })?,
+            );
             let handoff = store
                 .get(&tenant_id, &project_id, &handoff_id)
                 .await
                 .map_err(pg_error)?;
             let duty = match &handoff {
-                Some(h) => Some(h.duty_at(if now_ms == 0 { h.updated_at_ms } else { now_ms }).map_err(|e| {
-                    pg_error(awr_team_pg::PgError::Protocol(e.to_string()))
-                })?),
+                Some(h) => Some(
+                    h.duty_at(if now_ms == 0 { h.updated_at_ms } else { now_ms })
+                        .map_err(|e| pg_error(awr_team_pg::PgError::Protocol(e.to_string())))?,
+                ),
                 None => None,
             };
             Ok(json!({"handoff": handoff, "duty": duty, "timeout_does_not_stop_execution": true}))
@@ -741,7 +820,6 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
                 .collect();
             Ok(json!({"work_id": work_id, "open_handoffs": items}))
         }
-
     }
     .map_err(pg_error)
 }
