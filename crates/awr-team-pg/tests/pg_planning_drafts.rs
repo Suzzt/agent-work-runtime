@@ -22,6 +22,7 @@ fn draft(id: &str, deps: &[&str], state: DraftDefinitionState) -> TaskDraft {
         required_dependencies: deps.iter().map(|s| (*s).into()).collect(),
         completion_policy: "independent_review".into(),
         definition_state: state,
+        workstream: None,
         split_from: None,
         split_children: vec![],
     }
@@ -347,7 +348,7 @@ fn planning_capabilities_surface() {
     let caps = SourceStore::planning_capabilities();
     assert_eq!(caps["suggestion_claimable"], false);
     assert_eq!(caps["approve_publish_separated"], true);
-    assert_eq!(caps["source_writeback"], "deferred_to_tmcp_022");
+    assert_eq!(caps["source_writeback"], "tmcp_022");
 }
 
 #[tokio::test]

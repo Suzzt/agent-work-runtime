@@ -69,6 +69,10 @@ pub enum PgError {
     PlanningChangePending,
     #[error("claimed work blocks activation")]
     ClaimBlocksActivation,
+    #[error("planning writeback refused: {0}")]
+    WritebackRefused(String),
+    #[error("planning activation impact unproven: {0}")]
+    ActivationImpactUnproven(String),
     #[error("graph budget exceeded")]
     GraphBudgetExceeded,
     #[error("execution not found")]

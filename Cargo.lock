@@ -191,6 +191,7 @@ dependencies = [
  "awr-core",
  "awr-source",
  "awr-store",
+ "awr-team",
  "cap-fs-ext",
  "cap-std",
  "rusqlite",
@@ -265,6 +266,7 @@ name = "awr-team-pg"
 version = "0.4.0"
 dependencies = [
  "awr-core",
+ "awr-source",
  "awr-team",
  "deadpool-postgres",
  "libc",
