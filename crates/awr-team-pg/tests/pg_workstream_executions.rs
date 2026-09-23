@@ -3,8 +3,8 @@ mod common;
 #[path = "fixtures/workstream_access.rs"]
 mod fixture;
 use awr_team_pg::{
-    PgError, RecordPlanningChangeRequest, SelectiveInvalidationStore, WorkstreamCommand,
-    WorkstreamReadStore,
+    AdoptedConsumerEdge, PgError, ProviderChangeKind, RecordPlanningChangeRequest,
+    SelectiveInvalidateRequest, SelectiveInvalidationStore, WorkstreamCommand, WorkstreamReadStore,
 };
 use common::{test_config, with_app_role};
 use fixture::*;
@@ -1375,4 +1375,153 @@ async fn planning_change_blocks_execution_prepare_for_affected_work() {
         matches!(err, PgError::ActionBlockedByInvalidation(ref id) if id == "chg-prep"),
         "unexpected error: {err}"
     );
+}
+
+#[tokio::test]
+async fn planning_change_blocks_work_complete_for_affected_work() {
+    let (_g, admin, db, store) = setup().await;
+    enable_writes(&admin).await;
+    let inv = SelectiveInvalidationStore::from_config(with_app_role(&test_config(), &db));
+    let _claim = claim(&store).await;
+    inv.record_planning_change(
+        TENANT,
+        PROJECT,
+        &RecordPlanningChangeRequest {
+            request_key: "plan-complete-block".into(),
+            change_id: "chg-complete".into(),
+            discovered_by: "agent".into(),
+            old_graph_version: "g0".into(),
+            new_graph_version: "g1".into(),
+            old_acceptance_contract: "acc0".into(),
+            new_acceptance_contract: "acc1".into(),
+            affected_work_ids: vec!["a".into()],
+            cancel_split_relations: vec![],
+            continue_conditions: vec!["human_confirm".into()],
+            all_project_work_ids: vec!["a".into(), "b-private".into(), "c".into()],
+            now_ms: 70,
+        },
+    )
+    .await
+    .unwrap();
+    let prepared = prepare(&store, A, "a").await;
+    let err = store
+        .commands()
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            command(
+                &prepared,
+                "complete-blocked",
+                "work.complete",
+                json!({
+                    "session_id": "session-a",
+                    "expected_session_version": "1",
+                    "evidence_id": "evidence-blocked",
+                    "context_complete": true
+                }),
+            ),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, PgError::ActionBlockedByInvalidation(ref id) if id == "chg-complete"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn current_contract_invalidation_blocks_prepare_until_rebound() {
+    let (_g, admin, db, store) = setup().await;
+    enable_writes(&admin).await;
+    admin
+        .batch_execute(
+            "INSERT INTO awr_team.dependency_bindings(
+                tenant_id, project_id, downstream_work_id, upstream_work_id, binding_hash, valid)
+             VALUES ('reader-tenant','reader-project','a','b-private','bind-current', true)",
+        )
+        .await
+        .unwrap();
+    let c = claim(&store).await;
+    let inv = SelectiveInvalidationStore::from_config(with_app_role(&test_config(), &db));
+    let (plan, _) = inv
+        .apply_selective_invalidation(
+            TENANT,
+            PROJECT,
+            &SelectiveInvalidateRequest {
+                request_key: "inv-prepare-block".into(),
+                event_id: "evt-prepare-block".into(),
+                provider_work_id: "b-private".into(),
+                change: ProviderChangeKind::NewVersionOrProgress,
+                consumers: vec![AdoptedConsumerEdge {
+                    dependency_id: "dep-current".into(),
+                    consumer_work_id: "a".into(),
+                    provider_work_id: "b-private".into(),
+                    policy: "current_contract".into(),
+                    credential_status: "active".into(),
+                    assessment_status: "satisfied".into(),
+                }],
+                all_project_work_ids: vec!["a".into(), "b-private".into(), "c".into()],
+                now_ms: 80,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(plan.reevaluate, vec!["a".to_string()]);
+    let still_valid: bool = admin
+        .query_one(
+            "SELECT valid FROM awr_team.dependency_bindings
+             WHERE tenant_id=$1 AND project_id=$2
+               AND downstream_work_id='a' AND upstream_work_id='b-private'",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert!(!still_valid);
+
+    let err = store
+        .commands()
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            intent(&store, &c, "prepare-invalid-binding").await,
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, PgError::ActionBlockedByInvalidation(ref id) if id == "invalid_dependency_binding"),
+        "unexpected error: {err}"
+    );
+    let executions: i64 = admin
+        .query_one(
+            "SELECT count(*) FROM awr_team.executions
+             WHERE tenant_id=$1 AND project_id=$2 AND work_id='a'",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(executions, 0);
+
+    admin
+        .batch_execute(
+            "UPDATE awr_team.dependency_bindings SET valid=true
+             WHERE tenant_id='reader-tenant' AND project_id='reader-project'
+               AND downstream_work_id='a' AND upstream_work_id='b-private'",
+        )
+        .await
+        .unwrap();
+    let prepared = store
+        .commands()
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            intent(&store, &c, "prepare-after-rebind").await,
+        )
+        .await
+        .unwrap();
+    assert_eq!(prepared["receipt"]["data"]["state"], "prepared");
 }
