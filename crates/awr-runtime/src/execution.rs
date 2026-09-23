@@ -193,3 +193,85 @@ pub fn render_execution_observations(observations: &[ExecutionObservation]) -> R
     }
     Ok(text)
 }
+
+/// Host-verified isolation evidence. Metadata fencing alone is never enough
+/// to claim physical/strong isolation (WS-021).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct HostIsolationEvidence {
+    pub filesystem_sandbox: bool,
+    pub os_boundary: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IsolationClass {
+    /// Reservations/fences only; no verified host sandbox or OS boundary.
+    MetadataFencingOnly,
+    /// Host capability negotiation confirmed a sandbox or OS boundary.
+    VerifiedHostBoundary,
+}
+
+pub fn classify_isolation(evidence: Option<&HostIsolationEvidence>) -> IsolationClass {
+    match evidence {
+        Some(e) if e.filesystem_sandbox || e.os_boundary => IsolationClass::VerifiedHostBoundary,
+        _ => IsolationClass::MetadataFencingOnly,
+    }
+}
+
+pub fn isolation_basis(evidence: Option<&HostIsolationEvidence>) -> &'static str {
+    match classify_isolation(evidence) {
+        IsolationClass::VerifiedHostBoundary => "verified_host_sandbox_or_os_boundary",
+        IsolationClass::MetadataFencingOnly => {
+            "metadata_fencing_only_not_physical_strong_isolation"
+        }
+    }
+}
+
+/// Refuse advertising physical strong isolation when host capabilities are
+/// missing or unverified. Callers may still proceed with metadata fencing.
+pub fn refuse_unverified_strong_isolation(evidence: Option<&HostIsolationEvidence>) -> Result<()> {
+    if classify_isolation(evidence) != IsolationClass::VerifiedHostBoundary {
+        return Err(Error::InvalidInput(
+            "physical strong isolation requires verified host sandbox or OS boundary; AWR metadata fencing is not sufficient".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metadata_fencing_is_not_physical_strong_isolation() {
+        assert_eq!(
+            classify_isolation(None),
+            IsolationClass::MetadataFencingOnly
+        );
+        assert_eq!(
+            classify_isolation(Some(&HostIsolationEvidence::default())),
+            IsolationClass::MetadataFencingOnly
+        );
+        assert!(refuse_unverified_strong_isolation(None).is_err());
+        assert_eq!(
+            isolation_basis(None),
+            "metadata_fencing_only_not_physical_strong_isolation"
+        );
+    }
+
+    #[test]
+    fn verified_host_boundary_allows_strong_isolation_claim() {
+        let evidence = HostIsolationEvidence {
+            filesystem_sandbox: true,
+            os_boundary: false,
+        };
+        assert_eq!(
+            classify_isolation(Some(&evidence)),
+            IsolationClass::VerifiedHostBoundary
+        );
+        assert!(refuse_unverified_strong_isolation(Some(&evidence)).is_ok());
+        assert_eq!(
+            isolation_basis(Some(&evidence)),
+            "verified_host_sandbox_or_os_boundary"
+        );
+    }
+}

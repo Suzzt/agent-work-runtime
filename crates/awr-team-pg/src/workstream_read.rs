@@ -1,6 +1,6 @@
 //! Authenticated, scope-limited Team read operations. The transport binds the
 //! tenant/project from operator configuration; request bodies contain selectors.
-use crate::workstream_auth::{ReaderAuthority, authenticate};
+use crate::workstream_auth::{ReaderAuthority, authenticate, authorize_query};
 use crate::{PgError, PgPool, PgResult};
 use awr_core::{
     Id, WorkstreamAction, WorkstreamSelection, WorkstreamSessionBinding, WorkstreamWorkBinding,
@@ -150,6 +150,11 @@ impl WorkstreamReadStore {
         crate::WorkstreamCommandStore::from_pool(self.pool.clone())
     }
 
+    /// Project-admin member/role/credential management (TMCP-012).
+    pub fn project_access(&self) -> crate::ProjectAccessStore {
+        crate::ProjectAccessStore::from_pool(self.pool.clone())
+    }
+
     pub async fn check_schema(&self) -> PgResult<()> {
         let client = self.pool.get().await?;
         crate::check_schema(&client).await
@@ -278,6 +283,8 @@ pub(crate) async fn read(
         return Err(PgError::Forbidden);
     }
     q.validate()?;
+    // TMCP-011: every query shares the work.read decision; invisible streams stay filtered above.
+    authorize_query(auth, None, q.work_id.as_deref(), &q.op)?;
     if q.op == "capabilities" {
         let mut caps = json!({
             "protocol":"awr-team-workstream","protocol_version":1,"queries":QUERIES,
@@ -363,6 +370,12 @@ pub(crate) async fn read(
         &auth.access,
         &selection,
         WorkstreamAction::Read,
+    )?;
+    authorize_query(
+        auth,
+        Some(resolved.workstream_id),
+        resolved.work_item_id.as_deref().or(q.work_id.as_deref()),
+        &q.op,
     )?;
     let stream = resolved.workstream_id.to_string();
     let binding = hash(

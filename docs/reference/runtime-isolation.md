@@ -168,7 +168,7 @@ Two policies are explicit:
   selection drifts from the adopted delivery.
 
 Export authorizations are grant/revoke auditable. Cross-project dependencies are
-refused. Persist in SQLite (`011_delivery_deps`) and Team PG (schema 23) with
+refused. Persist in SQLite (`012_delivery_deps`) and Team PG (schema 26) with
 tenant/project RLS matching the responsibility-table CR pattern.
 
 ## Cross-stream dependency graph and atomic cycle checks (WS-031)

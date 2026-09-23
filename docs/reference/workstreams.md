@@ -16,8 +16,9 @@ authenticated read boundary; unsupported shared operations are rejected for
 enabled workstreams. Team PostgreSQL has authenticated HTTP/MCP queries,
 session journaling, claims, execution admission and authorized recovery, with a
 bounded local reference runner. Versioned cross-stream hard dependencies and adoption credentials are available
-in core/store/team-pg (WS-030); full workspace/external-resource enforcement
-remains separate integration work.
+in core/store/team-pg (WS-030). File/dir/workspace versus shared external/integration resource bounds are enforced
+at reservation and admission; physical strong isolation still requires a verified
+host sandbox or OS boundary, not AWR metadata alone.
 These paths do not establish complete isolation for every CLI, MCP or Team operation.
 
 The Team source coordinator also accepts an explicit multi-work source bundle
@@ -71,9 +72,13 @@ the original receipt; changed intent conflicts. Unknown effects are inspected
 before another dispatch.
 
 Same-work ownership and overlapping resources remain exclusive. Source writers
-use reviewed patches, source fingerprints and recovery journals. Multi-source
-activation requires a coherent candidate and atomic activation; unsupported
-adapters reject the operation. SQLite remains a single-writer database.
+use reviewed patches, source fingerprints and recovery journals
+(`awr-source` / `awr-runtime` source-concurrency helpers). Stale whole-file
+installs that no longer match the reviewed fingerprint are refused. Supported
+sharded multi-source updates form a coherent candidate and activate under a
+recovery journal; unsupported adapters reject the operation. External edits and
+half-writes remain recoverable without overwriting foreign bytes. SQLite remains
+a single-writer database.
 
 Project freeze, permission revocation and restore remain barriers. A restore
 changes the coordinator epoch. Lease expiry does not prove process termination;
@@ -383,6 +388,64 @@ updates, and semantic hashes do not replace mutation revision checks. Cached tex
 is never permission to execute: current authorization and action preconditions
 must still be checked. Existing MCP reads retain their explicit reindex
 requirement when source files differ from the stored projection.
+
+
+
+## Team publish preparation (AWR-TMCP-020)
+
+First-round Team publish preparation maps a server-held YAML workstream ledger
+and its referenced Markdown/JSON acceptance specs into the existing
+`workstreams.json` contract candidate. The mapping lives in `awr-source`
+(`publish_prep`) and the Team coordinator consumes the resulting package through
+the existing ingest → approve → activate path in `awr-team-pg`.
+
+### Supported inputs and hard rejects
+
+- Supported ledger adapter: `yaml-workstream-ledger-v1` (`.yaml` / `.yml` only).
+- Referenced specs: Markdown (`.md` / `.markdown`) and JSON (`.json`) only.
+- Required work fields include stable id, title, workstream key, and a non-empty
+  `acceptance` list. Missing fields hard-reject; unsupported formats hard-reject.
+- Top-level ledger collections such as `roles`, `members`, `grants`, or
+  `permissions` are rejected so publish preparation cannot invent Team role or
+  membership relationships from source text.
+
+### Sole source location
+
+The Team project binds exactly one authoritative source location:
+
+- a server-controlled directory (absolute path), or
+- a private management repository URL (`git://`, `https://`, or `ssh://`) with a
+  pinned revision.
+
+The binding is recorded as `source_binding.json` inside the publish package and
+stored with the candidate snapshot. Developers consume the activated Team
+contract through the service; they do not need author-laptop files or write
+access to the ledger directory. Existing work identities (`work_id` /
+`external_key`) and original source versions are preserved across preview and
+ingest.
+
+### Preview before ingest
+
+`prepare_publish_from_server_directory` (and the ledger-bytes variant) return a
+preview of identity, dependency, acceptance, and source diffs against an
+optional previously activated baseline. First publish passes no baseline and
+lists every work identity as added. Callers must review the preview before
+ingest.
+
+### Ingest / approve / activate boundaries
+
+- First publish uses the existing coordinator semantics: ingest creates a
+  candidate, approve records an independent review of the candidate digest, and
+  activate installs the immutable source + contract + graph digests.
+- Candidate and activated states remain separate. Approving a source candidate
+  does **not** grant project membership or member action permissions.
+- Source status strings, historical human `done`, and old test materials keep
+  source meaning only. Projection install never forges PG completion receipts
+  from those fields. Migrations that already carry Team history continue to use
+  the existing reject and recovery boundaries; history is not discarded for
+  trials.
+
+Fixture coverage lives under `tests/fixtures/team-mcp/publish-prep/`.
 
 The synthetic [context fixture](../../tests/fixtures/workstreams/context.yaml)
 and [manifest](../../tests/fixtures/workstreams/context.toml) exercise the native
