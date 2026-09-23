@@ -122,6 +122,14 @@ Progress uses an explicit versioned required-work set, not the number of tasks
 returned by a goal filter. Planning, implementation, acceptance, merge and
 release are separate facts. Shared work is counted once.
 
+WS-040 exposes this as a runtime façade over the pure core contract accountant:
+`account_approved_scope` freezes the denominator from an attested versioned
+contract, keeps the five delivery stages independent, and labels Goal query
+hits as `is_not_contract_completion_rate`. Unique ownership, shared-outcome
+references and ownership transfers refuse double-counting or silent history
+rewrites; a transfer requires a new contract revision and digest while the
+historical ledger remains readable under the prior identity.
+
 Usage receipts identify the execution, work, owning stream at the time, provider,
 model, pricing basis and observation coverage. Compression and request billing
 must not be charged twice. Unknown usage is not zero. Shared costs require an
