@@ -268,7 +268,7 @@ fn catalog() -> Vec<Tool> {
             query.as_object().unwrap().clone())
             .with_annotations(ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(false)),
         Tool::new("awr_team_command",
-            "Durable sessions, claims, confirmed handoffs and caller-managed execution under the shared TMCP action gate. Use work.prepare preconditions and a stable request_id. Readers cannot claim or write. Developers may maintain own session/execution on authorized work but cannot edit/publish plans or grant permissions. Only a fresh execution.start response with execution_authorized=true permits one run under the live lease. Exact replay reuses the original receipt; changed intent or expired/revoked authority is refused. Body fields cannot forge identity. Preparation, inspection and replay grant no execution rights. On unknown outcome inspect command.inspect before an exact retry; never repeat effects from a receipt. Refresh after conflicts or lease/contract changes. Cancellation is a request after start. Reports remain caller_asserted. Attestation requires operator-issued system authority at admission and now. For unknown effects, execution.inspect then operator execution.reconcile; confirm current versions and latest receipt. Recheck on permission, receipt or work changes. Settlement is not work completion. Evidence/review/rework/complete: evidence.submit, review.open, review.accept, review.return, work.rework, work.complete under the same authenticated command path. Independence is by person; a second agent of the same person is not team-independent. Completion receipts are for WS-030 adoption and omit provider-private sessions.",
+            "Durable sessions, claims, confirmed handoffs and caller-managed execution under the shared TMCP action gate. Use work.prepare preconditions and a stable request_id. Readers cannot claim, review or write. Developers may maintain own session/execution and submit evidence on authorized work but cannot edit/publish plans or grant permissions. Only a fresh execution.start response with execution_authorized=true permits one run under the live lease. Exact replay reuses the original receipt; changed intent or expired/revoked authority is refused. Body fields cannot forge identity. Preparation, inspection and replay grant no execution rights. On unknown outcome inspect command.inspect before an exact retry. Attestation/reconcile require special operator grants, not role templates. Evidence/review/rework/complete use evidence.submit, review.open, review.accept, review.return, work.rework and work.complete on that same gate. Independence is by person; a second agent of the same person is not team-independent. Completion receipts omit provider-private sessions.",
             command.as_object().unwrap().clone())
             .with_annotations(ToolAnnotations::new().read_only(false).destructive(false).idempotent(true).open_world(false)),
         Tool::new("awr_team_access_inspect",
@@ -421,10 +421,9 @@ impl ServerHandler for Endpoint {
                         .await
                 }
                 "awr_team_access_preview" => {
-                    let plan: awr_team_pg::AdminAccessPlan = serde_json::from_value(
-                        args.get("plan").cloned().unwrap_or(Value::Null),
-                    )
-                    .map_err(|_| PgError::Protocol("invalid access plan".into()))?;
+                    let plan: awr_team_pg::AdminAccessPlan =
+                        serde_json::from_value(args.get("plan").cloned().unwrap_or(Value::Null))
+                            .map_err(|_| PgError::Protocol("invalid access plan".into()))?;
                     self.state
                         .store
                         .project_access()
@@ -437,10 +436,9 @@ impl ServerHandler for Endpoint {
                         .await
                 }
                 "awr_team_access_apply" => {
-                    let plan: awr_team_pg::AdminAccessPlan = serde_json::from_value(
-                        args.get("plan").cloned().unwrap_or(Value::Null),
-                    )
-                    .map_err(|_| PgError::Protocol("invalid access plan".into()))?;
+                    let plan: awr_team_pg::AdminAccessPlan =
+                        serde_json::from_value(args.get("plan").cloned().unwrap_or(Value::Null))
+                            .map_err(|_| PgError::Protocol("invalid access plan".into()))?;
                     let request_id = args
                         .get("request_id")
                         .and_then(|v| v.as_str())

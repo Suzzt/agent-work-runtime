@@ -22,6 +22,7 @@ fn draft(id: &str, deps: &[&str], state: DraftDefinitionState) -> TaskDraft {
         required_dependencies: deps.iter().map(|s| (*s).into()).collect(),
         completion_policy: "independent_review".into(),
         definition_state: state,
+        workstream: None,
         split_from: None,
         split_children: vec![],
     }
@@ -579,5 +580,69 @@ async fn mutations_refuse_zero_grant_maintainer_client() {
     assert!(
         matches!(err, PgError::Forbidden),
         "maintainer + zero grants must not create planning candidates: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn forged_person_cannot_author_or_approve_and_publish_is_once() {
+    let (_g, _admin, _db, store) = store_and_roles().await;
+    let mut create = DraftCandidateCreate {
+        changes: vec![DraftChange {
+            op: DraftOpKind::CreateTask,
+            before: None,
+            after: draft("ONCE-1", &[], DraftDefinitionState::Draft),
+        }],
+        suggestion_ids: vec![],
+        allowed_spec_roots: vec!["specs".into()],
+        project_goal_keys: vec!["delivery".into()],
+        self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
+        author_person_id: Some("not-the-actor".into()),
+    };
+    let forged_author = store
+        .create_planning_candidate(TENANT, PROJECT, A, &create)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(forged_author, PgError::Forbidden),
+        "create must refuse a person id other than the actor: {forged_author:?}"
+    );
+
+    create.author_person_id = Some("agent".into());
+    let created = store
+        .create_planning_candidate(TENANT, PROJECT, A, &create)
+        .await
+        .unwrap();
+    let candidate_id = created["candidate_id"].as_str().unwrap().to_string();
+    let digest = created["candidate_digest"].as_str().unwrap().to_string();
+    let forged_approve = store
+        .approve_planning_candidate(
+            TENANT,
+            PROJECT,
+            A,
+            &candidate_id,
+            &digest,
+            Some("not-the-actor"),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(forged_approve, PgError::Forbidden),
+        "approve must refuse a substituted approver person: {forged_approve:?}"
+    );
+    store
+        .approve_planning_candidate(TENANT, PROJECT, A, &candidate_id, &digest, Some("agent"))
+        .await
+        .unwrap();
+    store
+        .publish_planning_candidate(TENANT, PROJECT, A, &candidate_id, &digest)
+        .await
+        .unwrap();
+    let again = store
+        .publish_planning_candidate(TENANT, PROJECT, A, &candidate_id, &digest)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(again, PgError::CandidateNotApproved),
+        "a second publish must not write another receipt: {again:?}"
     );
 }
