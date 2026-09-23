@@ -155,8 +155,10 @@ before activation. Catalog, contracts, ownership, edges, mode and source pointer
 commit atomically. Rollback preserves the prior projection.
 
 This stage permits enablement only without existing session history or live
-claims/nonterminal executions. Legacy-session migration and reviewed ownership
-movement are not yet implemented for Team. Updates retain scope IDs, keys and
+claims/nonterminal executions. Bounded owner-only session/inactive-claim/event attribution is available via
+the schema-owner history-migration CLI; reviewed ownership movement remains
+unimplemented for Team. Bounded CHECK-safe execution attribution is available via
+the schema-owner execution-attribution CLI. Updates retain scope IDs, keys and
 ownership; authority changes require increased versions, and retained scopes
 must be archived instead of removed. Existing work keys cannot change through
 the new codec. A source update also refuses live claims and nonterminal
@@ -173,15 +175,33 @@ progress. Historical data is never reassigned just to unblock enablement.
 `SourceStore` remains a trusted coordinator API, not a client authorization
 boundary. Source bundles cannot carry grants and activation grants no reader or
 writer permissions. The [Team HTTP service](team-workstream-service.md)
-checks live credentials, actor/membership and grants transactionally. Session
+checks live credentials, actor/membership and grants transactionally through a
+shared command-domain authorization gate (admission write grant, then
+active-stream or attest/reconcile effect checks after idempotent replay). Session
 creation, checkpoints, closure, claims, execution intents/admission, result
 reporting and authorized reconciliation are supported through HTTP and MCP.
-The [reference runner](team-reference-runner.md) performs bounded local file
+Capabilities advertise `scope_id=main` historical semantics, refuse unsupported
+operations, and state that local file access is not a server ACL. The
+[reference runner](team-reference-runner.md) performs bounded local file
 writes with explicit executor authority. Old-epoch reconciliation requires an
-explicit operator review and preserves original attribution. Enabled-project
-backup/restore, migration of unattributed history and real-client acceptance
-remain outstanding; the current legacy import/restore APIs refuse enabled
-projects. The shared personal MCP read boundary described elsewhere does not
+explicit operator review and preserves original attribution. Owner-only read-only recovery inspection is available via
+`awr-server access recovery-inspect` for enabled projects. Explicit unattributed
+history migration (`history-preview` / `history-apply`) can attribute sessions,
+inactive claims and work-bound events from current ownership; it refuses
+executions and active claims and does not forge identity or completion receipts.
+Owner-only enabled-project logical backup manifests, verified fencing restore,
+and a bounded rebuild-from-manifest slice (missing work_items id+external_key plus
+ownership when empty/fencing-quiet) are available via `awr-server access backup-*`
+(physical basebackup remains external; completion receipts are never rewritten;
+divergent ownership overwrite is refused). Owner-only active-claim release/quarantine/attribute-and-release and unattributed
+nonterminal execution quarantine-cancel are available via `awr-server access quarantine-*`
+(never forges `executor_client_id`). Owner-only explicit execution attribution with a
+reviewed `executor_client_id` (CHECK-safe: session+claim present; must match session
+client) is available via `awr-server access execution-attribution-*`. Remaining gaps
+include full logical rebuild (catalogs, contracts, snapshot ownership, receipts,
+grants), attribution of executions lacking session/claim (would require inventing
+CHECK fields), and real-client acceptance. Legacy import/restore APIs continue to refuse
+enabled projects. The shared personal MCP read boundary described elsewhere does not
 provide Team access.
 
 ### Source projection in the development branch

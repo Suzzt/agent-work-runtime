@@ -84,9 +84,6 @@ impl Action {
             Self::Recovery(a) => a.session(),
         }
     }
-    pub(super) fn requires_active_stream(&self) -> bool {
-        matches!(self, Self::Prepare(_) | Self::Start(_))
-    }
 }
 
 // The remote coordinator can validate portable lexical scope, not inspect the

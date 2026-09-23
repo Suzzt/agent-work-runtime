@@ -1,5 +1,5 @@
 use crate::{PgError, PgResult};
-use awr_core::{Id, WorkstreamAccess, WorkstreamCatalog, WorkstreamGrant};
+use awr_core::{Id, WorkstreamAccess, WorkstreamAction, WorkstreamCatalog, WorkstreamGrant};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -207,4 +207,320 @@ async fn authenticate_inner(
         binding,
         grant_versions,
     })
+}
+
+/// Shared Team domain-entry authority for HTTP/MCP/PG command paths.
+/// Fine-grained TMCP business actions plug into this gate later; this enum is
+/// the workstream write-boundary contract (AWR-WS-014).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DomainAuthority {
+    /// Explicit write grant that may preserve work while a stream is paused.
+    WritePreserve,
+    /// Explicit write grant on an active workstream (ordinary mutations).
+    WriteActive,
+    /// Trusted executor attestation (system actor + explicit grant).
+    Attest,
+    /// Operator reconciliation (manage + explicit reconcile grant).
+    Reconcile,
+}
+
+/// When authorization is rechecked relative to idempotent replay.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CommandAuthPhase {
+    /// Before mutation: permits exact receipt replay after credential checks.
+    Admission,
+    /// After replay miss: enforces stream activity and special execution grants.
+    Effect,
+}
+
+/// Map a Team workstream command op to its domain authority. Unknown ops are
+/// unsupported capabilities and must be refused by callers.
+pub(crate) fn command_authority(op: &str) -> Option<DomainAuthority> {
+    Some(match op {
+        "session.checkpoint" | "session.end" | "claim.release" | "execution.cancel"
+        | "execution.report" => DomainAuthority::WritePreserve,
+        "session.start" | "claim.acquire" | "claim.renew" | "execution.prepare"
+        | "execution.start" => DomainAuthority::WriteActive,
+        "execution.attest" => DomainAuthority::Attest,
+        "execution.reconcile" => DomainAuthority::Reconcile,
+        _ => return None,
+    })
+}
+
+fn has_write(auth: &ReaderAuthority, stream: Id) -> bool {
+    auth.access
+        .grants
+        .iter()
+        .any(|grant| grant.workstream_id == stream && grant.write)
+}
+
+/// Shared authorization used by Team PG command dispatch (HTTP/MCP call the same
+/// store). Request bodies, tool names and reconnects never supply grants.
+///
+/// Admission always requires a current read grant and an explicit write bit so
+/// readers cannot mutate through any variant. Effect adds active-stream or
+/// attest/reconcile checks after idempotent replay so historical receipts remain
+/// replayable for the original client even if the stream later pauses or a
+/// special grant is revoked.
+pub(crate) fn authorize_command(
+    auth: &ReaderAuthority,
+    stream: Id,
+    op: &str,
+    phase: CommandAuthPhase,
+) -> PgResult<()> {
+    let required = command_authority(op).ok_or_else(|| {
+        PgError::Unsupported(format!("unsupported workstream command capability: {op}"))
+    })?;
+    auth.access
+        .authorize(&auth.catalog, stream, WorkstreamAction::Read)?;
+    if !has_write(auth, stream) {
+        return Err(PgError::Forbidden);
+    }
+    if phase == CommandAuthPhase::Admission {
+        return Ok(());
+    }
+    match required {
+        DomainAuthority::WritePreserve => Ok(()),
+        DomainAuthority::WriteActive => {
+            auth.access
+                .authorize(&auth.catalog, stream, WorkstreamAction::Write)?;
+            Ok(())
+        }
+        DomainAuthority::Attest => {
+            if !auth
+                .execution_access
+                .get(&stream)
+                .is_some_and(|access| access.attest)
+            {
+                return Err(PgError::Forbidden);
+            }
+            Ok(())
+        }
+        DomainAuthority::Reconcile => {
+            if !auth
+                .execution_access
+                .get(&stream)
+                .is_some_and(|access| access.reconcile)
+            {
+                return Err(PgError::Forbidden);
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Capability metadata that makes `scope=main` historical semantics, old-client
+/// write refusal, and the local-file vs server-ACL boundary explicit. Callers
+/// merge these into live capabilities responses; unsupported keys stay refused.
+pub(crate) fn workstream_boundary_capabilities() -> serde_json::Value {
+    json!({
+        "scope_id": "main",
+        "scope_main_semantics": "historical_team_rows_retain_scope_id_main_while_workstream_id_isolates",
+        "old_client_write_boundary": "legacy_unscoped_team_entrypoints_refuse_enabled_projects",
+        "authorization": "transactional_workstream_grants",
+        "domain_entry_authorization": "shared_command_gate",
+        "write_authorization_phases": ["admission_write_grant", "effect_active_or_special"],
+        "unsupported_capabilities": "refused",
+        "local_file_access": "not_server_acl_or_confidentiality_sandbox",
+        "reference_runner_effects": "operator_local_bounded_files_require_explicit_attestation_grant",
+        "operator_recovery_inspection": "schema_owner_cli_read_only_enabled_projects",
+        "operator_history_migration": "sessions_inactive_claims_events_v1",
+        "operator_enabled_backup": "logical_manifest_fencing_and_ownership_rebuild_v1",
+        "frontend_filtering": false
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use awr_core::{
+        WORKSTREAM_CATALOG_VERSION, Workstream, WorkstreamCatalog, WorkstreamGrant, WorkstreamState,
+    };
+
+    fn id(value: u128) -> Id {
+        Id::from(value)
+    }
+
+    fn catalog(state: WorkstreamState) -> WorkstreamCatalog {
+        WorkstreamCatalog {
+            version: WORKSTREAM_CATALOG_VERSION,
+            project_id: "project".into(),
+            legacy_default: Some(id(1)),
+            workstreams: vec![Workstream {
+                id: id(1),
+                project_id: "project".into(),
+                external_key: "api".into(),
+                title: "api".into(),
+                state,
+                authority_version: 1,
+                goal_keys: vec!["g".into()],
+                acceptance_contracts: vec!["c".into()],
+            }],
+        }
+    }
+
+    fn authority(
+        write: bool,
+        manage: bool,
+        attest: bool,
+        reconcile: bool,
+        state: WorkstreamState,
+    ) -> ReaderAuthority {
+        let stream = id(1);
+        let mut execution_access = BTreeMap::new();
+        execution_access.insert(stream, ExecutionAccess { attest, reconcile });
+        ReaderAuthority {
+            actor_id: "actor".into(),
+            client_id: "client".into(),
+            actor_kind: "system".into(),
+            execution_access,
+            access: WorkstreamAccess {
+                project_id: "project".into(),
+                subject: "subject".into(),
+                grants: vec![WorkstreamGrant {
+                    workstream_id: stream,
+                    authority_version: 1,
+                    read: true,
+                    write,
+                    manage,
+                }],
+            },
+            catalog: catalog(state),
+            snapshot: "snap".into(),
+            epoch: "epoch".into(),
+            project_status: "active".into(),
+            revision: 1,
+            binding: "binding".into(),
+            grant_versions: BTreeMap::from([(stream, 1)]),
+        }
+    }
+
+    #[test]
+    fn every_supported_command_maps_to_a_domain_authority() {
+        for op in crate::workstream_command::COMMANDS {
+            assert!(
+                command_authority(op).is_some(),
+                "missing authority mapping for {op}"
+            );
+        }
+        assert_eq!(command_authority("planning.publish"), None);
+        assert_eq!(command_authority("work.claim"), None);
+    }
+
+    #[test]
+    fn admission_rejects_readers_and_unknown_capabilities() {
+        let reader = authority(false, false, false, false, WorkstreamState::Active);
+        assert!(matches!(
+            authorize_command(&reader, id(1), "session.start", CommandAuthPhase::Admission),
+            Err(PgError::Forbidden)
+        ));
+        let writer = authority(true, false, false, false, WorkstreamState::Active);
+        assert!(matches!(
+            authorize_command(
+                &writer,
+                id(1),
+                "planning.publish",
+                CommandAuthPhase::Admission
+            ),
+            Err(PgError::Unsupported(_))
+        ));
+        assert!(
+            authorize_command(
+                &writer,
+                id(1),
+                "session.checkpoint",
+                CommandAuthPhase::Admission
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn effect_enforces_active_stream_and_special_grants_after_admission() {
+        let paused_writer = authority(true, false, false, false, WorkstreamState::Paused);
+        assert!(
+            authorize_command(
+                &paused_writer,
+                id(1),
+                "session.end",
+                CommandAuthPhase::Effect
+            )
+            .is_ok()
+        );
+        assert!(matches!(
+            authorize_command(
+                &paused_writer,
+                id(1),
+                "session.start",
+                CommandAuthPhase::Effect
+            ),
+            Err(PgError::Workstream(awr_core::WorkstreamError::Inactive))
+        ));
+
+        let writer = authority(true, false, false, false, WorkstreamState::Active);
+        assert!(matches!(
+            authorize_command(&writer, id(1), "execution.attest", CommandAuthPhase::Effect),
+            Err(PgError::Forbidden)
+        ));
+        assert!(matches!(
+            authorize_command(
+                &writer,
+                id(1),
+                "execution.reconcile",
+                CommandAuthPhase::Effect
+            ),
+            Err(PgError::Forbidden)
+        ));
+
+        let attester = authority(true, false, true, false, WorkstreamState::Active);
+        assert!(
+            authorize_command(
+                &attester,
+                id(1),
+                "execution.attest",
+                CommandAuthPhase::Effect
+            )
+            .is_ok()
+        );
+
+        let reconciler = authority(true, true, false, true, WorkstreamState::Active);
+        assert!(
+            authorize_command(
+                &reconciler,
+                id(1),
+                "execution.reconcile",
+                CommandAuthPhase::Effect
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn boundary_capabilities_make_scope_main_and_local_file_limits_explicit() {
+        let caps = workstream_boundary_capabilities();
+        assert_eq!(caps["scope_id"], "main");
+        assert_eq!(caps["frontend_filtering"], false);
+        assert_eq!(
+            caps["operator_recovery_inspection"],
+            "schema_owner_cli_read_only_enabled_projects"
+        );
+        assert_eq!(
+            caps["operator_history_migration"],
+            "sessions_inactive_claims_events_v1"
+        );
+        assert_eq!(
+            caps["operator_enabled_backup"],
+            "logical_manifest_fencing_and_ownership_rebuild_v1"
+        );
+        assert_eq!(caps["unsupported_capabilities"], "refused");
+        assert_eq!(
+            caps["local_file_access"],
+            "not_server_acl_or_confidentiality_sandbox"
+        );
+        assert_eq!(
+            caps["old_client_write_boundary"],
+            "legacy_unscoped_team_entrypoints_refuse_enabled_projects"
+        );
+        assert_eq!(caps["domain_entry_authorization"], "shared_command_gate");
+    }
 }

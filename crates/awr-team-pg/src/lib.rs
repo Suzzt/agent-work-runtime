@@ -8,6 +8,11 @@ mod import;
 mod lease;
 mod migrate;
 mod operator_access;
+mod operator_backup;
+mod operator_execution_attribution;
+mod operator_history;
+mod operator_quarantine;
+mod operator_recovery;
 mod path;
 mod pool;
 mod read;
@@ -31,6 +36,13 @@ pub use import::{BackupRecord, FencingBarrier, ImportJob, ImportStore, InspectRe
 pub use lease::{ClaimRecord, LeaseStore, SessionRecord};
 pub use migrate::{EXPECTED_SCHEMA_VERSION, check_schema, migrate};
 pub use operator_access::{AccessActor, AccessCredential, AccessGrant, AccessPlan, OperatorAccess};
+pub use operator_backup::OperatorBackup;
+pub use operator_execution_attribution::{
+    ExecutionAttributionEntry, ExecutionAttributionPlan, OperatorExecutionAttribution,
+};
+pub use operator_history::OperatorHistory;
+pub use operator_quarantine::OperatorQuarantine;
+pub use operator_recovery::OperatorRecovery;
 pub use path::{
     MAX_FILE_BYTES, MAX_PACKAGE_BYTES, MAX_SOURCE_FILES, validate_package, validate_source_path,
 };
@@ -70,6 +82,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 14);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 18);
     }
 }

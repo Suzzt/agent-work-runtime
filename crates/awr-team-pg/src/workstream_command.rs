@@ -3,10 +3,12 @@
 pub(crate) mod claims;
 pub(crate) mod executions;
 
-use crate::workstream_auth::{ReaderAuthority, authenticate_writer};
+use crate::workstream_auth::{
+    CommandAuthPhase, ReaderAuthority, authenticate_writer, authorize_command,
+};
 use crate::workstream_read::{WorkstreamQuery, read, work_binding};
 use crate::{PgError, PgPool, PgResult};
-use awr_core::{Id, WorkstreamAction};
+use awr_core::Id;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -198,19 +200,12 @@ impl WorkstreamCommandStore {
         if stream != command.workstream_id {
             return Err(PgError::Forbidden);
         }
-        // Saving recovery notes or ending a session may preserve work while its
-        // stream is paused. It still requires a current explicit write grant.
+        // Shared domain-entry write boundary (HTTP/MCP/PG). Saving recovery notes
+        // or ending a session may preserve work while its stream is paused; that
+        // still requires a current explicit write grant at admission. Effect-phase
+        // active-stream / attest / reconcile checks run after idempotent replay.
         // Project freeze/import/restore barriers remain stricter for all writes.
-        auth.access
-            .authorize(&auth.catalog, stream, WorkstreamAction::Read)?;
-        if !auth
-            .access
-            .grants
-            .iter()
-            .any(|g| g.workstream_id == stream && g.write)
-        {
-            return Err(PgError::Forbidden);
-        }
+        authorize_command(&auth, stream, &command.op, CommandAuthPhase::Admission)?;
         if auth.epoch != command.coordinator_epoch {
             return Err(PgError::EpochChanged);
         }
@@ -244,13 +239,7 @@ impl WorkstreamCommandStore {
         {
             return Err(PgError::PreconditionsChanged);
         }
-        if matches!(action, Action::Start(_))
-            || matches!(&action, Action::Claim(a) if a.requires_active_stream())
-            || matches!(&action, Action::Execution(a) if a.requires_active_stream())
-        {
-            auth.access
-                .authorize(&auth.catalog, stream, WorkstreamAction::Write)?;
-        }
+        authorize_command(&auth, stream, &command.op, CommandAuthPhase::Effect)?;
         let stored = tx.query_one("SELECT contract_json,contract_hash FROM awr_team.work_contracts
             WHERE tenant_id=$1 AND project_id=$2 AND snapshot_id=$3 AND scope_id='main' AND work_id=$4",
             &[&tenant,&project,&auth.snapshot,&command.work_id]).await?;

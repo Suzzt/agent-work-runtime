@@ -6,13 +6,19 @@ PostgreSQL. This is not a release
 announcement or a complete Team execution service. It does not dispatch
 executions, resume agents or adopt cross-workstream deliveries. Use its live
 capabilities response to discover available operations.
-An operator-local [reference runner](team-reference-runner.md) can consume scoped
-admissions for bounded file writes and attest their results.
+Unsupported capabilities are refused. Live authorization is enforced in PostgreSQL
+transactions shared by HTTP and MCP domain entries; clients must not treat UI
+filtering as an ACL. Team rows retain historical `scope_id=main` while
+`workstream_id` isolates streams. Legacy unscoped Team entrypoints refuse writes
+against enabled projects. An operator-local
+[reference runner](team-reference-runner.md) can consume scoped admissions for
+bounded file writes and attest their results; those local filesystem effects are
+not a server ACL or confidentiality sandbox.
 
 ## Start an operator-bound service
 
 Build `awr-server` from this source branch. Migrate the intended database to
-schema 14 explicitly as its owner, and apply application-role grants using the
+schema 18 explicitly as its owner, and apply application-role grants using the
 [PostgreSQL setup](team-postgres.md). `serve` checks the schema without migrating
 it. Run the listener using the application connection, not an owner or superuser
 connection.
@@ -495,8 +501,10 @@ operator provisioning CLI and its immutable receipts without granting existing
 clients new rights. The [scoped reference runner](team-reference-runner.md)
 integrates bounded local file writes and saved-fact reporting, but does not adopt
 or backfill existing in-flight execution history. Generic agent dispatch and
-enabled-project backup/restore remain outside the available workflow; enabled-project
-history still requires explicit migration.
+a bounded ownership/work-inventory rebuild-from-manifest slice is available via
+schema-owner `backup-rebuild-*` (fencing-quiet, empty-or-matching ownership only);
+catalogs, contracts, receipts and grants remain outside that subset. Enabled-project
+history still requires explicit migration before backup.
 
 ## Limits and errors
 
@@ -550,5 +558,13 @@ executor authority, operator settlement, receipt preservation, rollback and
 explicit old-epoch review over PostgreSQL, HTTP and MCP. A local runner test also
 installs a new generation barrier and rejects a delayed old-generation write;
 the database boundary in that test is synthetic, not a physical backup/restore.
-Generic agent dispatch, history migration and enabled-project backup/restore
-remain unavailable through this surface.
+Generic agent dispatch remains unavailable through this surface. Bounded
+owner-only history migration, active-claim/execution quarantine recovery,
+explicit CHECK-safe execution attribution with a reviewed `executor_client_id`, and
+enabled-project logical backup/fencing restore and bounded ownership rebuild are
+separate schema-owner CLI flows
+(`awr-server access history-*` / `quarantine-*` / `execution-attribution-*` / `backup-*`), not HTTP/MCP client
+capabilities. `operator_surface_denial` (HTTP + MCP with real PG and provisioned
+client bearers) asserts Unsupported/404 for those surfaces while schema-owner
+CLI recovery-inspect/history-preview still succeed. Physical database basebackup
+stays an external operator responsibility.
