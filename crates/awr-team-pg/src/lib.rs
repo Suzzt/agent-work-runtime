@@ -7,6 +7,7 @@ mod execution;
 mod graph;
 mod import;
 mod lease;
+mod lock_order;
 mod migrate;
 mod operator_access;
 mod operator_backup;
@@ -41,6 +42,10 @@ pub use graph::{
 };
 pub use import::{BackupRecord, FencingBarrier, ImportJob, ImportStore, InspectReport, RestoreRun};
 pub use lease::{ClaimRecord, LeaseStore, SessionRecord};
+pub use lock_order::{
+    ResourceLockKey, lock_claim_after_work, lock_resources_sorted, lock_works_sorted,
+    sort_resource_keys, sort_work_ids,
+};
 pub use migrate::{EXPECTED_SCHEMA_VERSION, check_schema, migrate};
 pub use operator_access::{
     AccessActor, AccessCredential, AccessGrant, AccessPlan, AdminAccessPlan, OperatorAccess,

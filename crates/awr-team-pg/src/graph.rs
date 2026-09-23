@@ -396,6 +396,19 @@ impl GraphStore {
         // operation: without the project lock, two conflicting reservations
         // can both pass the check and both commit (CR #40 P2-1).
         lock_project(&tx, tenant_id, project_id).await?;
+        // Under a narrowed project Share lock, serialize this key before the
+        // conflict scan so reverse presentation order cannot deadlock (WS-023).
+        crate::lock_order::lock_resources_sorted(
+            &tx,
+            tenant_id,
+            project_id,
+            &[crate::lock_order::ResourceLockKey::new(
+                bound.kind.clone(),
+                bound.key.clone(),
+                bound.worktree_id.clone(),
+            )],
+        )
+        .await?;
         let rows = tx
             .query(
                 "SELECT resource_kind, canonical_key, worktree_id
