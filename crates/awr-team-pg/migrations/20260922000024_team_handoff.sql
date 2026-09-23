@@ -59,6 +59,6 @@ CREATE TABLE awr_team.team_handoff_receipts (
         REFERENCES awr_team.team_handoffs(tenant_id, project_id, id)
 );
 
-UPDATE awr_team.schema_state SET version=21 WHERE component='awr_team';
+UPDATE awr_team.schema_state SET version=24 WHERE component='awr_team';
 
 COMMIT;

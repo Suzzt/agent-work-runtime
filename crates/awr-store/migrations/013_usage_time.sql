@@ -56,7 +56,7 @@ CREATE TABLE usage_allocation_records (
     FOREIGN KEY (project_id, receipt_id)
         REFERENCES usage_receipts(project_id, receipt_id)
 );
-CREATE INDEX usage_allocation_records_receipt
+CREATE UNIQUE INDEX usage_allocation_records_receipt
     ON usage_allocation_records(project_id, receipt_id);
 
 CREATE TABLE usage_counter_snapshots (

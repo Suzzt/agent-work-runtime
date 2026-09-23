@@ -244,7 +244,7 @@ fn persist_task(conn: &Connection, task: &TaskResponsibility, now: i64) -> Resul
     if let Some(exec) = &task.current_executor {
         ensure_person(conn, &task.project_id, exec.person_id(), now)?;
     }
-    conn.execute(
+    let written = conn.execute(
         "INSERT INTO task_responsibilities(
             project_id,work_item_id,owner_person_id,independent_reviewer_person_id,
             executor_kind,executor_person_id,executor_agent_id,executor_binding_id,version,
@@ -265,7 +265,8 @@ fn persist_task(conn: &Connection, task: &TaskResponsibility, now: i64) -> Resul
             pending_transfer_request_key=excluded.pending_transfer_request_key,
             pending_detail=excluded.pending_detail,
             personal_mode_default=excluded.personal_mode_default,
-            updated_at=excluded.updated_at",
+            updated_at=excluded.updated_at
+         WHERE version = excluded.version - 1",
         params![
             task.project_id,
             task.work_item_id,
@@ -286,6 +287,19 @@ fn persist_task(conn: &Connection, task: &TaskResponsibility, now: i64) -> Resul
         ],
     )
     .map_err(db_error)?;
+    if written != 1 {
+        let actual: i64 = conn
+            .query_row(
+                "SELECT version FROM task_responsibilities WHERE project_id=?1 AND work_item_id=?2",
+                params![task.project_id, task.work_item_id],
+                |row| row.get(0),
+            )
+            .map_err(db_error)?;
+        return Err(Error::RevisionConflict {
+            expected: task.version.saturating_sub(1),
+            actual: actual as u64,
+        });
+    }
     conn.execute(
         "DELETE FROM task_collaborators WHERE project_id=?1 AND work_item_id=?2",
         params![task.project_id, task.work_item_id],
@@ -509,6 +523,7 @@ impl Store {
             if let Some(receipt) = replay_receipt(
                 &tx,
                 &project_s,
+                work_item_id,
                 &req.request_key,
                 ResponsibilityEventType::Assigned,
             )? {
@@ -549,6 +564,7 @@ impl Store {
             if let Some(receipt) = replay_receipt(
                 &tx,
                 &project_s,
+                work_item_id,
                 &req.request_key,
                 ResponsibilityEventType::Accepted,
             )? {
@@ -589,6 +605,7 @@ impl Store {
             if let Some(receipt) = replay_receipt(
                 &tx,
                 &project_s,
+                work_item_id,
                 &req.request_key,
                 ResponsibilityEventType::ExecutionClaimed,
             )? {
@@ -635,6 +652,7 @@ impl Store {
             if let Some(receipt) = replay_receipt(
                 &tx,
                 &project_s,
+                work_item_id,
                 request_key,
                 ResponsibilityEventType::ExecutionReleased,
             )? {
@@ -675,6 +693,7 @@ impl Store {
             if let Some(receipt) = replay_receipt(
                 &tx,
                 &project_s,
+                work_item_id,
                 &req.request_key,
                 ResponsibilityEventType::OwnerTransferProposed,
             )? {
@@ -721,6 +740,7 @@ impl Store {
             if let Some(receipt) = replay_receipt(
                 &tx,
                 &project_s,
+                work_item_id,
                 request_key,
                 ResponsibilityEventType::ExecutionClaimed,
             )? {
@@ -771,6 +791,7 @@ impl Store {
             if let Some(receipt) = replay_receipt(
                 &tx,
                 &project_s,
+                work_item_id,
                 request_key,
                 ResponsibilityEventType::PendingMarked,
             )? {
@@ -819,6 +840,7 @@ fn parse_event_type(value: &str) -> Result<ResponsibilityEventType> {
 fn replay_receipt(
     conn: &Connection,
     project: &str,
+    work_item_id: &str,
     request_key: &str,
     op: ResponsibilityEventType,
 ) -> Result<Option<ResponsibilityReceipt>> {
@@ -845,6 +867,11 @@ fn replay_receipt(
     if existing_op != event_type_str(op) {
         return Err(Error::InvalidInput(
             "idempotent receipt request_key reused with a different op".into(),
+        ));
+    }
+    if work != work_item_id {
+        return Err(Error::InvalidInput(
+            "idempotent receipt request_key reused for a different work item".into(),
         ));
     }
     Ok(Some(ResponsibilityReceipt {

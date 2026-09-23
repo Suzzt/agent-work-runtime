@@ -17,11 +17,31 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 from zoneinfo import ZoneInfo
 
 from support import BASE, GATES, ROOT, load_bundle, read_json
+
+
+def rel_or_abs(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
 from verify import main as verify_main
+
+
+def redact_database_url(url: str) -> str:
+    """Return a display URL with userinfo (password) removed."""
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    if parsed.port:
+        host = f"{host}:{parsed.port}"
+    # Keep username marker without password.
+    if parsed.username:
+        host = f"{parsed.username}:***@{host}"
+    return urlunparse((parsed.scheme, host, parsed.path, "", "", ""))
 
 
 def probe_pg(url: str) -> dict:
@@ -29,26 +49,58 @@ def probe_pg(url: str) -> dict:
     host = parsed.hostname or ""
     if host not in {"127.0.0.1", "localhost", "::1"}:
         return {"ok": False, "reason": "refusing non-loopback PG probe for acceptance harness"}
+
+    user = parsed.username or "postgres"
+    db = (parsed.path or "/postgres").lstrip("/") or "postgres"
+    port = str(parsed.port or 5432)
+    env = os.environ.copy()
+    if parsed.password is not None:
+        env["PGPASSWORD"] = parsed.password
+    # Never put the URL (password) on argv — failures must not serialize it.
+    cmd = [
+        "psql",
+        "-h", host,
+        "-p", port,
+        "-U", user,
+        "-d", db,
+        "-v", "ON_ERROR_STOP=1",
+        "-c", "select 1 as ok;",
+    ]
     try:
         out = subprocess.check_output(
-            ["psql", url, "-v", "ON_ERROR_STOP=1", "-c", "select 1 as ok;"],
+            cmd,
             text=True,
             stderr=subprocess.STDOUT,
             timeout=15,
+            env=env,
         )
         return {"ok": "ok" in out, "detail": "loopback select 1 succeeded", "read_only": True}
-    except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "reason": str(exc)}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "reason": "psql_timeout", "code": "timeout"}
+    except subprocess.CalledProcessError as exc:
+        return {"ok": False, "reason": "psql_failed", "code": exc.returncode}
+    except FileNotFoundError:
+        return {"ok": False, "reason": "psql_missing", "code": "missing_binary"}
+    except Exception:  # noqa: BLE001
+        return {"ok": False, "reason": "psql_error", "code": "error"}
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence-root", type=Path, default=ROOT / ".local/awr-team-mcp-acceptance-v1")
     parser.add_argument("--skip-pg-probe", action="store_true")
+    parser.add_argument(
+        "--reset-reports",
+        action="store_true",
+        help="Destructively refresh every report.json from templates (opt-in).",
+    )
     args = parser.parse_args(argv)
 
-    # Always refresh structural reports first.
-    rc = verify_main(["--evidence-root", str(args.evidence_root), "--write-reports"])
+    # Initialize missing reports only (preserve filled evidence). Explicit reset is opt-in.
+    verify_argv = ["--evidence-root", str(args.evidence_root), "--write-reports"]
+    if args.reset_reports:
+        verify_argv.append("--reset-reports")
+    rc = verify_main(verify_argv)
     if rc != 0:
         return rc
 
@@ -59,6 +111,9 @@ def main(argv=None) -> int:
         url = os.environ.get("AWR_TEAM_TEST_DATABASE_URL")
         if url:
             pg = probe_pg(url)
+            # Never persist the raw URL; optional redacted host hint only on refusal paths.
+            if not pg.get("ok") and pg.get("reason") == "refusing non-loopback PG probe for acceptance harness":
+                pg = {**pg, "endpoint": redact_database_url(url)}
         else:
             pg = {"ok": False, "reason": "AWR_TEAM_TEST_DATABASE_URL unset"}
 
@@ -118,7 +173,7 @@ def main(argv=None) -> int:
         "fixture_verification": "passed",
         "pg_probe_ok": pg.get("ok"),
         "scenarios": list(specs),
-        "report": str(out.relative_to(ROOT)),
+        "report": rel_or_abs(out),
     }, ensure_ascii=False))
     return 0
 

@@ -889,3 +889,33 @@ fn resource_conflict_helper_matches_acceptance() {
         },
     ));
 }
+
+#[test]
+fn exclusive_workspace_conflicts_with_contained_paths() {
+    let wt = "wt-1";
+    let workspace = ResourceBound {
+        kind: "workspace".into(),
+        key: "root".into(),
+        worktree_id: wt.into(),
+    };
+    let file = ResourceBound {
+        kind: "file".into(),
+        key: "src/main.rs".into(),
+        worktree_id: wt.into(),
+    };
+    let dir = ResourceBound {
+        kind: "dir".into(),
+        key: "src".into(),
+        worktree_id: wt.into(),
+    };
+    let other_wt_file = ResourceBound {
+        kind: "file".into(),
+        key: "src/main.rs".into(),
+        worktree_id: "wt-2".into(),
+    };
+    assert!(resources_conflict(&workspace, &file));
+    assert!(resources_conflict(&file, &workspace));
+    assert!(resources_conflict(&workspace, &dir));
+    assert!(resources_conflict(&workspace, &workspace));
+    assert!(!resources_conflict(&workspace, &other_wt_file));
+}
