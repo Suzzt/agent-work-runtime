@@ -4,8 +4,12 @@ mod common;
 #[path = "fixtures/workstream_access.rs"]
 mod fixture;
 
+use awr_team::{
+    DraftChange, DraftDefinitionState, DraftOpKind, OrdinaryPlanningSelfApprovePolicy, TaskDraft,
+};
 use awr_team_pg::{
-    PgError, PlanningSuggestRequest, SourceStore, WorkstreamQuery, WorkstreamReadStore,
+    PgError, PlanningApproveRequest, PlanningDraftRequest, PlanningPublishRequest,
+    PlanningSuggestRequest, SourceStore, WorkstreamQuery, WorkstreamReadStore,
 };
 use fixture::*;
 use serde_json::json;
@@ -175,4 +179,288 @@ async fn source_content_refuses_mixed_catalog_without_full_stream_grants() {
         }
         Err(e) => panic!("elevated read should not be Forbidden: {e:?}"),
     }
+}
+
+fn task(id: &str, title: &str) -> TaskDraft {
+    TaskDraft {
+        work_id: id.into(),
+        external_key: id.into(),
+        title: title.into(),
+        goals: vec!["delivery".into()],
+        scope_paths: vec!["specs/api.md".into()],
+        acceptance: vec!["ok".into()],
+        required_dependencies: vec![],
+        completion_policy: "independent_review".into(),
+        definition_state: DraftDefinitionState::Draft,
+        workstream: None,
+        split_from: None,
+        split_children: vec![],
+    }
+}
+
+fn create_req(request_id: &str, work_id: &str) -> PlanningDraftRequest {
+    PlanningDraftRequest {
+        protocol_version: 1,
+        request_id: request_id.into(),
+        mode: "create".into(),
+        candidate_id: None,
+        changes: vec![DraftChange {
+            op: DraftOpKind::CreateTask,
+            before: None,
+            after: task(work_id, "one"),
+        }],
+        suggestion_ids: vec![],
+        allowed_spec_roots: vec!["specs".into()],
+        project_goal_keys: vec!["delivery".into()],
+        self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
+        author_person_id: Some("agent".into()),
+    }
+}
+
+async fn rewind_receipt(
+    admin: &tokio_postgres::Client,
+    request_id: &str,
+    op: &str,
+    domain_id: &str,
+    pre_revision: Option<i32>,
+) {
+    let mut result = json!({
+        "protocol": "awr-team-planning-command-v1",
+        "request_id": request_id,
+        "op": op,
+        "status": "reserved",
+        "domain_id": domain_id,
+        "already_recorded": false
+    });
+    if let Some(revision) = pre_revision {
+        result["pre_revision"] = json!(revision);
+    }
+    admin
+        .execute(
+            "UPDATE awr_team.planning_command_receipts
+             SET status='reserved', result_json=$4, updated_at=clock_timestamp()
+             WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3",
+            &[&TENANT, &PROJECT, &request_id, &result],
+        )
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn reserved_edit_resume_does_not_bump_revision_again() {
+    let (_g, admin, db, _read) = setup().await;
+    elev_maintainer(&admin).await;
+    let store = SourceStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let created = store
+        .planning_draft(TENANT, PROJECT, A, &create_req("edit-create", "OPS-EDIT-1"))
+        .await
+        .unwrap();
+    let candidate_id = created["result"]["candidate_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let edit = PlanningDraftRequest {
+        protocol_version: 1,
+        request_id: "edit-once".into(),
+        mode: "edit".into(),
+        candidate_id: Some(candidate_id.clone()),
+        changes: vec![DraftChange {
+            op: DraftOpKind::EditFields,
+            before: Some(task("OPS-EDIT-1", "one")),
+            after: task("OPS-EDIT-1", "two"),
+        }],
+        suggestion_ids: vec![],
+        allowed_spec_roots: vec![],
+        project_goal_keys: vec![],
+        self_approve_policy: None,
+        author_person_id: None,
+    };
+    let edited = store
+        .planning_draft(TENANT, PROJECT, A, &edit)
+        .await
+        .unwrap();
+    assert_eq!(edited["result"]["draft_revision"], 2);
+    let history_before: i64 = admin
+        .query_one(
+            "SELECT count(*) FROM awr_team.planning_candidate_history
+             WHERE tenant_id=$1 AND project_id=$2 AND candidate_id=$3",
+            &[&TENANT, &PROJECT, &candidate_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    rewind_receipt(
+        &admin,
+        "edit-once",
+        "planning.edit_draft",
+        &candidate_id,
+        Some(1),
+    )
+    .await;
+    let again = store
+        .planning_draft(TENANT, PROJECT, A, &edit)
+        .await
+        .unwrap();
+    assert_eq!(again["result"]["draft_revision"], 2);
+    assert_eq!(again["result"]["resumed"], true);
+    let history_after: i64 = admin
+        .query_one(
+            "SELECT count(*) FROM awr_team.planning_candidate_history
+             WHERE tenant_id=$1 AND project_id=$2 AND candidate_id=$3",
+            &[&TENANT, &PROJECT, &candidate_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(history_after, history_before);
+    let revision: i32 = admin
+        .query_one(
+            "SELECT draft_revision FROM awr_team.planning_candidates
+             WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+            &[&TENANT, &PROJECT, &candidate_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(revision, 2);
+}
+
+#[tokio::test]
+async fn reserved_approve_and_publish_resume_do_not_duplicate_rows() {
+    let (_g, admin, db, _read) = setup().await;
+    elev_maintainer(&admin).await;
+    let store = SourceStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let created = store
+        .planning_draft(TENANT, PROJECT, A, &create_req("pub-create", "OPS-PUB-1"))
+        .await
+        .unwrap();
+    let candidate_id = created["result"]["candidate_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let digest = created["result"]["candidate_digest"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let approve = PlanningApproveRequest {
+        protocol_version: 1,
+        request_id: "approve-once".into(),
+        candidate_id: candidate_id.clone(),
+        candidate_digest: digest.clone(),
+        author_person_id: Some("agent".into()),
+    };
+    let approved = store
+        .planning_approve(TENANT, PROJECT, A, &approve)
+        .await
+        .unwrap();
+    let approval_id = approved["result"]["approval_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    rewind_receipt(
+        &admin,
+        "approve-once",
+        "planning.approve",
+        &candidate_id,
+        None,
+    )
+    .await;
+    let approved_again = store
+        .planning_approve(TENANT, PROJECT, A, &approve)
+        .await
+        .unwrap();
+    assert_eq!(approved_again["result"]["approval_id"], approval_id);
+    let approvals: i64 = admin
+        .query_one(
+            "SELECT count(*) FROM awr_team.planning_approvals
+             WHERE tenant_id=$1 AND project_id=$2 AND candidate_id=$3",
+            &[&TENANT, &PROJECT, &candidate_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(approvals, 1);
+
+    let publish = PlanningPublishRequest {
+        protocol_version: 1,
+        request_id: "publish-once".into(),
+        candidate_id: candidate_id.clone(),
+        candidate_digest: digest.clone(),
+        activate: false,
+        publish_receipt_id: None,
+        impact_proven: false,
+        stopped_work_ids: vec![],
+    };
+    let published = store
+        .planning_publish(TENANT, PROJECT, A, &publish)
+        .await
+        .unwrap();
+    let receipt_id = published["result"]["publish"]["receipt_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    rewind_receipt(
+        &admin,
+        "publish-once",
+        "planning.publish",
+        &candidate_id,
+        None,
+    )
+    .await;
+    let published_again = store
+        .planning_publish(TENANT, PROJECT, A, &publish)
+        .await
+        .unwrap();
+    assert_eq!(
+        published_again["result"]["publish"]["receipt_id"],
+        receipt_id
+    );
+    let receipts: i64 = admin
+        .query_one(
+            "SELECT count(*) FROM awr_team.planning_publish_receipts
+             WHERE tenant_id=$1 AND project_id=$2 AND candidate_id=$3",
+            &[&TENANT, &PROJECT, &candidate_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(receipts, 1);
+}
+
+#[tokio::test]
+async fn developer_publish_does_not_reserve_a_receipt() {
+    let (_g, admin, db, _read) = setup().await;
+    admin
+        .batch_execute(
+            "UPDATE awr_team.project_memberships SET role='developer', membership_version=membership_version+1
+             WHERE actor_id='agent'",
+        )
+        .await
+        .unwrap();
+    let store = SourceStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let publish = PlanningPublishRequest {
+        protocol_version: 1,
+        request_id: "dev-publish".into(),
+        candidate_id: "missing-candidate".into(),
+        candidate_digest: "missing-digest".into(),
+        activate: false,
+        publish_receipt_id: None,
+        impact_proven: false,
+        stopped_work_ids: vec![],
+    };
+    let err = store
+        .planning_publish(TENANT, PROJECT, A, &publish)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, PgError::Forbidden), "{err:?}");
+    let reserved: i64 = admin
+        .query_one(
+            "SELECT count(*) FROM awr_team.planning_command_receipts
+             WHERE tenant_id=$1 AND project_id=$2 AND request_id='dev-publish'",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(reserved, 0);
 }

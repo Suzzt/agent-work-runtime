@@ -597,6 +597,7 @@ async fn forged_person_cannot_author_or_approve_and_publish_is_once() {
         project_goal_keys: vec!["delivery".into()],
         self_approve_policy: Some(OrdinaryPlanningSelfApprovePolicy::ordinary_default()),
         author_person_id: Some("not-the-actor".into()),
+        predetermined_candidate_id: None,
     };
     let forged_author = store
         .create_planning_candidate(TENANT, PROJECT, A, &create)
