@@ -1,0 +1,5 @@
+{
+  "id": "api-v1",
+  "title": "API acceptance",
+  "checks": ["OpenAPI published", "Compatibility suite green"]
+}
