@@ -179,6 +179,18 @@ async fn project_admin_mcp_path_preview_apply_outcome_and_denies_non_admin() {
 async fn tenant_credential_revoke_refused_project_revoke_preserves_other_projects_and_last_admin() {
     let (_g, mut owner, db, _) = setup().await;
     enable_admin_manage(&owner).await;
+    // cli-b's grant is on stream 2. Replacing that client's grants requires the
+    // caller to already manage stream 2; this does not touch the other project.
+    owner
+        .execute(
+            "INSERT INTO awr_team.workstream_grants(
+                tenant_id,project_id,actor_id,client_id,workstream_id,authority_version,
+                can_read,can_write,can_manage,can_attest_execution,can_reconcile_execution,active)
+             VALUES($1,$2,'agent','cli-a',$3,1,true,true,true,false,false,true)",
+            &[&TENANT, &PROJECT, &awr_core::Id::from(2).to_string()],
+        )
+        .await
+        .unwrap();
     let access =
         ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     // Seed a grant in another project for the same actor to prove project revoke is scoped.
@@ -196,7 +208,7 @@ async fn tenant_credential_revoke_refused_project_revoke_preserves_other_project
 
     let mut revoke_tenant: AdminAccessPlan = serde_json::from_value(json!({
         "protocol_version":1,
-        "subject":{"id":"agent","kind":"agent","display_name":"Worker"},
+        "subject":{"id":"agent","kind":"human","display_name":"Worker"},
         "subject_client_id":"cli-b",
         "role":"admin",
         "grants":[],
@@ -288,7 +300,7 @@ async fn tenant_credential_revoke_refused_project_revoke_preserves_other_project
     // Now removing agent admin membership should succeed (reviewer is admin).
     let remove: AdminAccessPlan = serde_json::from_value(json!({
         "protocol_version":1,
-        "subject":{"id":"agent","kind":"agent","display_name":"Worker"},
+        "subject":{"id":"agent","kind":"human","display_name":"Worker"},
         "subject_client_id":"cli-a",
         "role":"reader",
         "grants":[],

@@ -27,6 +27,7 @@ const QUERIES: &[&str] = &[
     "evidence.inspect",
     "review.inspect",
     "completion.inspect",
+    "delivery.inspect",
     "source.content",
     "artifact.content",
     "planning.outcome",
@@ -156,6 +157,7 @@ impl WorkstreamQuery {
                     | "evidence.inspect"
                     | "review.inspect"
                     | "completion.inspect"
+                    | "delivery.inspect"
                     | "artifact.content"
             ) && self.work_id.is_none()
                 && self.session_id.is_none()
@@ -604,6 +606,11 @@ pub(crate) async fn read(
             let _ = work_binding(tx, tenant, project, auth, work).await?;
             crate::workstream_command::reviews::inspect_completion(tx, tenant, project, work)
                 .await?
+        }
+        "delivery.inspect" => {
+            let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
+            let _ = work_binding(tx, tenant, project, auth, work).await?;
+            crate::workstream_command::reviews::inspect_delivery(tx, tenant, project, work).await?
         }
         "command.inspect" => {
             let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;

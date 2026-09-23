@@ -93,7 +93,12 @@ async fn seed_review_actors(admin: &Client) {
     enable_writes(admin).await;
     admin
         .batch_execute(
-            "UPDATE awr_team.workstream_grants
+            "UPDATE awr_team.project_memberships
+             SET role='developer', independent_review=true,
+                 membership_version=membership_version+1
+             WHERE tenant_id='reader-tenant' AND project_id='reader-project'
+               AND actor_id='reviewer';
+             UPDATE awr_team.workstream_grants
              SET can_write=true, grant_version=grant_version+1
              WHERE client_id IN ('cli-runner','cli-reviewer')",
         )
@@ -531,6 +536,123 @@ async fn return_rework_keeps_history_and_contract_change_blocks_stale_approval()
         err,
         PgError::EvidenceInvalid | PgError::ReviewRequired | PgError::CompletionRejected
     ));
+}
+
+#[tokio::test]
+async fn completion_keeps_author_executor_distinct_from_finalizer_without_pr() {
+    let (_g, admin, _, store) = setup().await;
+    seed_review_actors(&admin).await;
+    let prepared = prepare(&store, A, "a").await;
+    let contract_hash = prepared["data"]["contract_hash"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    insert_succeeded_execution(&admin, "exec-attr", &contract_hash, 1).await;
+
+    let evidence = run(
+        &store,
+        RUNNER,
+        "ev-attr",
+        "evidence.submit",
+        submit_args(
+            "session-runner",
+            "exec-attr",
+            &hex_encode(b"ws031-attr-artifact"),
+        ),
+    )
+    .await;
+    let evidence_id = evidence["evidence_id"].as_str().unwrap().to_string();
+    let opened = run(
+        &store,
+        A,
+        "open-attr",
+        "review.open",
+        json!({
+            "session_id":"session-a",
+            "expected_session_version":"1",
+            "evidence_id": evidence_id
+        }),
+    )
+    .await;
+    let round_id = opened["round_id"].as_str().unwrap().to_string();
+    run(
+        &store,
+        REVIEWER_TOKEN,
+        "acc-attr",
+        "review.accept",
+        json!({
+            "session_id":"session-reviewer",
+            "expected_session_version":"1",
+            "round_id": round_id,
+            "reason":"independent approve"
+        }),
+    )
+    .await;
+
+    // Finalizer is agent (A), distinct from runner author/executor and reviewer.
+    let completed = run(
+        &store,
+        A,
+        "done-attr",
+        "work.complete",
+        json!({
+            "session_id":"session-a",
+            "expected_session_version":"1",
+            "evidence_id": evidence_id,
+            "context_complete": true
+        }),
+    )
+    .await;
+    assert_eq!(completed["author_actor_id"], "runner");
+    assert_eq!(completed["executor_actor_id"], "runner");
+    assert_eq!(completed["reviewer_actor_id"], "reviewer");
+    assert_eq!(completed["final_submitter_actor_id"], "agent");
+    assert_ne!(
+        completed["author_actor_id"],
+        completed["final_submitter_actor_id"]
+    );
+    assert_ne!(completed["executor_actor_id"], completed["execution_id"]);
+
+    let mut q = query("completion.inspect");
+    q.work_id = Some("a".into());
+    let inspected = store.query(TENANT, PROJECT, A, q).await.unwrap()["data"].clone();
+    let completion = &inspected["completion"];
+    assert_eq!(completion["author_actor_id"], "runner");
+    assert_eq!(completion["executor_actor_id"], "runner");
+    assert_eq!(completion["final_submitter_actor_id"], "agent");
+    assert_eq!(completion["approved_by"]["author_actor_id"], "runner");
+    assert_eq!(completion["approved_by"]["executor_actor_id"], "runner");
+    assert_eq!(completion["approved_by"]["reviewer_actor_id"], "reviewer");
+    assert_eq!(
+        completion["approved_by"]["final_submitter_actor_id"],
+        "agent"
+    );
+    assert!(completion["approved_by"]["pr_delivery_id"].is_null());
+
+    let row = admin
+        .query_one(
+            "SELECT author_actor_id, executor_actor_id, final_submitter_actor_id, execution_id
+             FROM awr_team.completion_receipts
+             WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+            &[
+                &TENANT,
+                &PROJECT,
+                &completed["receipt_id"].as_str().unwrap(),
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(row.get::<_, Option<String>>(0).as_deref(), Some("runner"));
+    assert_eq!(row.get::<_, Option<String>>(1).as_deref(), Some("runner"));
+    assert_eq!(row.get::<_, Option<String>>(2).as_deref(), Some("agent"));
+    assert_eq!(
+        row.get::<_, Option<String>>(3).as_deref(),
+        Some("exec-attr")
+    );
+    assert_ne!(
+        row.get::<_, Option<String>>(1).as_deref(),
+        row.get::<_, Option<String>>(3).as_deref()
+    );
 }
 
 #[tokio::test]

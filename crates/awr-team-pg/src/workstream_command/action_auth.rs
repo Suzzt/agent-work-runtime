@@ -64,10 +64,19 @@ mod tests {
             "planning.edit_draft",
             "access.manage_project",
             "audit.read_project",
-            "review.decide",
         ] {
             assert!(command_authority(op).is_none(), "{op}");
             assert!(command_business_action(op).is_some(), "{op}");
         }
+        assert_eq!(
+            command_business_action("review.decide").map(|a| a.as_str()),
+            Some("review.decide")
+        );
+        assert!(command_authority("review.decide").is_some());
+        assert_eq!(
+            command_business_action("delivery.finalize").map(|a| a.as_str()),
+            Some("delivery.finalize")
+        );
+        assert!(command_authority("delivery.finalize").is_some());
     }
 }

@@ -43,8 +43,13 @@ pub(crate) const COMMANDS: &[&str] = &[
     "review.open",
     "review.accept",
     "review.return",
+    "review.decide",
     "work.rework",
     "work.complete",
+    "delivery.submit_and_request_review",
+    "delivery.register_pr",
+    "delivery.observe_pr",
+    "delivery.finalize",
 ];
 const RECEIPT_PROTOCOL: &str = "awr-team-workstream-command-v1";
 
@@ -153,8 +158,17 @@ impl WorkstreamCommand {
                 &self.op,
                 self.args.clone(),
             )?)),
-            "evidence.submit" | "review.open" | "review.accept" | "review.return"
-            | "work.rework" | "work.complete" => Ok(Action::Review(reviews::Action::parse(
+            "evidence.submit"
+            | "review.open"
+            | "review.accept"
+            | "review.return"
+            | "review.decide"
+            | "work.rework"
+            | "work.complete"
+            | "delivery.submit_and_request_review"
+            | "delivery.register_pr"
+            | "delivery.observe_pr"
+            | "delivery.finalize" => Ok(Action::Review(reviews::Action::parse(
                 &self.op,
                 self.args.clone(),
             )?)),
