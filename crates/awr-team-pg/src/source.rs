@@ -11,6 +11,8 @@ use std::collections::BTreeMap;
 mod workstreams;
 use workstreams::SourceProjection;
 
+#[path = "source_planning.rs"]
+pub mod planning;
 /// Sole authoritative source location bound for Team publish preparation
 /// (AWR-TMCP-020). Developers do not need author-laptop files or ledger write
 /// access; the server directory or private management repo is the only source.
@@ -726,7 +728,7 @@ impl SourceStore {
     }
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
@@ -854,7 +856,6 @@ fn validate_original_source_provenance(
     let _ = binding;
     Ok(())
 }
-
 #[cfg(test)]
 mod publish_prep_tests {
     use super::*;

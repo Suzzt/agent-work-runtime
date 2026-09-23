@@ -64,6 +64,7 @@ pub use scoped_runner::{
     ReferenceReportRequest, ReferenceRunRequest, ReferenceWrite, ReferenceWritePlan,
     ScopedReferenceRunner,
 };
+pub use source::planning::{DraftCandidateCreate, SuggestionSubmit};
 pub use source::{
     CandidateRecord, CurrentSource, CurrentWorkstreamSource, IngestRequest, SOURCE_BINDING_FILE,
     SOURCE_PROVENANCE_FILE, SoleSourceBinding, SoleSourceKind, SourceFile, SourceStore,
@@ -91,6 +92,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 20);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 21);
     }
 }
