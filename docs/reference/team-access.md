@@ -60,3 +60,80 @@ Profiles must explicitly declare supported `protocol_version = 1`.
 
 These command-validation checks do not establish authenticated network isolation,
 PostgreSQL authorization, business acceptance or release readiness.
+
+
+## Team MCP business action permissions (AWR-TMCP-010)
+
+This section freezes the Team MCP **business** permission contract. It is separate
+from the command-envelope validation above. Enforcement at live MCP/HTTP/PG domain entry points is AWR-TMCP-011 (shared
+`authorize_command` / `authorize_query` decision). This section freezes types,
+fixtures and rules; the live gate maps current workstream commands onto these
+actions and refuses planning/access/audit ops for roles that lack them.
+
+### Role templates
+
+| Template | Meaning |
+| --- | --- |
+| `reader` | Read authorized work and context |
+| `developer` | Claim, maintain own session/execution, propose planning changes, submit delivery |
+| `maintainer` | Edit/approve/publish planning drafts and finalize delivery |
+| `project_admin` | Manage project membership/grants and read project audit export |
+
+`review.decide` is **not** part of any template. It requires an explicit
+independent-review add-on for an eligible non-reader member. Project admins have
+no bypass.
+
+### Action matrix
+
+Unknown actions default to **deny**. Action names are proposed business semantics;
+they are not necessarily current CLI/MCP command names.
+
+Fixtures: `tests/fixtures/team-mcp/role_action_matrix.json`.
+
+| Action | reader | developer | maintainer | project_admin |
+| --- | :---: | :---: | :---: | :---: |
+| `work.read` | yes | yes | yes | yes |
+| `session.maintain_own` | — | yes | yes | yes |
+| `claim.manage_own` | — | yes | yes | yes |
+| `execution.request_and_report_own` | — | yes | yes | yes |
+| `planning.propose` | — | yes | yes | yes |
+| `planning.edit_draft` | — | — | yes | yes |
+| `planning.approve` | — | — | yes | yes |
+| `planning.publish` | — | — | yes | yes |
+| `delivery.submit_and_request_review` | — | yes | yes | yes |
+| `review.decide` | — | add-on | add-on | add-on |
+| `delivery.finalize` | — | — | yes | yes |
+| `access.manage_project` | — | — | — | yes |
+| `audit.read_project` | — | — | — | yes |
+
+### Authority scope
+
+An allow decision requires an `AuthorityScope` that binds all of:
+
+- `tenant_id` / `project_id` (required)
+- optional `workstream_id` and optional `work_ids` set
+- `person_id`, optional `execution_identity`, `client_id`
+- `allowed_actions`, optional independent-review flag
+- `policy_version`, expiry (`not_after_unix_ms`) and revocation
+
+Role display names, tool discovery/visibility lists and model self-reports **cannot**
+authorize any action by themselves (`deny_role_name_only`,
+`deny_tool_visibility_only`, `deny_model_self_report_only`).
+
+Project admin authority is project-scoped: it does not grant other projects,
+`database_owner`, schema migration, trusted executor attestation, execution
+reconciliation, arbitrary source filesystem control or tenant-wide recovery.
+
+### Legacy migration preview
+
+Coarse legacy roles `reader` / `reviewer` / `worker` / `admin` and grants
+`read` / `write` / `manage` produce a **preview** only
+(`preview_legacy_migration`). Effective actions are the **intersection** of
+legacy membership and client grant templates (never a union); missing either
+side contributes no actions from that side. Newly introduced privileges
+(`planning.*`, `access.manage_project`, `review.decide`) are always withheld,
+independent of which grant branch is supplied. Person links without verified
+evidence stay `unknown` and grant nothing.
+
+Fixtures: `tests/fixtures/team-mcp/migration_preview.json` and
+`tests/fixtures/team-mcp/allow_deny_pairs.json`.

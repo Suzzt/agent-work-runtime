@@ -161,9 +161,16 @@ impl HandoffStore {
         if let Some(receipt) =
             load_receipt(&tx, tenant, project, &req.request_key, "accept").await?
         {
+            if receipt.handoff_id != req.handoff_id {
+                return Err(PgError::IdempotencyConflict);
+            }
             let h = load_tx(&tx, tenant, project, &receipt.handoff_id)
                 .await?
                 .ok_or_else(|| PgError::Protocol("handoff missing for receipt".into()))?;
+            let again = apply_handoff_accept(&h, req).map_err(map_core)?;
+            if again != h {
+                return Err(PgError::IdempotencyConflict);
+            }
             tx.commit().await?;
             return Ok((h, receipt));
         }
@@ -254,6 +261,9 @@ impl HandoffStore {
         let tx = client.transaction().await?;
         bind_workstream_scope(&tx, tenant, project).await?;
         if let Some(receipt) = load_receipt(&tx, tenant, project, request_key, op).await? {
+            if receipt.handoff_id != handoff_id {
+                return Err(PgError::IdempotencyConflict);
+            }
             let h = load_tx(&tx, tenant, project, &receipt.handoff_id)
                 .await?
                 .ok_or_else(|| PgError::Protocol("handoff missing for receipt".into()))?;
