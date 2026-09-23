@@ -69,6 +69,8 @@ events unreadable by older binaries; the namespaced ID avoids that. Use
 | Codex | L2 | [Codex adapter](codex.md) | `.codex` MCP merge, `client install` hooks, AGENTS snippet |
 | Named adapters (WS-024) | controlled | [Named agent host](named-agent-host.md) | Capability negotiation, L0 report, Codex + Claude Code, subtask parallelism |
 | Claude Code (WS-024) | named | [Claude Code adapter](claude-code-agent.md) | Status/reconnect/forensics; not auto-startable |
+| Team MCP · Codex (TMCP-041) | remote Team | [team-mcp-codex-cli.md](team-mcp-codex-cli.md) | HTTPS Team MCP natural workflow for `codex_cli` |
+| Team MCP · Claude Code (TMCP-041) | remote Team | [team-mcp-claude-code.md](team-mcp-claude-code.md) | HTTPS Team MCP natural workflow for `claude_code` |
 | Cursor | L1 | [Cursor note](cursor.md) | `.cursor/mcp.json`, `type: stdio`, source-built grouped MCP, Cloud Agent HTTPS |
 | Claude Code, Windsurf, … | L0 | [Session workflow](session-workflow.md) | None needed: `--client generic` with a `host:`-prefixed conversation ID |
 
@@ -108,3 +110,6 @@ Cursor MCP merge paths are an [L1 note](cursor.md).
 | --- | --- |
 | Delegation ∩ execution auth (TMCP-030) | [delegation-execution-auth.md](delegation-execution-auth.md) |
 | PR delivery ∩ review/complete (TMCP-031) | [pr-delivery-review.md](pr-delivery-review.md) |
+| Independent deploy + member handoff (TMCP-041) | [team-deploy-pack.md](../reference/team-deploy-pack.md) |
+| Team MCP · Codex `codex_cli` (TMCP-041) | [team-mcp-codex-cli.md](team-mcp-codex-cli.md) |
+| Team MCP · Claude Code `claude_code` (TMCP-041) | [team-mcp-claude-code.md](team-mcp-claude-code.md) |
