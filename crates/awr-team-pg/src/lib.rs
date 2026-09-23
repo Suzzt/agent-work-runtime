@@ -28,10 +28,14 @@ mod workstream_read;
 
 pub use bootstrap::Bootstrap;
 pub use error::{PgError, PgResult};
-pub use execution::{ExecutionRecord, ExecutionStore, OutboxDelivery, exactly_once_supported};
+pub use execution::{
+    ExecutionRecord, ExecutionStore, OutboxDelivery, admit_live_fence, exactly_once_supported,
+    unknown_effect_retains_resources,
+};
 pub use graph::{
-    DependencyEdge, GraphStore, SplitProposal, paths_conflict, require_main_scope,
-    validate_required_graph,
+    DependencyEdge, GraphStore, ResourceBound, ResourceDomain, ResourceLeaseBind, SplitProposal,
+    paths_conflict, require_main_scope, resource_domain, resources_conflict,
+    validate_required_graph, validate_resource_kind,
 };
 pub use import::{BackupRecord, FencingBarrier, ImportJob, ImportStore, InspectReport, RestoreRun};
 pub use lease::{ClaimRecord, LeaseStore, SessionRecord};
@@ -92,6 +96,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 21);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 22);
     }
 }
