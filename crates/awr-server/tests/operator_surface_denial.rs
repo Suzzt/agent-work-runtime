@@ -262,10 +262,15 @@ async fn http_and_mcp_clients_cannot_reach_operator_only_surfaces() {
         );
     }
 
-    // MCP SDK client: tools enum omits operator ops; calls return Unsupported.
+    // MCP SDK client: tools enum omits owner-only operator ops; project-admin
+    // access tools (TMCP-012) are separate and never expose recovery/SQL/owner CLI.
     let mcp = connect(&server, A).await;
     let tools = mcp.list_all_tools().await.unwrap();
-    assert_eq!(tools.len(), 2);
+    let names: Vec<_> = tools.iter().map(|t| t.name.to_string()).collect();
+    assert!(names.contains(&"awr_team_query".into()));
+    assert!(names.contains(&"awr_team_command".into()));
+    assert!(names.contains(&"awr_team_access_preview".into()));
+    assert_eq!(tools.len(), 6);
     for tool in &tools {
         let enum_ops = tool.input_schema["properties"]["op"]["enum"]
             .as_array()
@@ -279,6 +284,14 @@ async fn http_and_mcp_clients_cannot_reach_operator_only_surfaces() {
                 tool.name
             );
         }
+        assert!(
+            !tool.name.contains("recovery")
+                && !tool.name.contains("quarantine")
+                && !tool.name.contains("backup")
+                && !tool.name.contains("history"),
+            "owner operator tool exposed: {}",
+            tool.name
+        );
     }
     for op in [
         "recovery-inspect",

@@ -1,0 +1,115 @@
+{
+  "policy_id": "awr-team-mcp-permission-v1",
+  "policy_version": 1,
+  "base_resource": {
+    "tenant_id": "tenant-a",
+    "project_id": "project-a",
+    "workstream_id": "ws-main",
+    "work_id": "AWR-TMCP-010"
+  },
+  "pairs": [
+    {
+      "id": "reader_work_read_allow",
+      "template": "reader",
+      "action": "work.read",
+      "expect": "allow"
+    },
+    {
+      "id": "reader_claim_deny",
+      "template": "reader",
+      "action": "claim.manage_own",
+      "expect": "deny"
+    },
+    {
+      "id": "developer_propose_allow",
+      "template": "developer",
+      "action": "planning.propose",
+      "expect": "allow"
+    },
+    {
+      "id": "developer_publish_deny",
+      "template": "developer",
+      "action": "planning.publish",
+      "expect": "deny"
+    },
+    {
+      "id": "maintainer_publish_allow",
+      "template": "maintainer",
+      "action": "planning.publish",
+      "expect": "allow"
+    },
+    {
+      "id": "maintainer_access_deny",
+      "template": "maintainer",
+      "action": "access.manage_project",
+      "expect": "deny"
+    },
+    {
+      "id": "admin_access_allow",
+      "template": "project_admin",
+      "action": "access.manage_project",
+      "expect": "allow"
+    },
+    {
+      "id": "admin_review_without_grant_deny",
+      "template": "project_admin",
+      "action": "review.decide",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "admin_review_with_grant_allow",
+      "template": "project_admin",
+      "action": "review.decide",
+      "expect": "allow",
+      "independent_review_grant": true
+    },
+    {
+      "id": "admin_cross_project_deny",
+      "template": "project_admin",
+      "action": "work.read",
+      "resource_override": {
+        "project_id": "project-b"
+      },
+      "expect": "deny"
+    },
+    {
+      "id": "admin_special_database_owner_deny",
+      "template": "project_admin",
+      "special_authority": "database_owner",
+      "expect": "deny"
+    },
+    {
+      "id": "expired_authority_deny",
+      "template": "developer",
+      "action": "work.read",
+      "not_after_unix_ms": 1,
+      "now_unix_ms": 2,
+      "expect": "deny"
+    },
+    {
+      "id": "role_name_only_deny",
+      "deny_kind": "role_name_only",
+      "action": "access.manage_project",
+      "expect": "deny"
+    },
+    {
+      "id": "tool_visibility_only_deny",
+      "deny_kind": "tool_visibility_only",
+      "action": "planning.publish",
+      "expect": "deny"
+    },
+    {
+      "id": "model_self_report_only_deny",
+      "deny_kind": "model_self_report_only",
+      "action": "delivery.finalize",
+      "expect": "deny"
+    },
+    {
+      "id": "unknown_action_deny",
+      "template": "project_admin",
+      "action": "sql.execute",
+      "expect": "deny"
+    }
+  ]
+}

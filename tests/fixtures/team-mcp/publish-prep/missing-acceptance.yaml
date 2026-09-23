@@ -1,0 +1,15 @@
+workstreams:
+  version: 1
+  definitions:
+    - id: 01K00000000000000000000001
+      external_key: api
+      title: API
+      state: active
+      authority_version: 1
+      goal_keys: [delivery]
+      acceptance_contracts: [contracts/api-v1.json]
+work_items:
+  - id: API-1
+    title: Define the interface
+    status: planned
+    workstream: api

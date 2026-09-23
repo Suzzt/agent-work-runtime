@@ -1,11 +1,12 @@
 //! Team PG persistence for confirmed long-term handoffs (WS-017).
 use crate::error::{PgError, PgResult};
-use crate::tx::new_id;
+use crate::tx::{bind_workstream_scope, new_id};
 use awr_core::{
-    AcceptHandoffRequest, CancelHandoffRequest, HandoffDuty, HandoffKind, HandoffReceipt,
-    HandoffStatus, InspectHandoffRequest, PersonId, ProposeHandoffRequest, RejectHandoffRequest,
-    TeamHandoff, TimeoutHandoffRequest, apply_handoff_accept, apply_handoff_cancel,
-    apply_handoff_inspect, apply_handoff_propose, apply_handoff_reject, apply_handoff_timeout,
+    AcceptHandoffRequest, CancelHandoffRequest, ExecutionInstance, HandoffDuty, HandoffKind,
+    HandoffReceipt, HandoffStatus, InspectHandoffRequest, PersonId, ProposeHandoffRequest,
+    RejectHandoffRequest, TeamHandoff, TimeoutHandoffRequest, apply_handoff_accept,
+    apply_handoff_cancel, apply_handoff_inspect, apply_handoff_propose, apply_handoff_reject,
+    apply_handoff_timeout,
 };
 use serde_json::Value;
 use tokio_postgres::Transaction;
@@ -66,23 +67,25 @@ impl HandoffStore {
         project: &str,
         handoff_id: &str,
     ) -> PgResult<Option<TeamHandoff>> {
-        let client = self.connect().await?;
-        let row = client
+        let mut client = self.connect().await?;
+        let tx = client.transaction().await?;
+        bind_workstream_scope(&tx, tenant, project).await?;
+        let row = tx
             .query_opt(
                 "SELECT body_json FROM awr_team.team_handoffs
                  WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
                 &[&tenant, &project, &handoff_id],
             )
             .await?;
-        match row {
-            None => Ok(None),
+        let out = match row {
+            None => None,
             Some(r) => {
                 let v: Value = r.get(0);
-                Ok(Some(
-                    serde_json::from_value(v).map_err(|e| PgError::Protocol(e.to_string()))?,
-                ))
+                Some(serde_json::from_value(v).map_err(|e| PgError::Protocol(e.to_string()))?)
             }
-        }
+        };
+        tx.commit().await?;
+        Ok(out)
     }
 
     pub async fn duty(
@@ -109,6 +112,7 @@ impl HandoffStore {
     ) -> PgResult<(TeamHandoff, HandoffReceipt)> {
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
+        bind_workstream_scope(&tx, tenant, project).await?;
         if let Some(receipt) =
             load_receipt(&tx, tenant, project, &req.request_key, "propose").await?
         {
@@ -153,12 +157,20 @@ impl HandoffStore {
     ) -> PgResult<(TeamHandoff, HandoffReceipt)> {
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
+        bind_workstream_scope(&tx, tenant, project).await?;
         if let Some(receipt) =
             load_receipt(&tx, tenant, project, &req.request_key, "accept").await?
         {
+            if receipt.handoff_id != req.handoff_id {
+                return Err(PgError::IdempotencyConflict);
+            }
             let h = load_tx(&tx, tenant, project, &receipt.handoff_id)
                 .await?
                 .ok_or_else(|| PgError::Protocol("handoff missing for receipt".into()))?;
+            let again = apply_handoff_accept(&h, req).map_err(map_core)?;
+            if again != h {
+                return Err(PgError::IdempotencyConflict);
+            }
             tx.commit().await?;
             return Ok((h, receipt));
         }
@@ -173,9 +185,8 @@ impl HandoffStore {
         }
         let was_open = before.status.is_open();
         let next = apply_handoff_accept(&before, &live_req).map_err(map_core)?;
-        if was_open && next.status == HandoffStatus::Accepted && next.kind == HandoffKind::Execution
-        {
-            bump_fence(&tx, tenant, project, &next.work_item_id).await?;
+        if was_open && next.status == HandoffStatus::Accepted {
+            commit_accepted_transfer(&tx, tenant, project, &before, &next).await?;
         }
         persist(&tx, tenant, project, &next).await?;
         let receipt = record(&tx, tenant, project, &next, &req.request_key, "accept").await?;
@@ -248,7 +259,11 @@ impl HandoffStore {
     {
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
+        bind_workstream_scope(&tx, tenant, project).await?;
         if let Some(receipt) = load_receipt(&tx, tenant, project, request_key, op).await? {
+            if receipt.handoff_id != handoff_id {
+                return Err(PgError::IdempotencyConflict);
+            }
             let h = load_tx(&tx, tenant, project, &receipt.handoff_id)
                 .await?
                 .ok_or_else(|| PgError::Protocol("handoff missing for receipt".into()))?;
@@ -264,6 +279,169 @@ impl HandoffStore {
         tx.commit().await?;
         Ok((next, receipt))
     }
+}
+
+/// Apply authoritative responsibility / execution effects after a newly accepted handoff.
+/// Must run in the same transaction as the handoff row persist.
+pub(crate) async fn commit_accepted_transfer(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    before: &TeamHandoff,
+    after: &TeamHandoff,
+) -> PgResult<()> {
+    if after.status != HandoffStatus::Accepted || !before.status.is_open() {
+        return Ok(());
+    }
+    let work_id = after.work_item_id.as_str();
+    let successor = after
+        .accepted_successor
+        .as_ref()
+        .ok_or_else(|| PgError::Protocol("accepted handoff missing successor execution".into()))?;
+    ensure_person(tx, tenant, project, after.to_person_id.as_str()).await?;
+    ensure_person(tx, tenant, project, after.from_person_id.as_str()).await?;
+    ensure_person(tx, tenant, project, successor.person_id().as_str()).await?;
+
+    let row = tx
+        .query_opt(
+            "SELECT owner_person_id, executor_kind, executor_person_id, version
+             FROM awr_team.task_responsibilities
+             WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3 FOR UPDATE",
+            &[&tenant, &project, &work_id],
+        )
+        .await?;
+
+    match after.kind {
+        HandoffKind::Responsibility => {
+            let owner = row.as_ref().and_then(|r| r.get::<_, Option<String>>(0));
+            if let Some(owner) = owner.as_deref() {
+                if owner != after.from_person_id.as_str() {
+                    return Err(PgError::Forbidden);
+                }
+            } else if row.is_some() {
+                return Err(PgError::Forbidden);
+            }
+            let version: i64 = row.map(|r| r.get::<_, i64>(3)).unwrap_or(0);
+            upsert_responsibility_owner(
+                tx,
+                tenant,
+                project,
+                work_id,
+                after.to_person_id.as_str(),
+                version + 1,
+            )
+            .await?;
+        }
+        HandoffKind::Execution => {
+            if let Some(r) = &row {
+                let exec_person: Option<String> = r.get(2);
+                if let Some(current) = exec_person.as_deref() {
+                    if current != after.from_person_id.as_str()
+                        && current != after.package.current_person_id.as_str()
+                    {
+                        return Err(PgError::Forbidden);
+                    }
+                }
+            }
+            let version: i64 = row.as_ref().map(|r| r.get::<_, i64>(3)).unwrap_or(0);
+            upsert_responsibility_executor(
+                tx,
+                tenant,
+                project,
+                work_id,
+                after.from_person_id.as_str(),
+                successor,
+                version + 1,
+            )
+            .await?;
+            tx.execute(
+                "UPDATE awr_team.claims SET state='handed_off'
+                 WHERE tenant_id=$1 AND project_id=$2 AND scope_id='main' AND work_id=$3
+                   AND state='active'",
+                &[&tenant, &project, &work_id],
+            )
+            .await?;
+            bump_fence(tx, tenant, project, work_id).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn upsert_responsibility_owner(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    work_id: &str,
+    owner: &str,
+    version: i64,
+) -> PgResult<()> {
+    tx.execute(
+        "INSERT INTO awr_team.task_responsibilities(
+            tenant_id,project_id,work_id,owner_person_id,version,personal_mode_default)
+         VALUES($1,$2,$3,$4,$5,false)
+         ON CONFLICT(tenant_id,project_id,work_id) DO UPDATE SET
+            owner_person_id=EXCLUDED.owner_person_id,
+            pending_kind=NULL,
+            pending_person_id=NULL,
+            pending_legacy_ref=NULL,
+            pending_transfer_request_key=NULL,
+            pending_detail=NULL,
+            version=EXCLUDED.version,
+            updated_at=clock_timestamp()",
+        &[&tenant, &project, &work_id, &owner, &version],
+    )
+    .await?;
+    Ok(())
+}
+
+async fn upsert_responsibility_executor(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    work_id: &str,
+    owner_fallback: &str,
+    successor: &ExecutionInstance,
+    version: i64,
+) -> PgResult<()> {
+    let (kind, person, agent, binding): (&str, &str, Option<&str>, Option<&str>) = match successor {
+        ExecutionInstance::Person { person_id } => ("person", person_id.as_str(), None, None),
+        ExecutionInstance::AgentRun {
+            person_id,
+            agent_id,
+            binding_id,
+        } => (
+            "agent_run",
+            person_id.as_str(),
+            Some(agent_id.as_str()),
+            Some(binding_id.as_str()),
+        ),
+    };
+    tx.execute(
+        "INSERT INTO awr_team.task_responsibilities(
+            tenant_id,project_id,work_id,owner_person_id,executor_kind,executor_person_id,
+            executor_agent_id,executor_binding_id,version,personal_mode_default)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,false)
+         ON CONFLICT(tenant_id,project_id,work_id) DO UPDATE SET
+            executor_kind=EXCLUDED.executor_kind,
+            executor_person_id=EXCLUDED.executor_person_id,
+            executor_agent_id=EXCLUDED.executor_agent_id,
+            executor_binding_id=EXCLUDED.executor_binding_id,
+            version=EXCLUDED.version,
+            updated_at=clock_timestamp()",
+        &[
+            &tenant,
+            &project,
+            &work_id,
+            &owner_fallback,
+            &kind,
+            &person,
+            &agent,
+            &binding,
+            &version,
+        ],
+    )
+    .await?;
+    Ok(())
 }
 
 async fn ensure_person(

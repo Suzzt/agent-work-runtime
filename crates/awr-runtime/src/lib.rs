@@ -28,10 +28,12 @@ mod fs_sync;
 mod management;
 mod mutation;
 mod mutation_apply;
+mod operation_readset;
 mod organization;
 mod read;
 mod responsibility;
 mod resume;
+mod source_concurrency;
 mod team_handoff;
 mod work_action;
 mod work_create;
@@ -60,15 +62,24 @@ pub use branch::{CreateBranchRequest, create_branch, observe_git_ref, switch_bra
 pub use branch_close::{CloseBranchRequest, close_branch};
 pub use completion::{CompleteWorkRequest, complete_work};
 pub use doctor::{ProjectDoctorReport, diagnose_project};
-pub use execution::{inspect_execution, inspect_work_executions, render_execution_observations};
+pub use execution::{
+    HostIsolationEvidence, IsolationClass, classify_isolation, inspect_execution,
+    inspect_work_executions, isolation_basis, refuse_unverified_strong_isolation,
+    render_execution_observations,
+};
 pub use management::{AssessManagementRequest, ManageWorkRequest, assess_management, manage_work};
 pub use mutation::{
     CreateProposalRequest, ProposalReport, ReviewProposalAction, ReviewProposalRequest,
     create_proposal, review_proposal,
 };
+pub use operation_readset::{append_work_observation, classify_operation_replay_result};
 pub use organization::{OrganizationReport, OrganizationState, inspect_organization};
 pub use response_view::summarize_work_response;
 pub use resume::{ResumeReport, ResumeRequest, resume_bound_session, resume_session};
+pub use source_concurrency::{
+    SourceConcurrencyReport, activate_precise_patch, activate_shard_candidate,
+    classify_whole_file_gate, recover_shard_candidate,
+};
 pub use work_action::{WorkActionRequest, perform_work_action};
 pub use work_create::{
     CreateWorkInput, CreationReport, create_work, creation_status, recover_creation,

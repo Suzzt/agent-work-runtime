@@ -1,0 +1,8 @@
+{
+  "rationale": "Shared types are missing as a dependency for CLIENT-1",
+  "affected_work_keys": ["CLIENT-1"],
+  "proposed_notes": {
+    "add_dependency": "SHARED-1",
+    "reason": "discovered during parallel development"
+  }
+}

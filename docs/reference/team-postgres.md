@@ -177,6 +177,8 @@ execution admission checks both the recorded epoch and recovery flag. Credential
 are tenant-scoped in V1, so restoration conservatively revokes tenant credentials;
 operators must account for other projects using those credentials.
 
+**Lock order (WS-023):** writers that need multiple row locks follow a fixed order so opposite presentation orders cannot deadlock: project barrier (`workstream_modes` admission, then `projects`) → auth/mainline → graph coordination → sorted tasks (`work_runtime` by work id) → sorted resources (`resource_reservations` by kind/key/worktree) → receipts/events. Claim rows are task-scoped: lock the owning work runtime before the claim. Freeze, import and restore keep the project barrier for the whole transition; narrowing ordinary writers to a shared project lock must not reorder import/restore lifecycle events or let an old epoch regain authority. Long work runs outside these locks. Helpers live in `awr_team_pg::lock_order`. On the personal SQLite store, acquire the cross-process source lock before `BEGIN IMMEDIATE` writer transactions.
+
 **Resource boundary:** a database cannot retract commands already delivered to an
 offline resource. Install every returned `fencing_barriers` entry at each resource
 before clearing recovery state. `ReferenceRunner::install_recovery_barrier` persists
