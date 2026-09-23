@@ -80,21 +80,24 @@ enum Command {
 async fn main() -> ExitCode {
     let args = Args::parse();
     match args.command {
-        Command::Runner { command } => match runner::run(command).await {
+        // These futures embed the whole operator command match. Keeping them
+        // inside `main`'s future overflows the Windows main thread in debug
+        // builds; the heap allocation is the same control flow.
+        Command::Runner { command } => match Box::pin(runner::run(command)).await {
             Ok(value) => {
                 println!("{value}");
                 ExitCode::SUCCESS
             }
             Err((code, message)) => fail(code, message),
         },
-        Command::Access { command } => match access::run(command).await {
+        Command::Access { command } => match Box::pin(access::run(command)).await {
             Ok(value) => {
                 println!("{value}");
                 ExitCode::SUCCESS
             }
             Err((code, message)) => fail(code, message),
         },
-        Command::Serve { config } => match awr_server::service::serve(&config).await {
+        Command::Serve { config } => match Box::pin(awr_server::service::serve(&config)).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => fail("ServiceFailed", error),
         },

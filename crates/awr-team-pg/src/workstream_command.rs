@@ -6,6 +6,7 @@
 pub(crate) mod action_auth;
 pub(crate) mod claims;
 pub(crate) mod executions;
+pub(crate) mod handoffs;
 
 use crate::workstream_auth::{
     CommandAuthPhase, ReaderAuthority, authenticate_writer, authorize_command,
@@ -31,6 +32,12 @@ pub(crate) const COMMANDS: &[&str] = &[
     "execution.report",
     "execution.attest",
     "execution.reconcile",
+    "handoff.propose",
+    "handoff.inspect",
+    "handoff.accept",
+    "handoff.reject",
+    "handoff.cancel",
+    "handoff.timeout",
 ];
 const RECEIPT_PROTOCOL: &str = "awr-team-workstream-command-v1";
 
@@ -76,6 +83,7 @@ enum Action {
     End(End),
     Claim(claims::Action),
     Execution(executions::Action),
+    Handoff(handoffs::Action),
 }
 
 struct Applied {
@@ -132,6 +140,11 @@ impl WorkstreamCommand {
             "claim.acquire" | "claim.renew" | "claim.release" => Ok(Action::Claim(
                 claims::Action::parse(&self.op, self.args.clone())?,
             )),
+            "handoff.propose" | "handoff.inspect" | "handoff.accept" | "handoff.reject"
+            | "handoff.cancel" | "handoff.timeout" => Ok(Action::Handoff(handoffs::Action::parse(
+                &self.op,
+                self.args.clone(),
+            )?)),
             "session.start" => {
                 let a: Start = serde_json::from_value(self.args.clone()).map_err(|_| invalid())?;
                 if !identity(&a.conversation_id) {
@@ -283,6 +296,9 @@ impl WorkstreamCommandStore {
             Action::Claim(a) => {
                 claims::apply(&tx, tenant, project, &auth, &command, ownership, a).await?
             }
+            Action::Handoff(a) => {
+                handoffs::apply(&tx, tenant, project, &auth, &command, ownership, a).await?
+            }
             a => Applied {
                 data: apply(&tx, tenant, project, &auth, &command, ownership, a).await?,
                 preceding_events: Vec::new(),
@@ -294,6 +310,9 @@ impl WorkstreamCommandStore {
         }
         if command.op.starts_with("execution.") {
             data["execution_state_basis"] = json!("at_commit");
+        }
+        if command.op.starts_with("handoff.") {
+            data["handoff_state_basis"] = json!("at_commit");
         }
         // Project writers still take an exclusive admission lock (SQLite single-writer
         // compatible serialization). The audit cursor advances here without treating
@@ -348,7 +367,7 @@ async fn apply(
     action: Action,
 ) -> PgResult<Value> {
     match action {
-        Action::Claim(_) | Action::Execution(_) => Err(invalid()), // Same outer transaction.
+        Action::Claim(_) | Action::Execution(_) | Action::Handoff(_) => Err(invalid()), // Same outer transaction.
         Action::Start(a) => {
             let active: bool = tx.query_one("SELECT EXISTS(SELECT 1 FROM awr_team.sessions
                 WHERE tenant_id=$1 AND project_id=$2 AND actor_id=$3 AND client_id=$4 AND conversation_id=$5 AND work_id=$6 AND state='active')",

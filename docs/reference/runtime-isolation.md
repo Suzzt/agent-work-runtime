@@ -122,3 +122,32 @@ single effective executor.
 
 Delegation is narrowing-only. Changing model, client, or session cannot bypass revoke, expiry,
 scope, or independent-reviewer separation.
+
+## Confirmed Team handoff (WS-017)
+
+Long-term Team handoff requires receiver confirmation. **Execution handoff** and
+**responsibility transfer** are separate operations (`kind=execution|responsibility`).
+
+State machine: `propose → inspect → accept | reject | cancel | timeout`.
+
+| Status | Responsible | May continue | Notes |
+|---|---|---|---|
+| proposed / inspected | original person | original | Receiver may inspect package; must re-prepare context before accept |
+| accepted (execution) | original owner | successor | Ownership unchanged; successor execution only after prior stop/reconcile |
+| accepted (responsibility) | receiver | receiver | Does **not** grant execution by itself |
+| rejected / cancelled / timed_out | original | original | Original keeps recovery duty; **timeout ≠ stop** |
+
+Handoff packages bind task+contract version/hash, current person+execution instance,
+consumed context digest, checkpoints, artifact versions, branch/dir, dependencies,
+todos, awaiting replies, and unknown side effects. Chat summaries are insufficient.
+
+Accept is transactional: re-check identity, authorization, versions, resources, and
+fence; unknown executions block accept; late writes under an old fence cannot become
+the current result. Concurrent accepts keep exactly one effective outcome (request-key
+receipt + row lock). Same-person agent swap is an execution handoff; cross-person
+cross-agent is supported; disconnect/reject/no-receiver preserve original duty.
+
+Authenticated Team HTTP/MCP: `handoff.propose|inspect|accept|reject|cancel|timeout`
+commands and `handoff.inspect` query. Local MCP `awr_team_handoff` validates packages
+and explains duty without mutating Team state. Persist in SQLite (`010`) and Team PG
+(schema 21).

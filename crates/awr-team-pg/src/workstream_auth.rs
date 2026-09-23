@@ -267,9 +267,9 @@ pub fn command_business_action(op: &str) -> Option<awr_team::Action> {
     Some(match op {
         "session.start" | "session.checkpoint" | "session.end" => SessionMaintainOwn,
         "claim.acquire" | "claim.renew" | "claim.release" => ClaimManageOwn,
-        "execution.prepare" | "execution.start" | "execution.cancel" | "execution.report" => {
-            ExecutionRequestAndReportOwn
-        }
+        "execution.prepare" | "execution.start" | "execution.cancel" | "execution.report"
+        | "handoff.propose" | "handoff.accept" | "handoff.inspect" | "handoff.reject"
+        | "handoff.cancel" | "handoff.timeout" => ExecutionRequestAndReportOwn,
         "planning.propose" => PlanningPropose,
         "planning.edit_draft" => PlanningEditDraft,
         "planning.approve" => PlanningApprove,
@@ -393,9 +393,10 @@ pub(crate) enum CommandAuthPhase {
 pub(crate) fn command_authority(op: &str) -> Option<DomainAuthority> {
     Some(match op {
         "session.checkpoint" | "session.end" | "claim.release" | "execution.cancel"
-        | "execution.report" => DomainAuthority::WritePreserve,
+        | "execution.report" | "handoff.reject" | "handoff.cancel" | "handoff.timeout"
+        | "handoff.inspect" => DomainAuthority::WritePreserve,
         "session.start" | "claim.acquire" | "claim.renew" | "execution.prepare"
-        | "execution.start" => DomainAuthority::WriteActive,
+        | "execution.start" | "handoff.propose" | "handoff.accept" => DomainAuthority::WriteActive,
         "execution.attest" => DomainAuthority::Attest,
         "execution.reconcile" => DomainAuthority::Reconcile,
         _ => return None,

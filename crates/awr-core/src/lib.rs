@@ -59,6 +59,8 @@ mod responsibility;
 pub use responsibility::*;
 mod agent_authorization;
 pub use agent_authorization::*;
+mod team_handoff;
+pub use team_handoff::*;
 
 pub mod workstream_usage;
 

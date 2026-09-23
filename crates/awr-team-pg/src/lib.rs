@@ -23,6 +23,7 @@ mod review;
 mod runner;
 mod scoped_runner;
 mod source;
+mod team_handoff;
 mod tx;
 mod workstream_auth;
 mod workstream_command;
@@ -81,6 +82,7 @@ pub use source::{
     SOURCE_PROVENANCE_FILE, SoleSourceBinding, SoleSourceKind, SourceFile, SourceStore,
     WORKSTREAMS_FILE,
 };
+pub use team_handoff::HandoffStore;
 pub use tx::{CommandOutcome, CommandRequest, TeamStore};
 pub use workstream_auth::{
     command_business_action, map_membership_role, query_business_action, workstream_credential_hash,
@@ -103,6 +105,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 23);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 24);
     }
 }
