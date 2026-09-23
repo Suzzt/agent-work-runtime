@@ -39,9 +39,10 @@ pub use execution::{
     unknown_effect_retains_resources,
 };
 pub use graph::{
-    DependencyEdge, GraphStore, ResourceBound, ResourceDomain, ResourceLeaseBind, SplitProposal,
-    paths_conflict, require_main_scope, resource_domain, resources_conflict,
-    validate_required_graph, validate_resource_kind,
+    DependencyEdge, EdgeMutation, GraphStore, ResourceBound, ResourceDomain, ResourceLeaseBind,
+    SharedOutcomeRef, SplitProposal, necessary_dependencies_ready, paths_conflict,
+    reference_shared_outcome, require_main_scope, resource_domain, resources_conflict,
+    validate_cross_stream_graph, validate_required_graph, validate_resource_kind,
 };
 pub use import::{BackupRecord, FencingBarrier, ImportJob, ImportStore, InspectReport, RestoreRun};
 pub use lease::{ClaimRecord, LeaseStore, SessionRecord};

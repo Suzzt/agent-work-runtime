@@ -170,3 +170,15 @@ Two policies are explicit:
 Export authorizations are grant/revoke auditable. Cross-project dependencies are
 refused. Persist in SQLite (`012_delivery_deps`) and Team PG (schema 26) with
 tenant/project RLS matching the responsibility-table CR pattern.
+
+## Cross-stream dependency graph and atomic cycle checks (WS-031)
+
+Task edges form a same-project DAG across workstreams: `A1 → B1 → A2` is legal
+even though stream-level arrows return to A. Hard cycles return an explainable
+closed path (`A1 -> B1 -> A2 -> A1`). Concurrent graph mutations serialize on the
+project coordination lock, re-validate the complete required graph against
+authoritative contract ids, and refuse cyclic unions or dangling endpoints.
+Readiness requires every necessary dependency to be satisfied; shared outcomes
+are referenced by identity (and adopted via WS-030 credentials) rather than
+copied into each consumer stream.
+

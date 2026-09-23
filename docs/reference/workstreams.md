@@ -109,9 +109,11 @@ version of the contract.
 
 The Team source bundle can already represent and validate the acyclic
 `interface → sdk → integration` example across workstream ownership. This is
-source graph validation only. Delivery receipts and adoption credentials are persisted (WS-030); dispatch
-admission and selective invalidation remain separate integration work on the
-source path.
+source graph validation only. Delivery receipts and adoption credentials are persisted (WS-030). The runtime
+and Team graph APIs enforce acyclic cross-stream task DAGs with explainable hard
+cycle paths, atomic concurrent edge mutations, all-necessary-deps readiness, and
+shared outcome references (WS-031). Dispatch admission and selective invalidation
+remain separate integration work on the source path.
 
 ## Accounting and compatibility
 

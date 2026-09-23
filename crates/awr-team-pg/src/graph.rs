@@ -1,8 +1,12 @@
 use crate::error::{PgError, PgResult};
 use crate::tx::{bind_scope, new_id};
+use awr_core::{
+    WorkstreamCatalog, WorkstreamDependencyEdge, WorkstreamGraphError, WorkstreamWorkBinding,
+    validate_workstream_graph,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DependencyEdge {
@@ -217,7 +221,10 @@ pub fn validate_required_graph(nodes: &[String], edges: &[DependencyEdge]) -> Pg
             return Err(PgError::MissingDependency);
         }
         if edge.from == edge.to {
-            return Err(PgError::DependencyCycle);
+            return Err(PgError::DependencyCycle(vec![
+                edge.from.clone(),
+                edge.to.clone(),
+            ]));
         }
     }
     awr_core::validate_dependency_dag(
@@ -229,8 +236,89 @@ pub fn validate_required_graph(nodes: &[String], edges: &[DependencyEdge]) -> Pg
     )
     .map_err(|error| match error {
         awr_core::DependencyDagError::MissingEndpoint => PgError::MissingDependency,
-        awr_core::DependencyDagError::Cycle(_) => PgError::DependencyCycle,
+        awr_core::DependencyDagError::Cycle(path) => PgError::DependencyCycle(path),
     })
+}
+
+/// Cross-stream task DAG: A1→B1→A2 is legal; hard cycles return an explainable path.
+/// Reference (non-required) edges never form hard cycles or dangling refusals.
+pub fn validate_cross_stream_graph(
+    catalog: &WorkstreamCatalog,
+    work_ids: &[String],
+    ownership: &[WorkstreamWorkBinding],
+    edges: &[WorkstreamDependencyEdge],
+) -> PgResult<()> {
+    validate_workstream_graph(catalog, work_ids, ownership, edges).map_err(|error| match error {
+        WorkstreamGraphError::BudgetExceeded => PgError::GraphBudgetExceeded,
+        WorkstreamGraphError::InvalidOwnership | WorkstreamGraphError::InvalidRequiredEndpoint => {
+            PgError::MissingDependency
+        }
+        WorkstreamGraphError::Dependency(awr_core::DependencyDagError::MissingEndpoint) => {
+            PgError::MissingDependency
+        }
+        WorkstreamGraphError::Dependency(awr_core::DependencyDagError::Cycle(path)) => {
+            PgError::DependencyCycle(path)
+        }
+    })
+}
+
+/// Atomic graph edit under the project lock: upsert/remove edges against the
+/// committed snapshot, then re-check the complete required graph.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "snake_case")]
+pub enum EdgeMutation {
+    Upsert(DependencyEdge),
+    Remove {
+        from: String,
+        to: String,
+        relation: String,
+    },
+}
+
+/// Shared delivery outcome is identified once and referenced by consumers.
+/// Callers must not clone provider payload bytes into each consumer stream;
+/// WS-030 adoption credentials bind the same digests by reference.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SharedOutcomeRef {
+    pub provider_work_id: String,
+    pub artifact_sha256: String,
+    pub contract_sha256: String,
+}
+
+pub fn reference_shared_outcome(
+    provider_work_id: impl Into<String>,
+    artifact_sha256: impl Into<String>,
+    contract_sha256: impl Into<String>,
+) -> SharedOutcomeRef {
+    SharedOutcomeRef {
+        provider_work_id: provider_work_id.into(),
+        artifact_sha256: artifact_sha256.into(),
+        contract_sha256: contract_sha256.into(),
+    }
+}
+
+/// Ready only when every necessary (required) dependency id is satisfied.
+/// Partial satisfaction never unlocks execution.
+pub fn necessary_dependencies_ready(
+    required: impl IntoIterator<Item = impl AsRef<str>>,
+    satisfied: &BTreeSet<String>,
+) -> Result<(), Vec<String>> {
+    let missing: Vec<String> = required
+        .into_iter()
+        .map(|d| d.as_ref().to_string())
+        .filter(|d| !satisfied.contains(d))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(missing)
+    }
+}
+
+fn edge_key(edge: &DependencyEdge) -> (String, String, String) {
+    (edge.from.clone(), edge.to.clone(), edge.relation.clone())
 }
 
 /// Directional containment for scope authorization: `path` must be the
@@ -305,6 +393,8 @@ impl GraphStore {
         edges: &[DependencyEdge],
     ) -> PgResult<()> {
         require_main_scope(scope_id)?;
+        // Cheap pre-check before taking the project lock; rechecked under lock
+        // against authoritative contract ids so dangling phantoms cannot commit.
         validate_required_graph(nodes, edges)?;
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
@@ -313,31 +403,10 @@ impl GraphStore {
         // serialize on the project row, so the last writer replaces the
         // committed graph wholesale instead of merging (CR #40 P2-3).
         lock_project(&tx, tenant_id, project_id).await?;
-        tx.execute(
-            "DELETE FROM awr_team.dependency_edges
-             WHERE tenant_id=$1 AND project_id=$2 AND snapshot_id=$3 AND scope_id=$4",
-            &[&tenant_id, &project_id, &snapshot_id, &scope_id],
-        )
-        .await?;
-        for edge in edges {
-            tx.execute(
-                "INSERT INTO awr_team.dependency_edges(
-                    tenant_id, project_id, snapshot_id, scope_id, from_work_id, to_work_id,
-                    relation, required)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
-                &[
-                    &tenant_id,
-                    &project_id,
-                    &snapshot_id,
-                    &scope_id,
-                    &edge.from,
-                    &edge.to,
-                    &edge.relation,
-                    &edge.required,
-                ],
-            )
-            .await?;
-        }
+        let authoritative =
+            Self::load_contract_work_ids(&tx, tenant_id, project_id, snapshot_id, scope_id).await?;
+        validate_required_graph(&authoritative, edges)?;
+        Self::write_edges(&tx, tenant_id, project_id, snapshot_id, scope_id, edges).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -766,6 +835,156 @@ impl GraphStore {
         Ok(())
     }
 
+    /// Load committed edges for one snapshot/scope (caller holds the project lock).
+    async fn load_edges(
+        tx: &tokio_postgres::Transaction<'_>,
+        tenant_id: &str,
+        project_id: &str,
+        snapshot_id: &str,
+        scope_id: &str,
+    ) -> PgResult<Vec<DependencyEdge>> {
+        let rows = tx
+            .query(
+                "SELECT from_work_id, to_work_id, relation, required
+                 FROM awr_team.dependency_edges
+                 WHERE tenant_id=$1 AND project_id=$2 AND snapshot_id=$3 AND scope_id=$4
+                 ORDER BY from_work_id, to_work_id, relation",
+                &[&tenant_id, &project_id, &snapshot_id, &scope_id],
+            )
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| DependencyEdge {
+                from: row.get(0),
+                to: row.get(1),
+                relation: row.get(2),
+                required: row.get(3),
+            })
+            .collect())
+    }
+
+    async fn load_contract_work_ids(
+        tx: &tokio_postgres::Transaction<'_>,
+        tenant_id: &str,
+        project_id: &str,
+        snapshot_id: &str,
+        scope_id: &str,
+    ) -> PgResult<Vec<String>> {
+        let rows = tx
+            .query(
+                "SELECT work_id FROM awr_team.work_contracts
+                 WHERE tenant_id=$1 AND project_id=$2 AND snapshot_id=$3 AND scope_id=$4
+                 ORDER BY work_id",
+                &[&tenant_id, &project_id, &snapshot_id, &scope_id],
+            )
+            .await?;
+        Ok(rows.into_iter().map(|row| row.get(0)).collect())
+    }
+
+    async fn write_edges(
+        tx: &tokio_postgres::Transaction<'_>,
+        tenant_id: &str,
+        project_id: &str,
+        snapshot_id: &str,
+        scope_id: &str,
+        edges: &[DependencyEdge],
+    ) -> PgResult<()> {
+        tx.execute(
+            "DELETE FROM awr_team.dependency_edges
+             WHERE tenant_id=$1 AND project_id=$2 AND snapshot_id=$3 AND scope_id=$4",
+            &[&tenant_id, &project_id, &snapshot_id, &scope_id],
+        )
+        .await?;
+        for edge in edges {
+            tx.execute(
+                "INSERT INTO awr_team.dependency_edges(
+                    tenant_id, project_id, snapshot_id, scope_id, from_work_id, to_work_id,
+                    relation, required)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+                &[
+                    &tenant_id,
+                    &project_id,
+                    &snapshot_id,
+                    &scope_id,
+                    &edge.from,
+                    &edge.to,
+                    &edge.relation,
+                    &edge.required,
+                ],
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// Atomically check+apply edge mutations against the committed graph.
+    /// Concurrent writers serialize on the project row so a cyclic union or a
+    /// dangling endpoint cannot commit. Returns the resulting edge set.
+    pub async fn apply_edge_mutations(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        snapshot_id: &str,
+        scope_id: &str,
+        mutations: &[EdgeMutation],
+    ) -> PgResult<Vec<DependencyEdge>> {
+        require_main_scope(scope_id)?;
+        let mut client = self.connect().await?;
+        let tx = client.transaction().await?;
+        bind_scope(&tx, tenant_id, project_id).await?;
+        lock_project(&tx, tenant_id, project_id).await?;
+        let nodes =
+            Self::load_contract_work_ids(&tx, tenant_id, project_id, snapshot_id, scope_id).await?;
+        let mut by_key: BTreeMap<(String, String, String), DependencyEdge> =
+            Self::load_edges(&tx, tenant_id, project_id, snapshot_id, scope_id)
+                .await?
+                .into_iter()
+                .map(|edge| (edge_key(&edge), edge))
+                .collect();
+        for mutation in mutations {
+            match mutation {
+                EdgeMutation::Upsert(edge) => {
+                    by_key.insert(edge_key(edge), edge.clone());
+                }
+                EdgeMutation::Remove { from, to, relation } => {
+                    by_key.remove(&(from.clone(), to.clone(), relation.clone()));
+                }
+            }
+        }
+        let edges: Vec<_> = by_key.into_values().collect();
+        // Re-validate the complete candidate under the same lock before write.
+        validate_required_graph(&nodes, &edges)?;
+        Self::write_edges(&tx, tenant_id, project_id, snapshot_id, scope_id, &edges).await?;
+        tx.commit().await?;
+        Ok(edges)
+    }
+
+    /// Necessary-deps readiness for one work: every required outbound edge must
+    /// resolve to a satisfied dependency id (completed local work or an adopted
+    /// WS-030 provider). Partial sets never report ready.
+    pub async fn work_necessary_deps_ready(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        snapshot_id: &str,
+        scope_id: &str,
+        work_id: &str,
+        satisfied: &BTreeSet<String>,
+    ) -> PgResult<Result<(), Vec<String>>> {
+        require_main_scope(scope_id)?;
+        let mut client = self.connect().await?;
+        let tx = client.transaction().await?;
+        bind_scope(&tx, tenant_id, project_id).await?;
+        let edges = Self::load_edges(&tx, tenant_id, project_id, snapshot_id, scope_id).await?;
+        tx.commit().await?;
+        let required: Vec<_> = edges
+            .into_iter()
+            .filter(|e| e.required && e.from == work_id)
+            .map(|e| e.to)
+            .collect();
+        Ok(necessary_dependencies_ready(required, satisfied))
+    }
+
     pub async fn graph_within_budget(
         &self,
         edges: &[DependencyEdge],
@@ -805,7 +1024,7 @@ mod tests {
         );
         assert!(matches!(
             validate_required_graph(&nodes, &[edge("a", "a", true), edge("a", "missing", true)]),
-            Err(PgError::DependencyCycle)
+            Err(PgError::DependencyCycle(_))
         ));
         assert!(matches!(
             validate_required_graph(&nodes, &[edge("a", "missing", true), edge("a", "a", true)]),
@@ -949,10 +1168,14 @@ mod tests {
                 required: true,
             },
         ];
-        assert!(matches!(
-            validate_required_graph(&nodes, &cycle),
-            Err(PgError::DependencyCycle)
-        ));
+        let err = validate_required_graph(&nodes, &cycle).unwrap_err();
+        match err {
+            PgError::DependencyCycle(path) => {
+                assert_eq!(path.first(), path.last());
+                assert!(path.len() >= 3, "explainable closed path: {path:?}");
+            }
+            other => panic!("expected cycle path, got {other}"),
+        }
         let missing = vec![DependencyEdge {
             from: "a".into(),
             to: "z".into(),
@@ -965,6 +1188,76 @@ mod tests {
         ));
         assert!(require_main_scope("feature").is_err());
         assert!(require_main_scope("main").is_ok());
+    }
+
+    #[test]
+    fn cross_stream_chain_is_acyclic_and_hard_cycle_returns_path() {
+        let catalog = WorkstreamCatalog {
+            version: awr_core::WORKSTREAM_CATALOG_VERSION,
+            project_id: "project".into(),
+            legacy_default: None,
+            workstreams: [1, 2]
+                .into_iter()
+                .map(|n| awr_core::Workstream {
+                    id: awr_core::Id::from(n),
+                    project_id: "project".into(),
+                    external_key: format!("s{n}"),
+                    title: format!("stream {n}"),
+                    state: awr_core::WorkstreamState::Active,
+                    authority_version: 1,
+                    goal_keys: vec![],
+                    acceptance_contracts: vec![],
+                })
+                .collect(),
+        };
+        let ownership: Vec<_> = [("A1", 1), ("B1", 2), ("A2", 1)]
+            .into_iter()
+            .map(|(id, stream)| WorkstreamWorkBinding {
+                project_id: "project".into(),
+                workstream_id: awr_core::Id::from(stream),
+                work_item_id: id.into(),
+            })
+            .collect();
+        let ids: Vec<_> = ownership.iter().map(|b| b.work_item_id.clone()).collect();
+        let edge = |from: usize, to: usize, required| WorkstreamDependencyEdge {
+            from: ownership[from].clone(),
+            to: ownership[to].clone(),
+            required,
+        };
+        let ok = vec![edge(0, 1, true), edge(1, 2, true)];
+        assert!(validate_cross_stream_graph(&catalog, &ids, &ownership, &ok).is_ok());
+        let cyclic = vec![edge(0, 1, true), edge(1, 2, true), edge(2, 0, true)];
+        let err = validate_cross_stream_graph(&catalog, &ids, &ownership, &cyclic).unwrap_err();
+        match err {
+            PgError::DependencyCycle(path) => {
+                assert_eq!(
+                    path,
+                    vec![
+                        "A1".to_string(),
+                        "B1".to_string(),
+                        "A2".to_string(),
+                        "A1".to_string()
+                    ]
+                );
+            }
+            other => panic!("expected explainable path, got {other}"),
+        }
+    }
+
+    #[test]
+    fn necessary_deps_require_complete_satisfaction_and_shared_outcomes_are_refs() {
+        let satisfied = BTreeSet::from(["B1".into()]);
+        assert_eq!(
+            necessary_dependencies_ready(["B1", "C1"], &satisfied),
+            Err(vec!["C1".to_string()])
+        );
+        let both = BTreeSet::from(["B1".into(), "C1".into()]);
+        assert_eq!(necessary_dependencies_ready(["B1", "C1"], &both), Ok(()));
+        let a = reference_shared_outcome("A1", "art", "contract");
+        let b = reference_shared_outcome("A1", "art", "contract");
+        let c = reference_shared_outcome("A1", "art-other", "contract");
+        assert_eq!(a, b, "consumers share one outcome identity");
+        assert_ne!(a, c);
     }
 
     #[test]

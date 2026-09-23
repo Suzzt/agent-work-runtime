@@ -1,4 +1,7 @@
 //! Source graph inspection and whole-candidate validation. No executors live here.
+//! WS-031: cross-stream task DAGs (A→B→later A) stay acyclic; hard cycles return
+//! an explainable path. Necessary dependencies must all be satisfied before ready;
+//! shared outcomes are referenced once, not copied per consumer stream.
 use awr_core::*;
 use awr_source::{
     ParseContext, SourceSnapshot, fingerprint, inspect_registered_source, source_adapter,
@@ -305,9 +308,118 @@ pub fn work_graph(store: &Store, root: &Path, request: &WorkGraphRequest) -> Res
     )
 }
 
+/// Shared delivery outcome identity. Consumers hold the same ref; payload bytes
+/// are not copied into each stream (pair with WS-030 adoption credentials).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SharedOutcomeRef {
+    pub provider_work_key: String,
+    pub artifact_sha256: String,
+    pub contract_sha256: String,
+}
+
+pub fn reference_shared_outcome(
+    provider_work_key: impl Into<String>,
+    artifact_sha256: impl Into<String>,
+    contract_sha256: impl Into<String>,
+) -> SharedOutcomeRef {
+    SharedOutcomeRef {
+        provider_work_key: provider_work_key.into(),
+        artifact_sha256: artifact_sha256.into(),
+        contract_sha256: contract_sha256.into(),
+    }
+}
+
+/// Deduplicate shared work keys so a graph projection never materializes the
+/// same provider outcome twice for multiple consumer streams.
+pub fn unique_shared_work_keys(keys: impl IntoIterator<Item = impl Into<String>>) -> Vec<String> {
+    keys.into_iter()
+        .map(|k| k.into())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+/// Ready only when every necessary dependency is in `satisfied` (completed local
+/// work and/or WS-030 adoption-unlocked providers).
+pub fn necessary_dependencies_ready(
+    required: impl IntoIterator<Item = impl AsRef<str>>,
+    satisfied: &BTreeSet<String>,
+) -> std::result::Result<(), Vec<String>> {
+    let missing: Vec<String> = required
+        .into_iter()
+        .map(|d| d.as_ref().to_string())
+        .filter(|d| !satisfied.contains(d))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(missing)
+    }
+}
+
+/// Validate a complete same-project workstream graph. Cross-stream chains such as
+/// A1→B1→A2 are accepted; hard cycles return `DependencyBlocked` with the path.
+pub fn validate_cross_stream_work_graph(
+    catalog: &WorkstreamCatalog,
+    work_ids: &[String],
+    ownership: &[WorkstreamWorkBinding],
+    edges: &[WorkstreamDependencyEdge],
+) -> Result<()> {
+    validate_workstream_graph(catalog, work_ids, ownership, edges).map_err(|error| match error {
+        WorkstreamGraphError::Dependency(DependencyDagError::Cycle(path)) => {
+            Error::DependencyBlocked(format!("required dependency cycle: {}", path.join(" -> ")))
+        }
+        WorkstreamGraphError::Dependency(DependencyDagError::MissingEndpoint)
+        | WorkstreamGraphError::InvalidRequiredEndpoint => {
+            Error::DependencyBlocked("required dependency endpoint is missing".into())
+        }
+        WorkstreamGraphError::InvalidOwnership => {
+            Error::InvalidInput("invalid workstream ownership for graph validation".into())
+        }
+        WorkstreamGraphError::BudgetExceeded => Error::BudgetExceeded {
+            required: work_ids.len().max(edges.len()),
+            budget: MAX_WORKSTREAM_GRAPH_NODES,
+        },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn cross_stream_fixture() -> (WorkstreamCatalog, Vec<String>, Vec<WorkstreamWorkBinding>) {
+        let catalog = WorkstreamCatalog {
+            version: WORKSTREAM_CATALOG_VERSION,
+            project_id: "project".into(),
+            legacy_default: None,
+            workstreams: [1, 2]
+                .into_iter()
+                .map(|n| Workstream {
+                    id: Id::from(n),
+                    project_id: "project".into(),
+                    external_key: format!("s{n}"),
+                    title: format!("stream {n}"),
+                    state: WorkstreamState::Active,
+                    authority_version: 1,
+                    goal_keys: vec![],
+                    acceptance_contracts: vec![],
+                })
+                .collect(),
+        };
+        let ownership: Vec<_> = [("A1", 1), ("B1", 2), ("A2", 1)]
+            .into_iter()
+            .map(|(id, stream)| WorkstreamWorkBinding {
+                project_id: "project".into(),
+                workstream_id: Id::from(stream),
+                work_item_id: id.into(),
+            })
+            .collect();
+        let ids = ownership.iter().map(|b| b.work_item_id.clone()).collect();
+        (catalog, ids, ownership)
+    }
+
     #[test]
     fn cycle_reports_only_a_real_cycle_and_handles_a_long_chain() {
         let mut links: Links = (0..5000)
@@ -327,5 +439,59 @@ mod tests {
         let found = cycle(&links);
         assert_eq!(found.len(), 3);
         assert_eq!(found.first(), found.last());
+    }
+
+    #[test]
+    fn cross_stream_a_to_b_to_later_a_is_acyclic_and_hard_cycle_explains_path() {
+        let (catalog, ids, own) = cross_stream_fixture();
+        let edge = |from: usize, to: usize, required| WorkstreamDependencyEdge {
+            from: own[from].clone(),
+            to: own[to].clone(),
+            required,
+        };
+        assert!(
+            validate_cross_stream_work_graph(
+                &catalog,
+                &ids,
+                &own,
+                &[edge(0, 1, true), edge(1, 2, true)]
+            )
+            .is_ok()
+        );
+        let err = validate_cross_stream_work_graph(
+            &catalog,
+            &ids,
+            &own,
+            &[edge(0, 1, true), edge(1, 2, true), edge(2, 0, true)],
+        )
+        .unwrap_err();
+        match err {
+            Error::DependencyBlocked(message) => {
+                assert!(
+                    message.contains("A1 -> B1 -> A2 -> A1"),
+                    "explainable path missing: {message}"
+                );
+            }
+            other => panic!("unexpected {other}"),
+        }
+    }
+
+    #[test]
+    fn readiness_needs_all_necessary_deps_and_shared_outcomes_are_not_copied() {
+        let satisfied = BTreeSet::from(["B1".into()]);
+        assert_eq!(
+            necessary_dependencies_ready(["B1", "C1"], &satisfied),
+            Err(vec!["C1".into()])
+        );
+        let all = BTreeSet::from(["B1".into(), "C1".into()]);
+        assert_eq!(necessary_dependencies_ready(["B1", "C1"], &all), Ok(()));
+        let keys = unique_shared_work_keys(["A1", "B1", "A1", "A2"]);
+        assert_eq!(
+            keys,
+            vec!["A1".to_string(), "A2".to_string(), "B1".to_string()]
+        );
+        let left = reference_shared_outcome("A1", "art", "contract");
+        let right = reference_shared_outcome("A1", "art", "contract");
+        assert_eq!(left, right);
     }
 }

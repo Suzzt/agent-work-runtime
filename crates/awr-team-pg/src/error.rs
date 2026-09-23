@@ -50,8 +50,9 @@ pub enum PgError {
     Forbidden,
     #[error("stale fence")]
     StaleFence,
-    #[error("dependency cycle")]
-    DependencyCycle,
+    /// Directed closed path (first == last) explaining the hard cycle.
+    #[error("dependency cycle: {}", .0.join(" -> "))]
+    DependencyCycle(Vec<String>),
     #[error("missing required dependency")]
     MissingDependency,
     #[error("resource conflict")]
