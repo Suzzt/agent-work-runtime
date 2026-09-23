@@ -68,6 +68,14 @@ pub use execution::{
     inspect_work_executions, isolation_basis, refuse_unverified_strong_isolation,
     render_execution_observations,
 };
+pub mod host_adapter;
+pub use host_adapter::{
+    AdapterActionOutcome, AdapterForensics, AdapterRegistry, AdapterStatus, ClaudeCodeAdapter,
+    CodexCliAdapter, ExecutionHostAdapter, L0ManualAdapter, NativeExecutionHandle,
+    ParallelDispatchPlan, ParallelScheduler, ParentExitEffect, PauseGate, ReconnectRetry,
+    ScheduleDecision, SubtaskRecord, SubtaskState, built_in_registry,
+    refuse_coordination_as_process_control, rollup_refs,
+};
 pub use management::{AssessManagementRequest, ManageWorkRequest, assess_management, manage_work};
 pub use mutation::{
     CreateProposalRequest, ProposalReport, ReviewProposalAction, ReviewProposalRequest,

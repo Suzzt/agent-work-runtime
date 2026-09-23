@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "parent_session_id": "parent-sess-fixture",
+  "concurrency_cap": 2,
+  "children": [
+    {
+      "work_id": "WS024-A",
+      "claim_id": "claim-a",
+      "child_session_id": "child-a",
+      "agent_label": "codex-a",
+      "depends_on": [],
+      "resource_bounds": [
+        { "kind": "workspace", "key": "wt/a", "worktree_id": "a" }
+      ]
+    },
+    {
+      "work_id": "WS024-B",
+      "claim_id": "claim-b",
+      "child_session_id": "child-b",
+      "agent_label": "claude-b",
+      "depends_on": [],
+      "resource_bounds": [
+        { "kind": "workspace", "key": "wt/b", "worktree_id": "b" }
+      ]
+    },
+    {
+      "work_id": "WS024-C",
+      "claim_id": "claim-c",
+      "child_session_id": "child-c",
+      "agent_label": "codex-c",
+      "depends_on": ["WS024-A", "WS024-B"],
+      "resource_bounds": [
+        { "kind": "workspace", "key": "wt/c", "worktree_id": "c" }
+      ]
+    }
+  ],
+  "expected_first_plan": {
+    "start": ["WS024-A", "WS024-B"],
+    "wait_dependencies": ["WS024-C"]
+  }
+}

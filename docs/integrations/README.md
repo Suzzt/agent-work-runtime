@@ -67,6 +67,8 @@ events unreadable by older binaries; the namespaced ID avoids that. Use
 | Grok Build | L1 | [Grok note](grok.md) | Project MCP add, native `--continue` / `--resume`, dated check |
 | Kimi Code | L1 | [Kimi note](kimi.md) | `.kimi-code/mcp.json`, native session flags, dated check |
 | Codex | L2 | [Codex adapter](codex.md) | `.codex` MCP merge, `client install` hooks, AGENTS snippet |
+| Named adapters (WS-024) | controlled | [Named agent host](named-agent-host.md) | Capability negotiation, L0 report, Codex + Claude Code, subtask parallelism |
+| Claude Code (WS-024) | named | [Claude Code adapter](claude-code-agent.md) | Status/reconnect/forensics; not auto-startable |
 | Cursor | L1 | [Cursor note](cursor.md) | `.cursor/mcp.json`, `type: stdio`, source-built grouped MCP, Cloud Agent HTTPS |
 | Claude Code, Windsurf, … | L0 | [Session workflow](session-workflow.md) | None needed: `--client generic` with a `host:`-prefixed conversation ID |
 

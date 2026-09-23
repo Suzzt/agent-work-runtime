@@ -9,6 +9,8 @@ mod completion;
 mod error;
 mod event_payload;
 mod execution;
+mod execution_adapter;
+pub use execution_adapter::*;
 mod management;
 mod model;
 pub use management::*;

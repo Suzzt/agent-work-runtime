@@ -392,6 +392,27 @@ requirement when source files differ from the stored projection.
 
 
 
+
+
+## Named agent host adapters and subtask parallelism (WS-024)
+
+Execution adapters negotiate capabilities (`start`, `status_read`,
+`stop_confirmation`, `reconnect_resume`, `result_forensics`) separately from AWR
+admission, cancel and session end. L0 manual/`ExternalExecutionReport` remains
+first-class. Built-in named clients: `codex_cli` (auto-startable) and
+`claude_code` (not auto-startable). Unsupported capabilities return a human
+continuation path.
+
+Independent child tasks under a parent keep task identity, own claims and
+resource bounds; dependencies order starts while independent work may run in
+parallel under an explicit concurrency cap and user pause. Parent rollup
+references child outcomes without copying artifacts. Parent session exit does
+not auto-complete or release unknown children. Reconnect/retry queries the
+original execution before any new start.
+
+See [named agent host](../integrations/named-agent-host.md) and
+`tests/fixtures/workstreams/named-agent-host/awr-workstream-isolation-v1.json`.
+
 ## Team publish preparation (AWR-TMCP-020)
 
 First-round Team publish preparation maps a server-held YAML workstream ledger
