@@ -132,6 +132,9 @@ impl ProjectService {
             if name == "awr_team_handoff" {
                 return crate::team_handoff::handle(Value::Object(args));
             }
+            if name == "awr_team_review" {
+                return crate::team_review::handle(Value::Object(args));
+            }
             if name == "awr_workstream" {
                 return crate::workstreams::call(&self.root, id, access, args);
             }

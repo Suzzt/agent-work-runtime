@@ -297,11 +297,9 @@ impl ReviewStore {
         if state != "open" {
             return Err(PgError::ReviewRequired);
         }
-        if reviewer_actor_id == author {
-            return Err(PgError::AuthorCannotReview);
-        }
         // Reviewer: real, active, approval-capable member (status +
-        // membership role), and not an agent (CR #42 P2-5).
+        // membership role), and not an agent (CR #42 P2-5). Independence is
+        // judged by responsible person, not by a second agent of the same human.
         let reviewer_kind: String = tx
             .query_opt(
                 "SELECT kind FROM awr_team.actors WHERE tenant_id=$1 AND id=$2",
@@ -314,6 +312,33 @@ impl ReviewStore {
             return Err(PgError::AuthorCannotReview);
         }
         crate::tx::validate_reviewer(&tx, tenant_id, project_id, reviewer_actor_id).await?;
+        // Unbound legacy agents compare by actor id; humans/agents with
+        // bindings compare by responsible person (WS-018).
+        let author_person = match resolve_person_id(&tx, tenant_id, project_id, &author).await {
+            Ok(person) => person,
+            Err(_) => author.clone(),
+        };
+        let reviewer_person =
+            resolve_person_id(&tx, tenant_id, project_id, reviewer_actor_id).await?;
+        let same_person = author_person == reviewer_person || reviewer_actor_id == author;
+        let contract = current_contract(&tx, tenant_id, project_id, "main", &work_id).await?;
+        let policy = contract
+            .get("completion_policy")
+            .and_then(Value::as_str)
+            .unwrap_or("trusted_execution_and_review");
+        let independence_kind = if same_person {
+            if decision == "approve" && !self_review_permitted(policy) {
+                return Err(PgError::AuthorCannotReview);
+            }
+            if decision == "approve" {
+                "personal_self_review"
+            } else {
+                // Reject/return by the authoring person is still a personal action.
+                "personal_self_review"
+            }
+        } else {
+            "team_independent"
+        };
         let next = if decision == "approve" {
             "approved"
         } else {
@@ -322,8 +347,8 @@ impl ReviewStore {
         tx.execute(
             "INSERT INTO awr_team.review_decisions(
                 tenant_id, project_id, id, review_round_id, work_id, bundle_hash,
-                reviewer_actor_id, decision, reason)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+                reviewer_actor_id, decision, reason, reviewer_person_id, independence_kind)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
             &[
                 &tenant_id,
                 &project_id,
@@ -334,6 +359,8 @@ impl ReviewStore {
                 &reviewer_actor_id,
                 &decision,
                 &reason,
+                &reviewer_person,
+                &independence_kind,
             ],
         )
         .await?;
@@ -350,7 +377,15 @@ impl ReviewStore {
             reviewer_actor_id,
             &work_id,
             "review.decided",
-            json!({"round_id": round_id, "decision": decision}),
+            json!({
+                "round_id": round_id,
+                "decision": decision,
+                "independence_kind": independence_kind,
+                "reviewer_person_id": reviewer_person,
+                "author_person_id": author_person,
+                "team_independent_acceptance": independence_kind == "team_independent"
+                    && decision == "approve",
+            }),
         )
         .await?;
         tx.commit().await?;
@@ -1069,6 +1104,54 @@ async fn current_review(
             })
         }
     }
+}
+
+/// Resolve the responsible person for an actor.
+/// Humans map to a persons row with the same id (created if needed).
+/// Agents require an active person_agent_bindings row — another agent of the
+/// same person is still that person (WS-018 independence).
+pub(crate) async fn resolve_person_id(
+    tx: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    project_id: &str,
+    actor_id: &str,
+) -> PgResult<String> {
+    let kind: String = tx
+        .query_opt(
+            "SELECT kind FROM awr_team.actors WHERE tenant_id=$1 AND id=$2",
+            &[&tenant_id, &actor_id],
+        )
+        .await?
+        .map(|r| r.get(0))
+        .ok_or(PgError::Forbidden)?;
+    if let Some(row) = tx
+        .query_opt(
+            "SELECT person_id FROM awr_team.person_agent_bindings
+             WHERE tenant_id=$1 AND project_id=$2 AND agent_id=$3 AND status='active'",
+            &[&tenant_id, &project_id, &actor_id],
+        )
+        .await?
+    {
+        return Ok(row.get(0));
+    }
+    if kind == "human" {
+        tx.execute(
+            "INSERT INTO awr_team.persons(tenant_id,project_id,id,display_name,status)
+             VALUES ($1,$2,$3,$3,'active')
+             ON CONFLICT (tenant_id, project_id, id) DO NOTHING",
+            &[&tenant_id, &project_id, &actor_id],
+        )
+        .await?;
+        return Ok(actor_id.to_owned());
+    }
+    Err(PgError::Forbidden)
+}
+
+pub(crate) fn self_review_permitted(completion_policy: &str) -> bool {
+    matches!(
+        completion_policy,
+        "trusted_execution_and_author_self_review"
+    )
 }
 
 async fn invalidate_open_rounds(

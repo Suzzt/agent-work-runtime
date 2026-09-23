@@ -519,16 +519,18 @@ async fn official_sdk_clients_discover_and_call_the_same_http_endpoint() {
             .unwrap()
             .unwrap();
         // Default hierarchical exposure advertises project discovery, the
-        // workstream tool, and confirmed handoff. Flat child names remain
-        // callable for integrated hosts.
+        // workstream tool, confirmed handoff, and review-rule explanation.
+        // Flat child names remain callable for integrated hosts.
         let tools = client.list_all_tools().await.unwrap();
-        assert_eq!(tools.len(), awr_mcp::domains::DOMAINS.len() + 3);
+        assert_eq!(tools.len(), awr_mcp::domains::DOMAINS.len() + 4);
         assert!(tools.iter().any(|tool| tool.name == "awr_projects_list"));
         assert!(tools.iter().any(|tool| tool.name == "awr_team_handoff"));
+        assert!(tools.iter().any(|tool| tool.name == "awr_team_review"));
         assert!(tools.iter().all(|tool| {
             tool.name == "awr_projects_list"
                 || tool.name == "awr_workstream"
                 || tool.name == "awr_team_handoff"
+                || tool.name == "awr_team_review"
                 || awr_mcp::domains::is_public_domain(&tool.name)
         }));
         let manifest = client
