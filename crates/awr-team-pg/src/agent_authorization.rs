@@ -1,6 +1,6 @@
 //! Team PG persistence for agent authorizations (WS-016).
 use crate::error::{PgError, PgResult};
-use crate::tx::new_id;
+use crate::tx::{bind_workstream_scope, new_id};
 use awr_core::{
     AgentAuthorization, AuthorizationStatus, ClaimEligibilityExplanation, ClaimEvaluationInput,
     DelegateAuthorizationRequest, ExecutionSubjectKind, IssueAuthorizationRequest, PersonId,
@@ -71,18 +71,22 @@ impl AuthorizationStore {
         project: &str,
         authorization_id: &str,
     ) -> PgResult<Option<AgentAuthorization>> {
-        let client = self.connect().await?;
-        let row = client
+        let mut client = self.connect().await?;
+        let tx = client.transaction().await?;
+        bind_workstream_scope(&tx, tenant, project).await?;
+        let row = tx
             .query_opt(
                 "SELECT body_json FROM awr_team.agent_authorizations
                  WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
                 &[&tenant, &project, &authorization_id],
             )
             .await?;
-        match row {
-            None => Ok(None),
-            Some(row) => decode_body(row),
-        }
+        let found = match row {
+            None => None,
+            Some(row) => decode_body(row)?,
+        };
+        tx.commit().await?;
+        Ok(found)
     }
 
     pub async fn list(
@@ -93,8 +97,10 @@ impl AuthorizationStore {
         subject_id: Option<&str>,
         active_only: bool,
     ) -> PgResult<Vec<AgentAuthorization>> {
-        let client = self.connect().await?;
-        let rows = client
+        let mut client = self.connect().await?;
+        let tx = client.transaction().await?;
+        bind_workstream_scope(&tx, tenant, project).await?;
+        let rows = tx
             .query(
                 "SELECT body_json, responsible_person_id, subject_id, status
                  FROM awr_team.agent_authorizations
@@ -127,6 +133,7 @@ impl AuthorizationStore {
                     .map_err(|e| PgError::Protocol(format!("corrupt agent authorization: {e}")))?,
             );
         }
+        tx.commit().await?;
         Ok(out)
     }
 
@@ -139,7 +146,11 @@ impl AuthorizationStore {
         validate_issue(req).map_err(map_core)?;
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
+        bind_workstream_scope(&tx, tenant, project).await?;
         if let Some(receipt) = load_receipt_tx(&tx, tenant, project, &req.request_key).await? {
+            if receipt.op != "issue" || receipt.authorization_id != req.authorization.id {
+                return Err(PgError::IdempotencyConflict);
+            }
             let auth = load_auth_tx(&tx, tenant, project, &receipt.authorization_id)
                 .await?
                 .ok_or_else(|| PgError::Protocol("authorization missing for receipt".into()))?;
@@ -193,7 +204,11 @@ impl AuthorizationStore {
     ) -> PgResult<(AgentAuthorization, AuthorizationReceipt)> {
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
+        bind_workstream_scope(&tx, tenant, project).await?;
         if let Some(receipt) = load_receipt_tx(&tx, tenant, project, &req.request_key).await? {
+            if receipt.op != "revoke" || receipt.authorization_id != req.authorization_id {
+                return Err(PgError::IdempotencyConflict);
+            }
             let auth = load_auth_tx(&tx, tenant, project, &receipt.authorization_id)
                 .await?
                 .ok_or_else(|| PgError::Protocol("authorization missing for receipt".into()))?;
@@ -244,7 +259,11 @@ impl AuthorizationStore {
     ) -> PgResult<(AgentAuthorization, AuthorizationReceipt)> {
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
+        bind_workstream_scope(&tx, tenant, project).await?;
         if let Some(receipt) = load_receipt_tx(&tx, tenant, project, &req.request_key).await? {
+            if receipt.op != "delegate" || receipt.authorization_id != req.child.id {
+                return Err(PgError::IdempotencyConflict);
+            }
             let auth = load_auth_tx(&tx, tenant, project, &receipt.authorization_id)
                 .await?
                 .ok_or_else(|| PgError::Protocol("authorization missing for receipt".into()))?;

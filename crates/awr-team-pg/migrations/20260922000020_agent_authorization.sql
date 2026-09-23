@@ -45,6 +45,24 @@ CREATE TABLE awr_team.agent_authorization_receipts (
     PRIMARY KEY (tenant_id, project_id, request_key)
 );
 
+-- Tenant/project isolation. FORCE so a NOSUPERUSER NOBYPASSRLS app role cannot
+-- read another tenant's grants by omitting the WHERE clause.
+DO $$
+DECLARE t TEXT;
+BEGIN
+    FOREACH t IN ARRAY ARRAY['agent_authorizations', 'agent_authorization_receipts']
+    LOOP
+        EXECUTE format('ALTER TABLE awr_team.%I ENABLE ROW LEVEL SECURITY', t);
+        EXECUTE format('ALTER TABLE awr_team.%I FORCE ROW LEVEL SECURITY', t);
+        EXECUTE format(
+            'CREATE POLICY %I_isolation ON awr_team.%I
+             USING (tenant_id = current_setting(''awr.tenant_id'', true)
+                AND project_id = current_setting(''awr.project_id'', true))
+             WITH CHECK (tenant_id = current_setting(''awr.tenant_id'', true)
+                AND project_id = current_setting(''awr.project_id'', true))', t, t);
+    END LOOP;
+END $$;
+
 UPDATE awr_team.schema_state SET version=20 WHERE component='awr_team';
 
 COMMIT;
