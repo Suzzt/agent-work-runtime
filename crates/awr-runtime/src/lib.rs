@@ -22,6 +22,7 @@ pub use document::{
 pub use host_save::{
     HostChange, HostSaveReport, HostSaveRequest, host_preview, host_recover, host_save, host_status,
 };
+mod agent_authorization;
 mod execution;
 mod fs_sync;
 mod management;

@@ -61,11 +61,12 @@ pub use work::{ScopedDependencyGraph, UnavailableDependency};
 
 const APPLICATION_ID: i64 = 0x41575231;
 /// Schema written by this build. Exposed for offline host compatibility negotiation.
-pub const SCHEMA_VERSION: i64 = 9;
+pub const SCHEMA_VERSION: i64 = 10;
 const CONTENT_REVIEWS_SQL: &str = include_str!("../migrations/007_content_reviews.sql");
 const RESPONSIBILITY_SQL: &str = include_str!("../migrations/008_responsibility.sql");
 const OPERATION_READSET_RECEIPTS_SQL: &str =
     include_str!("../migrations/009_operation_readset_receipts.sql");
+const AGENT_AUTHORIZATION_SQL: &str = include_str!("../migrations/010_agent_authorization.sql");
 const CATALOG_SQL: &str = include_str!("../migrations/001_catalog.sql");
 const DOMAIN_SQL: &str = include_str!("../migrations/002_domain.sql");
 const SEARCH_SQL: &str = include_str!("../migrations/003_search.sql");
@@ -445,6 +446,11 @@ impl Store {
                 )
                 .map_err(db_error)?;
             }
+            if version < 10 {
+                tx.execute_batch(AGENT_AUTHORIZATION_SQL)
+                    .map_err(db_error)?;
+                tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(10,'agent_authorization',?1)",[now_millis()?]).map_err(db_error)?;
+            }
             tx.pragma_update(None, "user_version", SCHEMA_VERSION)
                 .map_err(db_error)?;
             schema::verify(&tx, SCHEMA_VERSION)?;
@@ -619,5 +625,7 @@ impl Store {
     }
 }
 
+pub mod agent_authorization;
 mod content_review;
 mod responsibility;
+pub use agent_authorization::AuthorizationReceipt;

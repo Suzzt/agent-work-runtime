@@ -57,6 +57,8 @@ mod ordinary;
 pub use ordinary::*;
 mod responsibility;
 pub use responsibility::*;
+mod agent_authorization;
+pub use agent_authorization::*;
 
 pub mod workstream_usage;
 

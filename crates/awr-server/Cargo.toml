@@ -9,6 +9,7 @@ description = "AWR Team coordinator with scoped HTTP/MCP queries and session jou
 
 [dependencies]
 awr-team-pg = { path = "../awr-team-pg" }
+awr-core.workspace = true
 awr-team = { path = "../awr-team" }
 clap = { workspace = true }
 serde_json.workspace = true

@@ -1,5 +1,6 @@
 //! PostgreSQL coordination store for Team V1.
 //! Personal SQLite runtime does not depend on this crate.
+mod agent_authorization;
 mod bootstrap;
 mod error;
 mod execution;
@@ -27,6 +28,7 @@ mod workstream_auth;
 mod workstream_command;
 mod workstream_read;
 
+pub use agent_authorization::AuthorizationStore;
 pub use bootstrap::Bootstrap;
 pub use error::{PgError, PgResult};
 pub use execution::{
@@ -101,6 +103,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 22);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 23);
     }
 }

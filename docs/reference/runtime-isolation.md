@@ -106,3 +106,19 @@ must not be inferred from `actor.kind`. History is retained in SQLite
 (`task_responsibilities`, `responsibility_events`, `responsibility_receipts`) and Team PG
 (schema 19). Coordination `claims` remain the lease surface and are linked optionally via
 `coordination_claim_id` without implying ownership.
+
+
+## Authorized agents and explainable claims (WS-016)
+
+Agent runs require an explicit `AgentAuthorization` bound to a responsible person, client/session,
+project/workstream/task-or-pool scope, actions, expiry, and verifiable capabilities. Platform
+service accounts also record a maintainer person. Authorizations are listable and revocable.
+
+Claim eligibility is explained from membership, person delegation, assignment policy, resources,
+and host capability. Self-reported skill hints never flip eligibility. Responsibility accept,
+collaborative occupancy, and start-work admission are separate decisions: unmet dependencies may
+allow ownership assignment but must not admit side-effecting execution. Concurrent claims keep a
+single effective executor.
+
+Delegation is narrowing-only. Changing model, client, or session cannot bypass revoke, expiry,
+scope, or independent-reviewer separation.
