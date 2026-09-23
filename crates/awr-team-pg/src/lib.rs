@@ -17,6 +17,7 @@ mod operator_execution_attribution;
 mod operator_history;
 mod operator_quarantine;
 mod operator_recovery;
+mod ops_audit;
 mod path;
 mod pool;
 mod read;
@@ -68,6 +69,10 @@ pub use operator_execution_attribution::{
 pub use operator_history::OperatorHistory;
 pub use operator_quarantine::OperatorQuarantine;
 pub use operator_recovery::OperatorRecovery;
+pub use ops_audit::{
+    DENY_CAPACITY_PER_PROJECT, OpsAuditStore, OpsAuditWrite, OpsCategory, OpsDenyWrite,
+    OpsHistoryFilter, digest_of, record_deny, record_in_tx, redact_summary,
+};
 pub use path::{
     MAX_FILE_BYTES, MAX_PACKAGE_BYTES, MAX_SOURCE_FILES, validate_package, validate_source_path,
 };
@@ -92,7 +97,7 @@ pub use selective_invalidation::{
     SelectiveInvalidateRequest, SelectiveInvalidationPlan, SelectiveInvalidationReceipt,
     SelectiveInvalidationStore, revalidate_execution_boundary, select_downstream_reevaluation,
 };
-pub use source::planning::{DraftCandidateCreate, SuggestionSubmit};
+pub use source::planning::{DraftCandidateCreate, PlanningCommandBind, SuggestionSubmit};
 pub use source::planning_ops::{
     PlanningApproveRequest, PlanningDraftRequest, PlanningPublishRequest, PlanningSuggestRequest,
 };
@@ -125,6 +130,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 30);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 31);
     }
 }

@@ -31,6 +31,9 @@ const QUERIES: &[&str] = &[
     "source.content",
     "artifact.content",
     "planning.outcome",
+    "audit.history",
+    "audit.export",
+    "audit.count",
 ];
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -60,6 +63,15 @@ pub struct WorkstreamQuery {
     /// Optional expected digest for content reads.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_sha256: Option<String>,
+    /// Ops-audit filters (TMCP-040).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member_actor_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub include_denies: Option<bool>,
 }
 
 impl WorkstreamQuery {
@@ -83,6 +95,9 @@ impl WorkstreamQuery {
             &self.evidence_id,
             &self.review_round_id,
             &self.artifact_id,
+            &self.change_id,
+            &self.member_actor_id,
+            &self.category,
         ]
         .into_iter()
         .flatten()
@@ -101,7 +116,11 @@ impl WorkstreamQuery {
             self.op.as_str(),
             "workstreams.list" | "work.list" | "work.search" | "events.list"
         );
-        if !paged && (self.cursor.is_some() || self.limit.is_some())
+        let audit = matches!(
+            self.op.as_str(),
+            "audit.history" | "audit.export" | "audit.count"
+        );
+        if !paged && !audit && (self.cursor.is_some() || self.limit.is_some())
             || self.search.is_some() != (self.op == "work.search")
             || self
                 .search
@@ -112,8 +131,14 @@ impl WorkstreamQuery {
                     self.op.as_str(),
                     "work.prepare" | "source.content" | "artifact.content"
                 )
-            || self.request_id.is_some()
-                != matches!(self.op.as_str(), "command.inspect" | "planning.outcome")
+            || (!audit
+                && self.request_id.is_some()
+                    != matches!(self.op.as_str(), "command.inspect" | "planning.outcome"))
+            || (self.change_id.is_some()
+                || self.member_actor_id.is_some()
+                || self.category.is_some()
+                || self.include_denies.is_some())
+                && !audit
             || self.claim_id.is_some() != (self.op == "claim.inspect")
             || self.execution_id.is_some() != (self.op == "execution.inspect")
             || self.handoff_id.is_some() != (self.op == "handoff.inspect")
@@ -206,6 +231,10 @@ impl WorkstreamReadStore {
         crate::check_schema(&client).await
     }
 
+    pub fn ops_audit(&self) -> crate::OpsAuditStore {
+        crate::OpsAuditStore::from_pool(self.pool.clone())
+    }
+
     pub async fn query(
         &self,
         tenant: &str,
@@ -213,6 +242,28 @@ impl WorkstreamReadStore {
         bearer: &str,
         request: WorkstreamQuery,
     ) -> PgResult<Value> {
+        if matches!(
+            request.op.as_str(),
+            "audit.history" | "audit.export" | "audit.count"
+        ) {
+            request.validate()?;
+            let filter = crate::OpsHistoryFilter {
+                work_id: request.work_id.clone(),
+                change_id: request.change_id.clone(),
+                member_actor_id: request.member_actor_id.clone(),
+                request_id: request.request_id.clone(),
+                category: request.category.clone(),
+                include_denies: request.include_denies.unwrap_or(false),
+                limit: request.limit.map(|n| n as i64),
+            };
+            let store = self.ops_audit();
+            return match request.op.as_str() {
+                "audit.history" => store.history(tenant, project, bearer, &filter).await,
+                "audit.export" => store.export(tenant, project, bearer, &filter).await,
+                "audit.count" => store.count(tenant, project, bearer, &filter).await,
+                _ => unreachable!(),
+            };
+        }
         let mut client = self.pool.get().await?;
         crate::check_schema(&client).await?;
         let tx = client
@@ -380,6 +431,16 @@ pub(crate) async fn read(
                 "direct_done": false,
                 "idempotent_request_id": true,
                 "outcome_query": "planning.outcome"
+            },
+            "ops_audit": {
+                "protocol": "awr-ops-audit-v1",
+                "queries": ["audit.history", "audit.export", "audit.count"],
+                "project_wide_action": "audit.read_project",
+                "deny_capacity_per_project": crate::DENY_CAPACITY_PER_PROJECT,
+                "chat_text_collected": false,
+                "tool_io_collected": false,
+                "token_billing_collected": false,
+                "non_repudiation": "not_claimed_against_db_owner"
             }
         });
         // WS-014: explicit scope=main / old-client / local-file boundaries.

@@ -57,6 +57,101 @@ pub struct DraftCandidateCreate {
     pub predetermined_candidate_id: Option<String>,
 }
 
+/// Optional MCP idempotency receipt bound in the same TX as the planning write (TMCP-040).
+#[derive(Clone, Debug)]
+pub struct PlanningCommandBind {
+    pub request_id: String,
+    pub op: String,
+    pub request_hash: String,
+}
+
+const PLANNING_RECEIPT_PROTOCOL: &str = "awr-planning-command-receipt-v1";
+
+async fn bind_planning_receipt_and_ops_audit(
+    tx: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    project_id: &str,
+    auth: &crate::workstream_auth::ReaderAuthority,
+    bind: Option<&PlanningCommandBind>,
+    action: &str,
+    target_kind: &str,
+    target_id: Option<&str>,
+    change_id: Option<&str>,
+    source_version: Option<&str>,
+    summary: serde_json::Value,
+    result: &serde_json::Value,
+) -> PgResult<serde_json::Value> {
+    let digest = crate::ops_audit::digest_of(&summary);
+    let mut out = result.clone();
+    if let Some(b) = bind {
+        // The MCP command layer reserves the receipt before the domain write
+        // and finalizes it after. Insert here only when this call owns the row.
+        let existing = tx
+            .query_opt(
+                "SELECT 1 FROM awr_team.planning_command_receipts
+                 WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3",
+                &[&tenant_id, &project_id, &b.request_id],
+            )
+            .await?;
+        if existing.is_none() {
+            let wrapped = serde_json::json!({
+                "protocol": PLANNING_RECEIPT_PROTOCOL,
+                "request_id": b.request_id,
+                "op": b.op,
+                "request_hash": b.request_hash,
+                "result": result,
+                "already_recorded": false
+            });
+            tx.execute(
+                "INSERT INTO awr_team.planning_command_receipts(
+                    tenant_id, project_id, request_id, op, request_hash,
+                    actor_id, client_id, result_json)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+                &[
+                    &tenant_id,
+                    &project_id,
+                    &b.request_id,
+                    &b.op,
+                    &b.request_hash,
+                    &auth.actor_id,
+                    &auth.client_id,
+                    &wrapped,
+                ],
+            )
+            .await?;
+            out = wrapped;
+        }
+    }
+    let already_audited = if let Some(b) = bind {
+        tx.query_opt(
+            "SELECT 1 FROM awr_team.ops_audit_records
+             WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3 AND action=$4",
+            &[&tenant_id, &project_id, &b.request_id, &action],
+        )
+        .await?
+        .is_some()
+    } else {
+        false
+    };
+    if already_audited {
+        return Ok(out);
+    }
+    let mut audit = crate::ops_audit::write_from_auth(
+        auth,
+        crate::ops_audit::OpsCategory::Planning,
+        action,
+        target_kind,
+    );
+    audit.target_id = target_id.map(|s| s.to_string());
+    audit.change_id = change_id.map(|s| s.to_string());
+    audit.request_id = bind.map(|b| b.request_id.clone());
+    audit.source_version = source_version.map(|s| s.to_string());
+    audit.digest = Some(digest);
+    audit.summary = summary;
+    crate::ops_audit::record_in_tx(tx, tenant_id, project_id, &audit).await?;
+    Ok(out)
+}
+
 fn map_team(err: awr_team::TeamError) -> PgError {
     match err {
         awr_team::TeamError::PermissionDenied(msg) => {
@@ -91,6 +186,18 @@ impl SourceStore {
         project_id: &str,
         bearer: &str,
         submit: &SuggestionSubmit,
+    ) -> PgResult<Value> {
+        self.submit_planning_suggestion_bound(tenant_id, project_id, bearer, submit, None)
+            .await
+    }
+
+    pub async fn submit_planning_suggestion_bound(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        bearer: &str,
+        submit: &SuggestionSubmit,
+        bind: Option<&PlanningCommandBind>,
     ) -> PgResult<Value> {
         let mut client = self.connect().await?;
         crate::check_schema(&client).await?;
@@ -204,8 +311,28 @@ impl SourceStore {
             "mutates_live_acceptance": false,
             "state": row.get::<_, String>(7),
         });
+        let summary = json!({
+            "suggestion_id": suggestion_id,
+            "baseline_digest": baseline_digest,
+            "affected_work_keys": suggestion.affected_work_keys,
+        });
+        let out = bind_planning_receipt_and_ops_audit(
+            &tx,
+            tenant_id,
+            project_id,
+            &auth,
+            bind,
+            "planning.propose",
+            "suggestion",
+            Some(&suggestion_id),
+            None,
+            Some(&baseline_digest),
+            summary,
+            &result,
+        )
+        .await?;
         tx.commit().await?;
-        Ok(result)
+        Ok(out)
     }
 
     /// Create a planning draft candidate (`planning.edit_draft`).
@@ -215,6 +342,18 @@ impl SourceStore {
         project_id: &str,
         bearer: &str,
         create: &DraftCandidateCreate,
+    ) -> PgResult<Value> {
+        self.create_planning_candidate_bound(tenant_id, project_id, bearer, create, None)
+            .await
+    }
+
+    pub async fn create_planning_candidate_bound(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        bearer: &str,
+        create: &DraftCandidateCreate,
+        bind: Option<&PlanningCommandBind>,
     ) -> PgResult<Value> {
         let mut client = self.connect().await?;
         crate::check_schema(&client).await?;
@@ -370,8 +509,24 @@ impl SourceStore {
             "hard_delete_history_allowed": false,
             "forge_completion_via_status_allowed": false
         });
+        let summary = json!({"candidate_id": candidate_id, "draft_revision": candidate.draft_revision, "candidate_digest": digest});
+        let out = bind_planning_receipt_and_ops_audit(
+            &tx,
+            tenant_id,
+            project_id,
+            &auth,
+            bind,
+            "planning.edit_draft",
+            "candidate",
+            Some(&candidate_id),
+            Some(&candidate_id),
+            Some(&digest),
+            summary,
+            &result,
+        )
+        .await?;
         tx.commit().await?;
-        Ok(result)
+        Ok(out)
     }
 
     /// Edit an existing draft candidate. Clears prior approval and bumps revision.
@@ -461,6 +616,21 @@ impl SourceStore {
             "prior_approval_cleared": true,
             "diff": diff
         });
+        {
+            let summary = json!({"candidate_id": candidate_id, "draft_revision": candidate.draft_revision, "candidate_digest": digest});
+            let mut audit = crate::ops_audit::write_from_auth(
+                &auth,
+                crate::ops_audit::OpsCategory::Planning,
+                "planning.edit_draft",
+                "candidate",
+            );
+            audit.target_id = Some(candidate_id.to_string());
+            audit.change_id = Some(candidate_id.to_string());
+            audit.source_version = Some(digest.clone());
+            audit.digest = Some(crate::ops_audit::digest_of(&summary));
+            audit.summary = summary;
+            crate::ops_audit::record_in_tx(&tx, tenant_id, project_id, &audit).await?;
+        }
         tx.commit().await?;
         Ok(result)
     }
@@ -624,6 +794,21 @@ impl SourceStore {
             "delivery_completion_policy": delivery_policy,
             "independent_review_downgraded": false
         });
+        {
+            let summary = json!({"approval_id": approval_id, "candidate_id": candidate_id, "candidate_digest": candidate_digest, "self_approved": self_approved});
+            let mut audit = crate::ops_audit::write_from_auth(
+                &auth,
+                crate::ops_audit::OpsCategory::Planning,
+                "planning.approve",
+                "candidate",
+            );
+            audit.target_id = Some(candidate_id.to_string());
+            audit.change_id = Some(candidate_id.to_string());
+            audit.source_version = Some(candidate_digest.to_string());
+            audit.digest = Some(crate::ops_audit::digest_of(&summary));
+            audit.summary = summary;
+            crate::ops_audit::record_in_tx(&tx, tenant_id, project_id, &audit).await?;
+        }
         tx.commit().await?;
         Ok(result)
     }
@@ -738,6 +923,26 @@ impl SourceStore {
                 "source_writeback_pending": true,
                 "source_bytes_written": false
             });
+            {
+                let summary = json!({
+                    "receipt_id": receipt_id,
+                    "candidate_id": candidate_id,
+                    "candidate_digest": candidate_digest,
+                    "approval_id": approval_id,
+                });
+                let mut audit = crate::ops_audit::write_from_auth(
+                    &auth,
+                    crate::ops_audit::OpsCategory::Planning,
+                    "planning.publish",
+                    "candidate",
+                );
+                audit.target_id = Some(candidate_id.to_string());
+                audit.change_id = Some(candidate_id.to_string());
+                audit.source_version = Some(candidate_digest.to_string());
+                audit.digest = Some(crate::ops_audit::digest_of(&summary));
+                audit.summary = summary;
+                crate::ops_audit::record_in_tx(&tx, tenant_id, project_id, &audit).await?;
+            }
             tx.commit().await?;
             Ok(result)
         } else {

@@ -486,8 +486,13 @@ impl SourceStore {
             author_person_id: req.author_person_id.clone(),
             predetermined_suggestion_id: Some(domain_id),
         };
+        let bind = crate::source::planning::PlanningCommandBind {
+            request_id: req.request_id.clone(),
+            op: "planning.propose".into(),
+            request_hash: hash.clone(),
+        };
         let result = self
-            .submit_planning_suggestion(tenant_id, project_id, bearer, &submit)
+            .submit_planning_suggestion_bound(tenant_id, project_id, bearer, &submit, Some(&bind))
             .await?;
         self.finalize_planning_receipt(
             tenant_id,
@@ -596,8 +601,19 @@ impl SourceStore {
                     author_person_id: req.author_person_id.clone(),
                     predetermined_candidate_id: Some(domain_id.clone()),
                 };
-                self.create_planning_candidate(tenant_id, project_id, bearer, &create)
-                    .await?
+                let bind = crate::source::planning::PlanningCommandBind {
+                    request_id: req.request_id.clone(),
+                    op: "planning.edit_draft".into(),
+                    request_hash: hash.clone(),
+                };
+                self.create_planning_candidate_bound(
+                    tenant_id,
+                    project_id,
+                    bearer,
+                    &create,
+                    Some(&bind),
+                )
+                .await?
             }
             "edit" => {
                 let candidate_id = req.candidate_id.as_deref().ok_or_else(|| {
