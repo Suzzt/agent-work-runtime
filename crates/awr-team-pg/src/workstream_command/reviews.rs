@@ -778,6 +778,13 @@ async fn complete(
     if blocked {
         return Err(PgError::RecoveryBlocked);
     }
+    crate::workstream_command::executions::require_clear_of_selective_blocks(
+        tx,
+        tenant,
+        project,
+        &command.work_id,
+    )
+    .await?;
     let policy = contract.completion_policy.as_str();
     if let Some(requested) = a.requested_policy.as_deref() {
         if requested != policy {
@@ -849,6 +856,7 @@ async fn complete(
         _ => EvidenceGrade::AgentSelfReport,
     };
     let mut execution_success = false;
+    let mut verified_executor_actor: Option<String> = None;
     if policy == "ordinary_confirm" {
         let kind: String = tx
             .query_one(
@@ -899,6 +907,7 @@ async fn complete(
             return Err(PgError::EvidenceInvalid);
         }
         execution_success = true;
+        verified_executor_actor = Some(exec_executor);
     }
     let contract_value =
         serde_json::to_value(contract).map_err(|e| PgError::Protocol(e.to_string()))?;
@@ -925,9 +934,13 @@ async fn complete(
     let mut approver_actor: Option<String> = None;
     let mut approver_person: Option<String> = None;
     if policy != "ordinary_confirm" {
+        // Only a still-valid (non-invalidated) approved round may satisfy
+        // completion. review.open invalidates prior approved rounds when a
+        // different evidence digest is opened; keep their decisions for
+        // history but refuse to complete on them.
         let pinned = tx
             .query_opt(
-                "SELECT id, contract_hash FROM awr_team.review_rounds
+                "SELECT id, contract_hash, state FROM awr_team.review_rounds
                  WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3 AND bundle_hash=$4
                  ORDER BY round_index DESC LIMIT 1",
                 &[&tenant, &project, &command.work_id, &ev_digest],
@@ -936,7 +949,8 @@ async fn complete(
             .ok_or(PgError::ReviewRequired)?;
         let round_id: String = pinned.get(0);
         let round_contract: String = pinned.get(1);
-        if round_contract != ev_contract {
+        let round_state: String = pinned.get(2);
+        if round_contract != ev_contract || round_state != "approved" {
             return Err(PgError::ReviewRequired);
         }
         let d = tx
@@ -1019,8 +1033,11 @@ async fn complete(
         let _gh_merged: bool = row.get(5);
         let _ = _gh_merged;
     }
-    let author_actor = author_actor.or_else(|| Some(auth.actor_id.clone()));
-    let executor_actor = executor_actor.or(execution_id.clone());
+    // Prefer PR attribution when present; otherwise carry verified evidence /
+    // execution identities. Never substitute the finalizer or an execution object
+    // ID for author/executor person-agent namespaces (TMCP-031 CR).
+    let author_actor = author_actor.or_else(|| Some(created_by.clone()));
+    let executor_actor = executor_actor.or(verified_executor_actor);
     let approved_by = json!({
         "approved_by": approver_actor,
         "approved_by_person_id": approver_person,
@@ -1135,6 +1152,10 @@ async fn complete(
             "evidence_id": a.evidence_id,
             "execution_id": execution_id,
             "approved_by_person_id": approver_person,
+            "author_actor_id": author_actor,
+            "executor_actor_id": executor_actor,
+            "reviewer_actor_id": approver_actor,
+            "final_submitter_actor_id": auth.actor_id,
             "execution_success": execution_success,
             "author_self_report": trust_basis == "caller_asserted",
             "human_approval": review.approved,
@@ -1587,7 +1608,8 @@ pub(crate) async fn inspect_completion(
     let receipt = if let Some(id) = selected.as_deref() {
         tx.query_opt(
             "SELECT id, contract_hash, policy, independence_kind, evidence_id, execution_id,
-                    approved_by_person_id, submitted_by_person_id, approved_by_json
+                    approved_by_person_id, submitted_by_person_id, approved_by_json,
+                    author_actor_id, executor_actor_id, final_submitter_actor_id
              FROM awr_team.completion_receipts
              WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
             &[&tenant, &project, &id],
@@ -1609,6 +1631,9 @@ pub(crate) async fn inspect_completion(
             "approved_by_person_id": r.get::<_,Option<String>>(6),
             "submitted_by_person_id": r.get::<_,Option<String>>(7),
             "approved_by": r.get::<_,Value>(8),
+            "author_actor_id": r.get::<_,Option<String>>(9),
+            "executor_actor_id": r.get::<_,Option<String>>(10),
+            "final_submitter_actor_id": r.get::<_,Option<String>>(11),
             "provider_private_session": Value::Null,
         })),
     }))

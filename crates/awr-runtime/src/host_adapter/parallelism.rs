@@ -78,6 +78,23 @@ pub struct ReconnectRetry {
     pub action: String,
 }
 
+fn consumes_concurrency_capacity(task: &SubtaskRecord) -> bool {
+    // Loss of observation or unresolved handoff cannot free capacity: the native
+    // execution may still be running without verified terminal/stop evidence.
+    task.execution_id.is_some()
+        && matches!(
+            task.state,
+            SubtaskState::Running
+                | SubtaskState::Paused
+                | SubtaskState::Unknown
+                | SubtaskState::AwaitingHandoff
+        )
+}
+
+fn unresolved_existing_execution(task: &SubtaskRecord) -> bool {
+    consumes_concurrency_capacity(task)
+}
+
 pub struct ParallelScheduler {
     parent_session_id: String,
     concurrency_cap: usize,
@@ -228,12 +245,9 @@ impl ParallelScheduler {
         ) {
             return Ok(ScheduleDecision::SkipTerminal);
         }
-        if task.execution_id.is_some()
-            && matches!(
-                task.state,
-                SubtaskState::Running | SubtaskState::Paused | SubtaskState::Unknown
-            )
-        {
+        // Block/reconnect any unresolved existing execution regardless of
+        // coordination state (including AwaitingHandoff) — do not overwrite.
+        if unresolved_existing_execution(task) {
             return Ok(ScheduleDecision::ReconnectExisting);
         }
         if self.pause == PauseGate::UserPaused {
@@ -242,12 +256,12 @@ impl ParallelScheduler {
         if !self.dependencies_satisfied(task) {
             return Ok(ScheduleDecision::WaitDependencies);
         }
-        let running = self
+        let occupied = self
             .tasks
             .values()
-            .filter(|t| t.state == SubtaskState::Running)
+            .filter(|t| consumes_concurrency_capacity(t))
             .count();
-        if running >= self.concurrency_cap {
+        if occupied >= self.concurrency_cap {
             return Ok(ScheduleDecision::BlockedByConcurrencyCap);
         }
         Ok(ScheduleDecision::Start)
@@ -265,7 +279,7 @@ impl ParallelScheduler {
         let mut remaining_slots = self.concurrency_cap.saturating_sub(
             self.tasks
                 .values()
-                .filter(|t| t.state == SubtaskState::Running)
+                .filter(|t| consumes_concurrency_capacity(t))
                 .count(),
         );
         for work_id in self.tasks.keys() {
@@ -564,5 +578,36 @@ mod tests {
         );
         // Still one claim identity.
         assert_eq!(s.get("a").unwrap().identity.claim_id, "claim-a");
+    }
+
+    #[test]
+    fn awaiting_handoff_preserves_original_execution() {
+        let mut s = ParallelScheduler::new("parent-sess", 2).unwrap();
+        s.register(identity("a", "c-a", "child-a", &[])).unwrap();
+        s.start("a", "exec-original").unwrap();
+        s.mark_awaiting_handoff("a").unwrap();
+        assert_eq!(s.decide("a").unwrap(), ScheduleDecision::ReconnectExisting);
+        assert!(s.start("a", "exec-duplicate").is_err());
+        assert_eq!(
+            s.get("a").unwrap().execution_id.as_deref(),
+            Some("exec-original")
+        );
+    }
+
+    #[test]
+    fn unknown_executions_consume_concurrency_capacity() {
+        let mut s = ParallelScheduler::new("parent-sess", 1).unwrap();
+        s.register(identity("a", "c-a", "child-a", &[])).unwrap();
+        s.register(identity("b", "c-b", "child-b", &[])).unwrap();
+        s.start("a", "exec-a").unwrap();
+        s.mark_unknown("a").unwrap();
+        assert_eq!(
+            s.decide("b").unwrap(),
+            ScheduleDecision::BlockedByConcurrencyCap
+        );
+        assert!(s.start("b", "exec-b").is_err());
+        let plan = s.plan();
+        assert!(plan.start.is_empty());
+        assert!(plan.blocked_by_cap.contains(&"b".into()) || plan.reconnect.contains(&"a".into()));
     }
 }

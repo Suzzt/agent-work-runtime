@@ -135,3 +135,131 @@ fn sqlite_usage_ingest_replay_bindings_and_handoff() {
         awr_store::SCHEMA_VERSION
     );
 }
+
+#[test]
+fn replay_conflict_corrected_allocation_and_counter_bounds() {
+    let mut f = Fixture::new();
+    let project = f.project.id;
+    let project_s = project.to_string();
+    let r = receipt(&project_s);
+    f.store
+        .ingest_usage_receipt(project, "ingest-1", &r)
+        .unwrap();
+    let mut other = r.clone();
+    other.cost = UsageCost::Actual(money(99));
+    assert!(matches!(
+        f.store.ingest_usage_receipt(project, "ingest-1", &other),
+        Err(Error::RuleViolation(_))
+    ));
+
+    let correction = UsageCorrection {
+        correction_id: "corr-1".into(),
+        project_id: project_s.clone(),
+        target_receipt_id: "receipt-1".into(),
+        corrected_at_ms: 30,
+        reason: "restatement".into(),
+        prior_cost: UsageCost::Actual(money(42)),
+        new_cost: UsageCost::Actual(money(40)),
+        actor: "adapter".into(),
+    };
+    f.store
+        .record_usage_correction(project, "corr-req", &correction)
+        .unwrap();
+    let mut second = correction.clone();
+    second.correction_id = "corr-2".into();
+    second.prior_cost = UsageCost::Actual(money(40));
+    second.new_cost = UsageCost::Actual(money(10));
+    assert!(matches!(
+        f.store
+            .record_usage_correction(project, "corr-req-2", &second),
+        Err(Error::RuleViolation(_))
+    ));
+
+    let stale = UsageAllocationRecord {
+        allocation_id: "alloc-stale".into(),
+        project_id: project_s.clone(),
+        receipt_id: "receipt-1".into(),
+        rule: Some("split-v1".into()),
+        shares: vec![UsageAllocation {
+            workstream_id: Some(Id::from(3u128)),
+            micros: 42,
+        }],
+        recorded_at_ms: 31,
+    };
+    assert!(matches!(
+        f.store
+            .record_usage_allocation(project, "alloc-stale", &stale),
+        Err(Error::InvalidInput(_))
+    ));
+    let corrected = UsageAllocationRecord {
+        shares: vec![UsageAllocation {
+            workstream_id: Some(Id::from(3u128)),
+            micros: 40,
+        }],
+        ..stale
+    };
+    f.store
+        .record_usage_allocation(project, "alloc-ok", &corrected)
+        .unwrap();
+    let mut again = corrected.clone();
+    again.allocation_id = "alloc-2".into();
+    assert!(matches!(
+        f.store.record_usage_allocation(project, "alloc-2", &again),
+        Err(Error::RuleViolation(_))
+    ));
+
+    let scope = UsageCounterScope {
+        project_id: project_s,
+        provider_namespace: "account".into(),
+        provider: "provider".into(),
+        model: "model".into(),
+        session_id: "session".into(),
+        counter_epoch: "epoch".into(),
+    };
+    let bad = UsageCounterSnapshot {
+        scope: scope.clone(),
+        observed_at_ms: 1,
+        tokens: UsageTokens {
+            input: 1,
+            output: 0,
+            cached_input: 2,
+        },
+    };
+    assert!(matches!(
+        f.store
+            .record_usage_counter_snapshot(project, "ctr-bad", &bad),
+        Err(Error::InvalidInput(_))
+    ));
+    let first = UsageCounterSnapshot {
+        tokens: UsageTokens {
+            input: 10,
+            output: 2,
+            cached_input: 1,
+        },
+        ..bad
+    };
+    f.store
+        .record_usage_counter_snapshot(project, "ctr-1", &first)
+        .unwrap();
+    let decreased = UsageCounterSnapshot {
+        observed_at_ms: 2,
+        tokens: UsageTokens {
+            input: 9,
+            output: 2,
+            cached_input: 1,
+        },
+        ..first.clone()
+    };
+    assert!(matches!(
+        f.store
+            .record_usage_counter_snapshot(project, "ctr-down", &decreased),
+        Err(Error::InvalidInput(_))
+    ));
+    let mut replay = first.clone();
+    replay.tokens.input = 11;
+    assert!(matches!(
+        f.store
+            .record_usage_counter_snapshot(project, "ctr-1", &replay),
+        Err(Error::RuleViolation(_))
+    ));
+}

@@ -101,8 +101,21 @@ impl Store {
     {
         let project_s = project.to_string();
         if let Some(receipt) = load_receipt(&self.conn, &project_s, request_key, op)? {
+            if receipt.handoff_id != handoff_id {
+                return Err(Error::InvalidInput(
+                    "request key was already used for a different handoff".into(),
+                ));
+            }
             let h = load(&self.conn, &project_s, &receipt.handoff_id)?
                 .ok_or_else(|| Error::Storage("handoff missing for receipt".into()))?;
+            if op == "accept" {
+                let again = f(&h)?;
+                if again != h {
+                    return Err(Error::InvalidInput(
+                        "request key replay does not match the stored handoff".into(),
+                    ));
+                }
+            }
             return Ok((h, receipt));
         }
         let before = load(&self.conn, &project_s, handoff_id)?

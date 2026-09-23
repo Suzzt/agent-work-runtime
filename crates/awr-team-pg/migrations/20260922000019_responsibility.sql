@@ -109,5 +109,29 @@ CREATE TABLE awr_team.responsibility_receipts (
         REFERENCES awr_team.responsibility_events(tenant_id, project_id, id)
 );
 
+-- Tenant/project isolation (FORCE so NOSUPERUSER NOBYPASSRLS app cannot bypass).
+DO $$
+DECLARE t TEXT;
+BEGIN
+    FOREACH t IN ARRAY ARRAY[
+        'persons',
+        'person_agent_bindings',
+        'task_responsibilities',
+        'task_collaborators',
+        'responsibility_events',
+        'responsibility_receipts'
+    ]
+    LOOP
+        EXECUTE format('ALTER TABLE awr_team.%I ENABLE ROW LEVEL SECURITY', t);
+        EXECUTE format('ALTER TABLE awr_team.%I FORCE ROW LEVEL SECURITY', t);
+        EXECUTE format(
+            'CREATE POLICY %I_isolation ON awr_team.%I
+             USING (tenant_id = current_setting(''awr.tenant_id'', true)
+                AND project_id = current_setting(''awr.project_id'', true))
+             WITH CHECK (tenant_id = current_setting(''awr.tenant_id'', true)
+                AND project_id = current_setting(''awr.project_id'', true))', t, t);
+    END LOOP;
+END $$;
+
 UPDATE awr_team.schema_state SET version=19 WHERE component='awr_team';
 COMMIT;
