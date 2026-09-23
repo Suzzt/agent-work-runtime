@@ -402,6 +402,10 @@ impl WorkstreamCommandStore {
         tx.execute("INSERT INTO awr_team.operations(tenant_id,project_id,id,actor_id,client_id,request_id,op,request_hash,state,committed_project_revision,result_json)
             VALUES($1,$2,$3,$4,$5,$6,$7,$8,'committed',$9,$10)",
             &[&tenant,&project,&crate::tx::new_id(),&auth.actor_id,&auth.client_id,&command.request_id,&command.op,&request_hash,&next,&receipt]).await?;
+        // Delivery/review ops audit belongs in THIS transaction (authenticated MCP
+        // path), not only ReviewStore entrypoints — TMCP-040 CR on PR #134.
+        record_command_delivery_ops_audit(&tx, tenant, project, &auth, &command, stream, &data)
+            .await?;
         tx.commit().await?;
         // Only the original committed start response permits one caller-managed
         // execution. Stored/replayed receipts are historical, never a new grant.
@@ -409,6 +413,80 @@ impl WorkstreamCommandStore {
             json!({"replayed":false,"receipt":receipt,"execution_authorized":command.op == "execution.start"}),
         )
     }
+}
+
+/// Bind delivery/review ops-audit to the authenticated command transaction.
+/// Covers MCP `review.decide` / `delivery.register_pr` / `delivery.finalize`
+/// (and siblings) so audit.history by request_id sees the real path.
+async fn record_command_delivery_ops_audit(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    auth: &ReaderAuthority,
+    command: &WorkstreamCommand,
+    stream: Id,
+    data: &Value,
+) -> PgResult<()> {
+    let (audit_action, target_kind, target_id_key) = match command.op.as_str() {
+        "review.decide" | "review.accept" | "review.return" => {
+            ("review.decide", "review", "round_id")
+        }
+        "delivery.register_pr" => ("delivery.register_pr", "delivery", "delivery_id"),
+        "delivery.observe_pr" => ("delivery.observe_pr", "delivery", "delivery_id"),
+        "work.complete" | "delivery.finalize" => ("delivery.finalize", "completion", "receipt_id"),
+        _ => return Ok(()),
+    };
+    #[cfg(feature = "pg-tests")]
+    if command.request_id == "inject-ops-audit-abort" {
+        return Err(PgError::Protocol("injected ops audit abort".into()));
+    }
+    let mut summary = data.clone();
+    if let Some(obj) = summary.as_object_mut() {
+        obj.insert("op".into(), json!(command.op.clone()));
+        obj.insert("request_id".into(), json!(command.request_id.clone()));
+        obj.insert(
+            "expected_contract_hash".into(),
+            json!(command.expected_contract_hash.clone()),
+        );
+        obj.insert(
+            "coordinator_epoch".into(),
+            json!(command.coordinator_epoch.clone()),
+        );
+        obj.insert(
+            "expected_ownership_version".into(),
+            json!(command.expected_ownership_version.clone()),
+        );
+        obj.insert(
+            "expected_authority_version".into(),
+            json!(command.expected_authority_version.clone()),
+        );
+    }
+    let mut audit = crate::ops_audit::write_from_auth(
+        auth,
+        crate::ops_audit::OpsCategory::Delivery,
+        audit_action,
+        target_kind,
+    );
+    audit.target_id = data
+        .get(target_id_key)
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
+    audit.work_id = Some(command.work_id.clone());
+    audit.request_id = Some(command.request_id.clone());
+    audit.authority_version = auth
+        .catalog
+        .get(stream)
+        .ok()
+        .map(|entry| entry.authority_version as i64);
+    audit.person_id = data
+        .get("reviewer_person_id")
+        .or_else(|| data.get("approved_by_person_id"))
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
+    audit.digest = Some(crate::ops_audit::digest_of(&summary));
+    audit.summary = summary;
+    crate::ops_audit::record_in_tx(tx, tenant, project, &audit).await?;
+    Ok(())
 }
 
 async fn apply(

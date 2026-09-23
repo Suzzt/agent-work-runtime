@@ -502,6 +502,7 @@ mod tests {
             required_dependencies: vec![],
             completion_policy: "independent_review".into(),
             definition_state: DraftDefinitionState::Enabled,
+            workstream: None,
             split_from: None,
             split_children: vec![],
         };
