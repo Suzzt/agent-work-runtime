@@ -143,7 +143,7 @@ fn canonicalize(path: &str) -> String {
 }
 
 /// Entry-level resource key validation/normalization (WS-021).
-fn normalize_resource_key(kind: &str, key: &str) -> PgResult<String> {
+pub(crate) fn normalize_resource_key(kind: &str, key: &str) -> PgResult<String> {
     validate_resource_kind(kind)?;
     match resource_domain(kind).expect("validated") {
         ResourceDomain::Named | ResourceDomain::Shared => {
@@ -952,5 +952,19 @@ mod tests {
         ));
         assert!(require_main_scope("feature").is_err());
         assert!(require_main_scope("main").is_ok());
+    }
+
+    #[test]
+    fn parent_segments_cannot_enter_a_resource_key() {
+        assert!(normalize_resource_key("file", "src/../secret").is_err());
+        assert!(normalize_resource_key("dir", r"src\..\secret").is_err());
+        assert_eq!(
+            normalize_resource_key("file", "src/./a.rs").unwrap(),
+            "src/a.rs"
+        );
+        assert_eq!(
+            normalize_resource_key("prefix", "src//foo/./bar").unwrap(),
+            "src/foo/bar"
+        );
     }
 }
