@@ -9,6 +9,7 @@ use cap_std::{
 };
 use std::{
     fs::File,
+    io::Read,
     path::{Component, Path, PathBuf},
 };
 
@@ -74,4 +75,56 @@ pub fn open_file_exact(path: &Path) -> Result<File> {
         .open_with(name, &options)
         .map_err(|e| unavailable(path, e))?;
     Ok(file.into_std())
+}
+
+/// Read `root/relative` through a root-confined directory handle.
+///
+/// Intermediate and leaf symlinks are refused (including replacement races after
+/// the parent handle is held). Returns the exact bytes observed through that
+/// confined open so callers can package the validated body without a second
+/// ambient `fs::read`.
+pub fn read_under_root(root: &Path, relative: &str) -> Result<Vec<u8>> {
+    if relative.is_empty() || relative.starts_with('/') || relative.contains('\0') {
+        return Err(Error::InvalidInput(
+            "relative path must be a non-empty path within the bound root".into(),
+        ));
+    }
+    if Path::new(relative)
+        .components()
+        .any(|c| !matches!(c, Component::Normal(_)))
+    {
+        return Err(Error::RuleViolation(format!(
+            "path {relative:?} escapes the bound source root"
+        )));
+    }
+    let root = std::fs::canonicalize(root).map_err(|e| unavailable(root, e))?;
+    let root_dir = open_dir_exact(&root)?;
+    let parts: Vec<_> = Path::new(relative)
+        .components()
+        .map(|c| match c {
+            Component::Normal(name) => Ok(name),
+            _ => Err(Error::RuleViolation(format!(
+                "path {relative:?} escapes the bound source root"
+            ))),
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let (file_name, parent_parts) = parts
+        .split_last()
+        .ok_or_else(|| Error::InvalidInput("relative path must include a file name".into()))?;
+    let mut dir = root_dir;
+    for name in parent_parts {
+        dir = dir.open_dir_nofollow(name).map_err(|e| {
+            Error::RuleViolation(format!("path {relative:?} refused under bound root: {e}"))
+        })?;
+    }
+    let mut options = OpenOptions::new();
+    options.read(true).follow(FollowSymlinks::No);
+    let file = dir.open_with(file_name, &options).map_err(|e| {
+        Error::RuleViolation(format!("path {relative:?} refused under bound root: {e}"))
+    })?;
+    let mut bytes = Vec::new();
+    file.into_std()
+        .read_to_end(&mut bytes)
+        .map_err(|e| Error::Io(e))?;
+    Ok(bytes)
 }
