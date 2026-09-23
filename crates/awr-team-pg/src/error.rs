@@ -63,6 +63,10 @@ pub enum PgError {
     ParentEvidenceRequired,
     #[error("dependency binding invalid")]
     BindingInvalid,
+    #[error("action blocked by selective invalidation or planning change: {0}")]
+    ActionBlockedByInvalidation(String),
+    #[error("planning change pending confirmation")]
+    PlanningChangePending,
     #[error("claimed work blocks activation")]
     ClaimBlocksActivation,
     #[error("graph budget exceeded")]

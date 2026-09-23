@@ -189,8 +189,11 @@ pub(super) async fn start(
         EXISTS(SELECT 1 FROM awr_team.execution_receipts WHERE tenant_id=$1 AND project_id=$2 AND execution_id=$3)",
         &[&tenant,&project,&a.execution_id]).await?.get(0);
     if exposed {
+        // Effects already exposed keep recovery handling even if a planning
+        // block arrives later; do not convert that into a fresh denial here.
         return Err(PgError::RecoveryBlocked);
     }
+    require_clear_of_selective_blocks(tx, tenant, project, &command.work_id).await?;
     // Cross-stream receipts need explicit export/adoption. A grant to both
     // streams does not implicitly create such a delivery contract.
     for upstream in &contract.required_dependencies {

@@ -23,6 +23,7 @@ mod responsibility;
 mod review;
 mod runner;
 mod scoped_runner;
+mod selective_invalidation;
 mod source;
 mod team_handoff;
 mod tx;
@@ -79,6 +80,13 @@ pub use scoped_runner::{
     ReferenceReportRequest, ReferenceRunRequest, ReferenceWrite, ReferenceWritePlan,
     ScopedReferenceRunner,
 };
+pub use selective_invalidation::{
+    AdoptedConsumerEdge, BoundaryDecision, BoundaryRevalidateRequest, BoundaryRevalidation,
+    BoundarySnapshot, CancelSplitRelation, DecidePlanningChangeRequest, ExecutionBoundary,
+    ProviderChangeKind, RecordPlanningChangeRequest, ScopedPlanningChange,
+    SelectiveInvalidateRequest, SelectiveInvalidationPlan, SelectiveInvalidationReceipt,
+    SelectiveInvalidationStore, revalidate_execution_boundary, select_downstream_reevaluation,
+};
 pub use source::planning::{DraftCandidateCreate, SuggestionSubmit};
 pub use source::{
     CandidateRecord, CurrentSource, CurrentWorkstreamSource, IngestRequest, SOURCE_BINDING_FILE,
@@ -108,6 +116,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 26);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 27);
     }
 }

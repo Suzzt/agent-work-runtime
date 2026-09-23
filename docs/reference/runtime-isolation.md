@@ -182,3 +182,21 @@ Readiness requires every necessary dependency to be satisfied; shared outcomes
 are referenced by identity (and adopted via WS-030 credentials) rather than
 copied into each consumer stream.
 
+## Selective invalidation and execution boundary revalidation (WS-032)
+
+Only **affected** downstream consumers re-evaluate when a provider delivery
+changes. **fixed_delivery** consumers keep their pinned old version through
+unrelated upstream progress or new versions; they re-evaluate only on revoke or
+pinned-artifact unavailability. **current_contract** consumers revalidate when
+the authoritative current selection drifts.
+
+Prepare, dispatch and complete recheck adoption/bindings under the project lock
+to prevent revoke races. Mid-execution invalidation retains real effects and
+assigns recovery duty; historical receipts are not erased. Unrelated works
+continue.
+
+When implementation discovers a new required dependency, persist a scoped
+planning change (old/new graph versions, acceptance contracts, cancel/split
+relations, continue conditions), block affected actions first, then require
+authorized confirmation of the new graph and acceptance contract. Unrelated
+tasks keep advancing. Persist in Team PG schema 27.
