@@ -123,8 +123,10 @@ fn shared_keys_conflict(kind: &str, key_a: &str, key_b: &str) -> bool {
 
 fn path_like_conflict(kind_a: &str, key_a: &str, kind_b: &str, key_b: &str) -> bool {
     if kind_a == "workspace" || kind_b == "workspace" {
-        // A workspace claim is exclusive for that worktree identity.
-        return kind_a == "workspace" && kind_b == "workspace";
+        // Exclusive workspace reservation conflicts with any WorktreeLocal
+        // path (file/dir/prefix) in the same worktree, in either order.
+        // Caller already matched worktree_id.
+        return true;
     }
     if kind_a == "file" && kind_b == "file" {
         return canonicalize(key_a) == canonicalize(key_b);
@@ -145,7 +147,7 @@ fn canonicalize(path: &str) -> String {
 }
 
 /// Entry-level resource key validation/normalization (WS-021).
-fn normalize_resource_key(kind: &str, key: &str) -> PgResult<String> {
+pub(crate) fn normalize_resource_key(kind: &str, key: &str) -> PgResult<String> {
     validate_resource_kind(kind)?;
     match resource_domain(kind).expect("validated") {
         ResourceDomain::Named | ResourceDomain::Shared => {
@@ -1126,6 +1128,19 @@ mod tests {
         };
         assert!(resources_conflict(&w1, &w1b));
         assert!(!resources_conflict(&w1, &w2));
+        let file = ResourceBound {
+            kind: "file".into(),
+            key: "src/main.rs".into(),
+            worktree_id: "wt-1".into(),
+        };
+        let file_other = ResourceBound {
+            kind: "file".into(),
+            key: "src/main.rs".into(),
+            worktree_id: "wt-2".into(),
+        };
+        assert!(resources_conflict(&w1, &file));
+        assert!(resources_conflict(&file, &w1));
+        assert!(!resources_conflict(&w1, &file_other));
     }
 
     #[test]
@@ -1243,5 +1258,19 @@ mod tests {
         let c = reference_shared_outcome("A1", "art-other", "contract");
         assert_eq!(a, b, "consumers share one outcome identity");
         assert_ne!(a, c);
+    }
+
+    #[test]
+    fn parent_segments_cannot_enter_a_resource_key() {
+        assert!(normalize_resource_key("file", "src/../secret").is_err());
+        assert!(normalize_resource_key("dir", r"src\..\secret").is_err());
+        assert_eq!(
+            normalize_resource_key("file", "src/./a.rs").unwrap(),
+            "src/a.rs"
+        );
+        assert_eq!(
+            normalize_resource_key("prefix", "src//foo/./bar").unwrap(),
+            "src/foo/bar"
+        );
     }
 }

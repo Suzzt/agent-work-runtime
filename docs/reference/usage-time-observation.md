@@ -9,7 +9,7 @@ cumulative-duration field as estimated remaining time.
 - Core: `awr_core::workstream_usage` — dedup, cost totals, counter deltas,
   allocations, coverage reports, corrections, `usage_observation_handoff`,
   `refuse_eta_from_cumulative_duration`.
-- Store (schema 12 / `usage_time`): persisted receipts, corrections, allocation
+- Store (schema 13 / `usage_time`): persisted receipts, corrections, allocation
   records, counter snapshots, execution intervals, idempotent ingest receipts.
 - Runtime: attested ingest/query APIs and `usage_observation_for_ws043`.
 

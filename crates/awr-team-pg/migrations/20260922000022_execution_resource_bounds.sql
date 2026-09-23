@@ -33,5 +33,5 @@ CREATE INDEX IF NOT EXISTS resource_reservations_domain_lookup
         tenant_id, project_id, state, resource_kind, worktree_id, canonical_key
     );
 
-UPDATE awr_team.schema_state SET version = 27 WHERE component = 'awr_team';
+UPDATE awr_team.schema_state SET version = 22 WHERE component = 'awr_team';
 COMMIT;

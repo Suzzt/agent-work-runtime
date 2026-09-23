@@ -117,3 +117,94 @@ async fn explicit_start_work_delegation_allows_session() {
         .unwrap();
     assert_eq!(started["replayed"], false);
 }
+
+#[tokio::test]
+async fn disabled_binding_or_person_blocks_delegated_session() {
+    let (_guard, admin, db, store) = setup().await;
+    enable_writes(&admin).await;
+    let prepared = prepare(&store, A, "a").await;
+    flip_actor_to_agent(&admin).await;
+    let authz = AuthorizationStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let alice = PersonId::new("alice").unwrap();
+    authz
+        .issue(
+            TENANT,
+            PROJECT,
+            &IssueAuthorizationRequest {
+                request_key: "iss-agent-disabled-bind".into(),
+                authorization: work_grant(&alice),
+            },
+        )
+        .await
+        .unwrap();
+
+    // Disable the binding while authorization JSON remains active.
+    admin
+        .batch_execute(
+            "UPDATE awr_team.person_agent_bindings SET status='disabled'
+             WHERE id='bind-agent';",
+        )
+        .await
+        .unwrap();
+    let commands = store.commands();
+    let err = commands
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            command(
+                &prepared,
+                "agent-disabled-bind",
+                "session.start",
+                json!({"conversation_id": "c-disabled-bind"}),
+            ),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, PgError::Forbidden), "{err:?}");
+
+    // Re-enable binding but disable the person.
+    admin
+        .batch_execute(
+            "UPDATE awr_team.person_agent_bindings SET status='active' WHERE id='bind-agent';
+             UPDATE awr_team.persons SET status='disabled' WHERE id='alice';",
+        )
+        .await
+        .unwrap();
+    let err = commands
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            command(
+                &prepared,
+                "agent-disabled-person",
+                "session.start",
+                json!({"conversation_id": "c-disabled-person"}),
+            ),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, PgError::Forbidden), "{err:?}");
+
+    // Valid binding+person still works (control).
+    admin
+        .batch_execute("UPDATE awr_team.persons SET status='active' WHERE id='alice';")
+        .await
+        .unwrap();
+    let started = commands
+        .execute(
+            TENANT,
+            PROJECT,
+            A,
+            command(
+                &prepared,
+                "agent-live-ok",
+                "session.start",
+                json!({"conversation_id": "c-live-ok"}),
+            ),
+        )
+        .await
+        .unwrap();
+    assert_eq!(started["replayed"], false);
+}

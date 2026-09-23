@@ -5,8 +5,9 @@ use awr_core::{
     SubtaskResourceBound, now_millis,
 };
 use awr_runtime::host_adapter::{
-    AdapterActionOutcome, NativeExecutionHandle, ParallelScheduler, PauseGate, built_in_registry,
-    refuse_coordination_as_process_control, rollup_refs,
+    AdapterActionOutcome, CodexCliAdapter, ExecutionHostAdapter, NativeExecutionHandle,
+    ParallelScheduler, PauseGate, built_in_registry, refuse_coordination_as_process_control,
+    rollup_refs,
 };
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -83,7 +84,10 @@ fn l0_report_path_and_two_adapters() {
     };
     assert!(matches!(
         codex.start(&handle).unwrap(),
-        AdapterActionOutcome::Supported { .. }
+        AdapterActionOutcome::HumanContinuation {
+            missing: AdapterCapability::Start,
+            ..
+        }
     ));
     assert!(matches!(
         claude
@@ -99,15 +103,56 @@ fn l0_report_path_and_two_adapters() {
             ..
         }
     ));
-    // Both usable for status negotiation.
+    // Status negotiation remains usable; native start/stop are not claimed.
     for id in ["codex_cli", "claude_code"] {
-        let result = reg.get(id).unwrap().negotiate(&AdapterNegotiationRequest {
+        let adapter = reg.get(id).unwrap();
+        assert!(!adapter.matrix().auto_startable);
+        let result = adapter.negotiate(&AdapterNegotiationRequest {
             adapter_id: AdapterId::new(id).unwrap(),
             required: BTreeSet::from([AdapterCapability::StatusRead]),
             optional: BTreeSet::new(),
         });
         assert_eq!(result.decision, NegotiationDecision::Usable);
+        assert!(!adapter.matrix().supports(AdapterCapability::Start));
+        assert!(
+            !adapter
+                .matrix()
+                .supports(AdapterCapability::StopConfirmation)
+        );
+        assert!(
+            !adapter
+                .matrix()
+                .supports(AdapterCapability::ReconnectResume)
+        );
     }
+}
+
+#[test]
+fn codex_in_memory_handle_is_not_verified_native_status() {
+    let adapter = CodexCliAdapter::new();
+    // Direct observed_status without L0 report must not advertise verified running.
+    assert!(adapter.observed_status("never-started").is_none());
+    // Accepting an L0 report is the attributable observation path.
+    let report = ExternalExecutionReport {
+        version: 1,
+        request_key: "req-obs".into(),
+        execution_id: Id::from(9u128),
+        host_id: "fixture-host".into(),
+        host_work_key: "ws024".into(),
+        native_session: "codex:obs".into(),
+        agent_id: "operator".into(),
+        origin: ExternalReportOrigin::CallerReported,
+        phase: ExternalReportPhase::Started,
+        observed_at: now_millis().unwrap(),
+        summary: "observed via L0".into(),
+        detail_references: vec![],
+    };
+    adapter.accept_l0_report(&report).unwrap();
+    let status = adapter
+        .observed_status(&report.execution_id.to_string())
+        .expect("status from L0");
+    assert!(status.verified);
+    assert_eq!(status.basis, "codex_cli_l0_external_report");
 }
 
 #[test]
