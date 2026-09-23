@@ -134,6 +134,11 @@ impl WorkstreamReadStore {
         crate::WorkstreamCommandStore::from_pool(self.pool.clone())
     }
 
+    /// Project-admin member/role/credential management (TMCP-012).
+    pub fn project_access(&self) -> crate::ProjectAccessStore {
+        crate::ProjectAccessStore::from_pool(self.pool.clone())
+    }
+
     pub async fn check_schema(&self) -> PgResult<()> {
         let client = self.pool.get().await?;
         crate::check_schema(&client).await

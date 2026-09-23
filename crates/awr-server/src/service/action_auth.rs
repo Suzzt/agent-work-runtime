@@ -71,6 +71,66 @@ pub fn reject_forged_authority_fields(value: &Value) -> Result<(), &'static str>
     Ok(())
 }
 
+/// Access-management tools may name a *subject* membership plan, but still
+/// refuse caller-identity forgery and raw secret material in ordinary MCP args.
+pub fn reject_access_management_forgeries(value: &Value) -> Result<(), &'static str> {
+    const FORBIDDEN: &[&str] = &[
+        "actor_id",
+        "actor",
+        "client_id",
+        "client",
+        "tenant_id",
+        "tenant",
+        "project_id",
+        "secret",
+        "bearer",
+        "token",
+        "raw_credential",
+        "password",
+        "authorization",
+    ];
+    fn walk(value: &Value) -> Result<(), &'static str> {
+        let Some(obj) = value.as_object() else {
+            return Ok(());
+        };
+        for key in FORBIDDEN {
+            if obj.contains_key(*key) {
+                return Err("request cannot supply caller identity or raw secrets");
+            }
+        }
+        for (k, v) in obj {
+            // Nested plan.subject is allowed; it is not caller authority.
+            if k == "subject" {
+                if let Some(subject) = v.as_object() {
+                    for bad in ["secret", "bearer", "token", "raw_credential", "password"] {
+                        if subject.contains_key(bad) {
+                            return Err("request cannot supply caller identity or raw secrets");
+                        }
+                    }
+                }
+                continue;
+            }
+            if k == "plan" || k == "credential" || k == "grants" {
+                walk(v)?;
+                continue;
+            }
+            if v.is_object() || v.is_array() {
+                match v {
+                    Value::Object(_) => walk(v)?,
+                    Value::Array(items) => {
+                        for item in items {
+                            walk(item)?;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(())
+    }
+    walk(value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,6 +167,30 @@ mod tests {
         assert!(
             reject_forged_authority_fields(&json!({"op":"work.list","work_id":"a","grants":[]}))
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn access_tools_allow_subject_plan_but_refuse_raw_secrets_and_caller_forgery() {
+        let plan = json!({
+            "protocol_version":1,
+            "plan":{
+                "protocol_version":1,
+                "subject":{"id":"worker","kind":"agent","display_name":"W"},
+                "subject_client_id":"cli",
+                "role":"developer",
+                "grants":[],
+                "credential":{"id":"c1","secret_hash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+            }
+        });
+        assert!(reject_access_management_forgeries(&plan).is_ok());
+        assert!(reject_access_management_forgeries(&json!({"tenant_id":"x","plan":{}})).is_err());
+        assert!(reject_access_management_forgeries(&json!({"bearer":"awr1.x","plan":{}})).is_err());
+        assert!(
+            reject_access_management_forgeries(&json!({
+                "plan":{"subject":{"id":"a","kind":"agent","display_name":"A","bearer":"nope"}}
+            }))
+            .is_err()
         );
     }
 }

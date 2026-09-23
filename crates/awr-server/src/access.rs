@@ -1,3 +1,8 @@
+//! Schema-owner operator access CLI (bootstrap, recovery, and credential file install).
+//! Daily project member/role/credential changes after the first admin use the
+//! TMCP-012 MCP/HTTP `access.*` business entry (`ProjectAccessStore`), not this
+//! owner connection.
+
 use awr_team_pg::{
     AccessPlan, ExecutionAttributionPlan, OperatorAccess, OperatorBackup,
     OperatorExecutionAttribution, OperatorHistory, OperatorQuarantine, OperatorRecovery, PgError,

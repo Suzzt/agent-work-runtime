@@ -26,6 +26,9 @@ impl Bootstrap {
                  REVOKE ALL ON awr_team.operator_quarantines FROM {ident};
                  REVOKE ALL ON awr_team.execution_attributions FROM {ident};
                  REVOKE ALL ON awr_team.schema_state FROM {ident};
+                 -- Project-admin MCP receipts (TMCP-012): insert/select only.
+                 GRANT SELECT, INSERT ON awr_team.project_access_changes TO {ident};
+                 REVOKE UPDATE, DELETE ON awr_team.project_access_changes FROM {ident};
                  -- The app role must read the schema version (check_schema at
                  -- the command entry) but must never modify it (CR #36 P2-1).
                  GRANT SELECT ON awr_team.schema_state TO {ident};"

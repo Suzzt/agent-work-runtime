@@ -36,7 +36,10 @@ pub use graph::{
 pub use import::{BackupRecord, FencingBarrier, ImportJob, ImportStore, InspectReport, RestoreRun};
 pub use lease::{ClaimRecord, LeaseStore, SessionRecord};
 pub use migrate::{EXPECTED_SCHEMA_VERSION, check_schema, migrate};
-pub use operator_access::{AccessActor, AccessCredential, AccessGrant, AccessPlan, OperatorAccess};
+pub use operator_access::{
+    AccessActor, AccessCredential, AccessGrant, AccessPlan, AdminAccessPlan, OperatorAccess,
+    ProjectAccessStore,
+};
 pub use operator_backup::OperatorBackup;
 pub use operator_execution_attribution::{
     ExecutionAttributionEntry, ExecutionAttributionPlan, OperatorExecutionAttribution,
@@ -88,6 +91,6 @@ mod tests {
     #[test]
     fn schema_contract_is_stable() {
         assert_eq!(SCHEMA, "awr_team");
-        assert_eq!(EXPECTED_SCHEMA_VERSION, 19);
+        assert_eq!(EXPECTED_SCHEMA_VERSION, 20);
     }
 }
