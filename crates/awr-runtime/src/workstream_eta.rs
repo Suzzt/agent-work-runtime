@@ -7,7 +7,7 @@ use awr_core::workstream_eta::{
     EtaReestimateTrigger,
 };
 use awr_core::workstream_usage::{
-    refuse_eta_from_cumulative_duration, UsageCoverageObservation, UsageTimeObservationHandoff,
+    UsageCoverageObservation, UsageTimeObservationHandoff, refuse_eta_from_cumulative_duration,
 };
 
 fn refuse_cumulative_as_remaining(

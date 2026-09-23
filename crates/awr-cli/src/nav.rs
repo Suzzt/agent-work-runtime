@@ -32,7 +32,9 @@ pub fn run(root: &Path, args: &NavArgs, json_output: bool) -> Result<()> {
         let value: Value = serde_json::from_str(raw)
             .map_err(|e| Error::InvalidInput(format!("accounting_json: {e}")))?;
         extras.accounting = Some(serde_json::from_value(value).map_err(|e| {
-            Error::InvalidInput(format!("accounting_json does not match WorkstreamAccounting: {e}"))
+            Error::InvalidInput(format!(
+                "accounting_json does not match WorkstreamAccounting: {e}"
+            ))
         })?);
     }
     let scope = MainlineNavScope {
@@ -73,9 +75,7 @@ fn print_human(value: &Value) {
         if acc["available"] == true {
             println!(
                 "Accounting: required={} planned.recorded={} implemented.recorded={} (stages independent; not a goal-query rate)",
-                acc["required_count"],
-                acc["planned"]["recorded"],
-                acc["implemented"]["recorded"]
+                acc["required_count"], acc["planned"]["recorded"], acc["implemented"]["recorded"]
             );
         } else {
             println!(

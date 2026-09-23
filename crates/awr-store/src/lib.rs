@@ -15,8 +15,8 @@ mod handoff;
 mod management;
 mod mcp;
 mod team_handoff;
-mod workstream_usage;
 mod workstream_eta;
+mod workstream_usage;
 pub use mcp::with_mcp_operation;
 mod mutation;
 mod mutation_apply;
@@ -62,8 +62,8 @@ use serde::Serialize;
 pub use source_changes::{ProjectionChange, SourceState};
 use std::{path::Path, time::Duration};
 pub use work::{ScopedDependencyGraph, UnavailableDependency};
-pub use workstream_usage::UsageIngestReceipt;
 pub use workstream_eta::EtaIngestReceipt;
+pub use workstream_usage::UsageIngestReceipt;
 
 const APPLICATION_ID: i64 = 0x41575231;
 /// Schema written by this build. Exposed for offline host compatibility negotiation.
