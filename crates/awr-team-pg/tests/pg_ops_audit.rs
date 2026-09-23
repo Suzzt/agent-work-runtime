@@ -42,6 +42,17 @@ fn admin_plan_member() -> AdminAccessPlan {
     .unwrap()
 }
 
+async fn enable_admin_manage(owner: &Client) {
+    owner
+        .batch_execute(
+            "UPDATE awr_team.workstream_grants
+             SET can_write=true, can_manage=true, grant_version=grant_version+1
+             WHERE client_id='cli-a'",
+        )
+        .await
+        .unwrap();
+}
+
 fn reader_plan() -> AdminAccessPlan {
     serde_json::from_value(json!({
         "protocol_version":1,
@@ -67,7 +78,8 @@ fn reader_plan() -> AdminAccessPlan {
 
 #[tokio::test]
 async fn access_apply_binds_ops_audit_same_tx_and_export_authorized() {
-    let (_g, _admin, db, _store) = setup().await;
+    let (_g, admin, db, _store) = setup().await;
+    enable_admin_manage(&admin).await;
     let access =
         ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     let plan = admin_plan_member();
@@ -216,7 +228,8 @@ async fn deny_is_capacity_bounded_redacted_and_non_mutating() {
 
 #[tokio::test]
 async fn member_history_count_cannot_cross_scope() {
-    let (_g, _admin, db, store) = setup().await;
+    let (_g, admin, db, store) = setup().await;
+    enable_admin_manage(&admin).await;
     let access =
         ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
     // Add a reader member via admin.
@@ -317,7 +330,7 @@ async fn planning_suggest_binds_receipt_with_ops_audit() {
         .planning_suggest(TENANT, PROJECT, A, &req)
         .await
         .unwrap();
-    assert_eq!(out["protocol"], "awr-planning-command-receipt-v1");
+    assert_eq!(out["protocol"], "awr-team-planning-command-v1");
     assert_eq!(out["request_id"], "plan-audit-1");
     assert_eq!(out["already_recorded"], false);
 

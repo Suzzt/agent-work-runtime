@@ -4,7 +4,7 @@ use awr_core::{
     AgentAuthorization, AuthorizationStatus, ClaimEligibilityExplanation, ClaimEvaluationInput,
     DelegateAuthorizationRequest, Error, ExecutionSubjectKind, Id, IssueAuthorizationRequest,
     PersonId, Result, RevokeAuthorizationRequest, apply_delegate, apply_revoke,
-    explain_claim_eligibility, now_millis, validate_issue,
+    explain_claim_eligibility, now_millis, require_authorization_project, validate_issue,
 };
 use rusqlite::{OptionalExtension, params};
 
@@ -115,9 +115,10 @@ fn load_receipt(
                 request_key: request_key.into(),
                 authorization_id: r.get(0)?,
                 op: match op.as_str() {
+                    "issue" => "issue",
                     "revoke" => "revoke",
                     "delegate" => "delegate",
-                    _ => "issue",
+                    _ => "unknown",
                 },
                 event_id: r
                     .get::<_, String>(2)?
@@ -220,12 +221,21 @@ impl Store {
         req: &IssueAuthorizationRequest,
     ) -> Result<(AgentAuthorization, AuthorizationReceipt)> {
         validate_issue(req)?;
+        require_authorization_project(&req.authorization, &project.to_string())?;
         let project_s = project.to_string();
         let tx = self.conn.unchecked_transaction().map_err(db_error)?;
         if let Some(mut receipt) = load_receipt(&tx, &project_s, &req.request_key)? {
-            receipt.replayed = true;
             let auth = load_auth(&tx, &project_s, &receipt.authorization_id)?
                 .ok_or_else(|| Error::NotFound("authorization missing for receipt".into()))?;
+            if receipt.op != "issue"
+                || receipt.authorization_id != req.authorization.id
+                || auth != req.authorization
+            {
+                return Err(Error::RuleViolation(
+                    "request key was already used for a different authorization operation".into(),
+                ));
+            }
+            receipt.replayed = true;
             tx.commit().map_err(db_error)?;
             return Ok((auth, receipt));
         }
@@ -267,9 +277,18 @@ impl Store {
         let project_s = project.to_string();
         let tx = self.conn.unchecked_transaction().map_err(db_error)?;
         if let Some(mut receipt) = load_receipt(&tx, &project_s, &req.request_key)? {
-            receipt.replayed = true;
             let auth = load_auth(&tx, &project_s, &receipt.authorization_id)?
                 .ok_or_else(|| Error::NotFound("authorization missing for receipt".into()))?;
+            if receipt.op != "revoke"
+                || receipt.authorization_id != req.authorization_id
+                || auth.revoked_by.as_ref() != Some(&req.revoked_by)
+                || auth.revoked_at_ms != Some(req.revoked_at_ms)
+            {
+                return Err(Error::RuleViolation(
+                    "request key was already used for a different authorization operation".into(),
+                ));
+            }
+            receipt.replayed = true;
             tx.commit().map_err(db_error)?;
             return Ok((auth, receipt));
         }
@@ -308,11 +327,22 @@ impl Store {
         now_ms: i64,
     ) -> Result<(AgentAuthorization, AuthorizationReceipt)> {
         let project_s = project.to_string();
+        require_authorization_project(&req.child, &project_s)?;
         let tx = self.conn.unchecked_transaction().map_err(db_error)?;
         if let Some(mut receipt) = load_receipt(&tx, &project_s, &req.request_key)? {
-            receipt.replayed = true;
             let auth = load_auth(&tx, &project_s, &receipt.authorization_id)?
                 .ok_or_else(|| Error::NotFound("authorization missing for receipt".into()))?;
+            let mut expected = req.child.clone();
+            expected.parent_authorization_id = Some(req.parent_authorization_id.clone());
+            if receipt.op != "delegate"
+                || receipt.authorization_id != expected.id
+                || auth != expected
+            {
+                return Err(Error::RuleViolation(
+                    "request key was already used for a different authorization operation".into(),
+                ));
+            }
+            receipt.replayed = true;
             tx.commit().map_err(db_error)?;
             return Ok((auth, receipt));
         }

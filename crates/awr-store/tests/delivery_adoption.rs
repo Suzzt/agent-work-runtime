@@ -217,3 +217,48 @@ fn sqlite_export_revoke_is_auditable() {
         .unwrap();
     assert_eq!(loaded, revoked);
 }
+
+#[test]
+fn sqlite_refuses_reused_dependency_id() {
+    let mut f = Fixture::new();
+    let project = f.project.id;
+    let (req, _, _) = fixtures(&project.to_string());
+    f.store
+        .register_hard_delivery_dependency(
+            project,
+            &RegisterHardDependencyRequest {
+                request_key: "reg-1".into(),
+                dependency_id: "dep-1".into(),
+                provider: req.provider.clone(),
+                consumer: req.consumer.clone(),
+                selected: req.selected.clone(),
+                policy: req.policy,
+                minimum_level: req.minimum_level,
+                now_ms: 10,
+            },
+        )
+        .unwrap();
+    let err = f
+        .store
+        .register_hard_delivery_dependency(
+            project,
+            &RegisterHardDependencyRequest {
+                request_key: "reg-2".into(),
+                dependency_id: "dep-1".into(),
+                provider: req.provider,
+                consumer: req.consumer,
+                selected: req.selected,
+                policy: DeliveryVersionPolicy::CurrentContract,
+                minimum_level: req.minimum_level,
+                now_ms: 11,
+            },
+        )
+        .unwrap_err();
+    assert!(matches!(err, Error::InvalidInput(_)));
+    let kept = f
+        .store
+        .get_hard_delivery_dependency(project, "dep-1")
+        .unwrap()
+        .unwrap();
+    assert_eq!(kept.policy, DeliveryVersionPolicy::FixedDelivery);
+}

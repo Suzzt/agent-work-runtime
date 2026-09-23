@@ -21,6 +21,7 @@ pub const SOURCE_WRITABLE_FIELDS: &[&str] = &[
     "required_dependencies",
     "completion_policy",
     "definition_state",
+    "workstream",
     "split_from",
     "split_children",
     "external_key",
@@ -168,6 +169,18 @@ pub fn apply_planning_changes_to_ledger(
         inspect_draft_for_runtime_fields(&change.after, &mut refused)?;
         match change.op {
             DraftOpKind::CreateTask => {
+                let ws = change
+                    .after
+                    .workstream
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty());
+                if ws.is_none() {
+                    return Err(Error::InvalidInput(format!(
+                        "create_task {} requires workstream ownership before source writeback",
+                        change.after.external_key
+                    )));
+                }
                 if items.iter().any(|row| {
                     row.get("id").and_then(|v| v.as_str())
                         == Some(change.after.external_key.as_str())
@@ -262,6 +275,14 @@ fn draft_to_ledger_row(draft: &TaskDraft) -> Value {
         },
     });
     if let Some(obj) = row.as_object_mut() {
+        if let Some(ws) = draft
+            .workstream
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            obj.insert("workstream".into(), json!(ws));
+        }
         if let Some(parent) = &draft.split_from {
             obj.insert("split_from".into(), json!(parent));
         }
@@ -279,6 +300,16 @@ fn apply_draft_fields(row: &mut Value, draft: &TaskDraft) {
         obj.insert("acceptance".into(), json!(draft.acceptance));
         obj.insert("paths".into(), json!(draft.scope_paths));
         obj.insert("depends_on".into(), json!(draft.required_dependencies));
+        // Preserve existing workstream ownership unless the draft explicitly
+        // carries a non-empty workstream (CreateTask always does).
+        if let Some(ws) = draft
+            .workstream
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            obj.insert("workstream".into(), json!(ws));
+        }
         // Intentionally do not overwrite ledger `status` from definition_state
         // alone: status writeback requires verified domain derivation.
         if let Some(parent) = &draft.split_from {
@@ -326,6 +357,7 @@ mod tests {
             required_dependencies: deps.iter().map(|s| (*s).into()).collect(),
             completion_policy: "independent_review".into(),
             definition_state: DraftDefinitionState::Enabled,
+            workstream: None,
             split_from: None,
             split_children: vec![],
         }
