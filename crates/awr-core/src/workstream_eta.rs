@@ -11,8 +11,9 @@
 //! provisional or unestimable with an explicit source. Calibrated intervals
 //! require frozen sample + holdout thresholds. LLM self-report is never a
 //! precise promise.
-use crate::workstream_usage::{refuse_eta_from_cumulative_duration, UsageTimeObservationHandoff};
+use crate::workstream_usage::{UsageTimeObservationHandoff, refuse_eta_from_cumulative_duration};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 
@@ -56,11 +57,7 @@ fn add_u64(a: u64, b: u64) -> Result<u64> {
 }
 
 fn max_u64(a: u64, b: u64) -> u64 {
-    if a >= b {
-        a
-    } else {
-        b
-    }
+    if a >= b { a } else { b }
 }
 
 /// Delivery or stage-checkpoint target for a forecast.
@@ -732,11 +729,7 @@ pub fn schedule_next_acceptance(
                 }
             }
         }
-        if unknown {
-            None
-        } else {
-            Some(sum)
-        }
+        if unknown { None } else { Some(sum) }
     };
 
     Ok(EtaScheduleResult {
@@ -828,6 +821,8 @@ fn apply_sample_durations(
         if t.wait_before_ms.is_none() {
             if let Some(vals) = wait_by_kind.get_mut(t.work_id.as_str()) {
                 t.wait_before_ms = median_u64(vals);
+            } else if let Some(vals) = wait_by_kind.get_mut("default") {
+                t.wait_before_ms = median_u64(vals);
             }
         }
     }
@@ -847,15 +842,7 @@ fn handoff_digest(handoff: &UsageTimeObservationHandoff) -> Result<String> {
         return Err(EtaError::Invalid("handoff must be historical observation"));
     }
     let payload = serde_json::to_string(handoff).map_err(|_| EtaError::Invalid("handoff json"))?;
-    Ok(format!("sha256:{}", simple_fingerprint(&payload)))
-}
-
-fn simple_fingerprint(s: &str) -> String {
-    // Stable non-crypto fingerprint for audit linkage (not a security boundary).
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    s.hash(&mut h);
-    format!("{:016x}", h.finish())
+    Ok(format!("sha256:{:x}", Sha256::digest(payload.as_bytes())))
 }
 
 /// Build an immutable forecast for the next acceptable outcome.
@@ -1191,9 +1178,11 @@ mod local_tests {
         };
         let result = schedule_next_acceptance(&tasks, &cap, "card").unwrap();
         assert_eq!(result.checkpoint_ready_ms, Some(55));
-        assert!(!result
-            .critical_path_work_ids
-            .iter()
-            .any(|id| id == "unrelated"));
+        assert!(
+            !result
+                .critical_path_work_ids
+                .iter()
+                .any(|id| id == "unrelated")
+        );
     }
 }

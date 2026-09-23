@@ -1,6 +1,7 @@
 //! Acceptance coverage for AWR-WS-043 calibrated ETA + stage checkpoints.
 use awr_core::workstream_eta::*;
 use awr_core::workstream_usage::*;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
 fn target() -> EtaTarget {
@@ -304,10 +305,12 @@ fn cold_start_and_calibration_gate_and_llm_refusal() {
         record.estimate_kind,
         EtaEstimateKind::Unestimable { .. }
     ));
-    assert!(record
-        .assumptions
-        .iter()
-        .any(|a| a.starts_with("llm_narrative_recorded_not_promise:")));
+    assert!(
+        record
+            .assumptions
+            .iter()
+            .any(|a| a.starts_with("llm_narrative_recorded_not_promise:"))
+    );
     assert!(!record.calibration.gate_passed);
 
     // Below gate → provisional even with durations.
@@ -504,7 +507,7 @@ fn cumulative_usage_handoff_is_not_eta() {
         },
         assumptions: vec!["a".into()],
         unknowns: vec![],
-        observation_handoff: Some(h),
+        observation_handoff: Some(h.clone()),
         llm_narrative: None,
         calendar_offset_ms: None,
         supersedes_forecast_id: None,
@@ -513,7 +516,100 @@ fn cumulative_usage_handoff_is_not_eta() {
         reestimate_reason_after: None,
     };
     let record = estimate_next_acceptance(&req).unwrap();
-    assert!(record.observation_handoff_digest.is_some());
+    let payload = serde_json::to_string(&h).unwrap();
+    let expected = format!("sha256:{:x}", Sha256::digest(payload.as_bytes()));
+    assert_eq!(
+        record.observation_handoff_digest.as_deref(),
+        Some(expected.as_str())
+    );
+    assert_eq!(expected.len(), "sha256:".len() + 64);
+}
+
+/// Unknown durations take the `default` sample median. An explicit zero wait
+/// stays zero. With no samples, unknown wait is not invented.
+#[test]
+fn default_samples_fill_unknown_exec_and_wait() {
+    let unknown = vec![EtaTaskNode {
+        work_id: "card".into(),
+        effective_execution_ms: None,
+        wait_before_ms: None,
+        depends_on: vec![],
+        mainline_id: Some("m1".into()),
+        is_acceptance_checkpoint: true,
+    }];
+    let mut req = EtaEstimateRequest {
+        project_id: "proj".into(),
+        forecast_id: "f-bare".into(),
+        generated_at_ms: 1_000,
+        target: target(),
+        task_graph_version: "g".into(),
+        execution_strategy: "s".into(),
+        tasks: unknown.clone(),
+        capacity: capacity(1),
+        sample_policy: EtaSamplePolicy::default_frozen(),
+        samples: vec![],
+        holdout_sample_ids: BTreeSet::new(),
+        acceptance_data: vec![],
+        exclusions: EtaObservableExclusion {
+            network_queue_ms: None,
+            model_queue_ms: None,
+            evidence_ref: None,
+        },
+        assumptions: vec!["seed".into()],
+        unknowns: vec![],
+        observation_handoff: None,
+        llm_narrative: None,
+        calendar_offset_ms: Some(0),
+        supersedes_forecast_id: None,
+        reestimate_trigger: None,
+        reestimate_reason_before: None,
+        reestimate_reason_after: None,
+    };
+    let bare = estimate_next_acceptance(&req).unwrap();
+    assert!(matches!(
+        bare.components.calendar_acceptance_window_ms.low_ms,
+        EtaBoundMs::Unknown
+    ));
+
+    req.forecast_id = "f-filled".into();
+    req.samples = [10, 30, 20]
+        .into_iter()
+        .zip([4u64, 8, 6])
+        .enumerate()
+        .map(|(i, (exec, wait))| EtaHistoricalSample {
+            sample_id: format!("d{i}"),
+            work_kind: "default".into(),
+            observed_execution_ms: exec,
+            observed_wait_ms: wait,
+            source_ledger: "historical_observation".into(),
+        })
+        .collect();
+    let filled = estimate_next_acceptance(&req).unwrap();
+    assert!(matches!(
+        filled.components.effective_execution_ms.low_ms,
+        EtaBoundMs::Known(_)
+    ));
+    assert!(matches!(
+        filled.components.dependency_or_human_wait_ms.low_ms,
+        EtaBoundMs::Known(6)
+    ));
+    assert!(matches!(
+        filled.components.calendar_acceptance_window_ms.low_ms,
+        EtaBoundMs::Known(1_026)
+    ));
+
+    req.forecast_id = "f-explicit-zero".into();
+    req.tasks[0].effective_execution_ms = Some(10);
+    req.tasks[0].wait_before_ms = Some(0);
+    let explicit = estimate_next_acceptance(&req).unwrap();
+    assert!(matches!(
+        explicit.components.dependency_or_human_wait_ms.low_ms,
+        EtaBoundMs::Known(0)
+    ));
+    assert!(matches!(
+        explicit.components.calendar_acceptance_window_ms.low_ms,
+        EtaBoundMs::Known(1_010)
+    ));
 }
 
 /// Unknown human/dependency wait must not be coerced to zero readiness.
@@ -624,9 +720,11 @@ fn unknown_wait_keeps_acceptance_finish_unknown() {
         record.components.calendar_acceptance_window_ms.low_ms,
         EtaBoundMs::Unknown
     ));
-    assert!(record
-        .unknowns
-        .iter()
-        .any(|u| u == "dependency_or_human_wait_ms"));
+    assert!(
+        record
+            .unknowns
+            .iter()
+            .any(|u| u == "dependency_or_human_wait_ms")
+    );
     assert!(record.unknowns.iter().any(|u| u == "checkpoint_ready_ms"));
 }
