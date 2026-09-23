@@ -28,9 +28,8 @@ fn assert_examples(doc: &str, label: &str) {
     for (i, block) in blocks.iter().enumerate() {
         // Keyword-only checks cannot catch args-wrapper drift; deserialize.
         if block.contains("\"request_id\"") {
-            let cmd: WorkstreamCommand = serde_json::from_str(block).unwrap_or_else(|e| {
-                panic!("{label} command example #{i} failed: {e}\n{block}")
-            });
+            let cmd: WorkstreamCommand = serde_json::from_str(block)
+                .unwrap_or_else(|e| panic!("{label} command example #{i} failed: {e}\n{block}"));
             assert_eq!(cmd.protocol_version, 1);
             assert!(!cmd.op.is_empty());
             assert!(!cmd.work_id.is_empty());
@@ -44,9 +43,8 @@ fn assert_examples(doc: &str, label: &str) {
             );
             commands += 1;
         } else {
-            let q: WorkstreamQuery = serde_json::from_str(block).unwrap_or_else(|e| {
-                panic!("{label} query example #{i} failed: {e}\n{block}")
-            });
+            let q: WorkstreamQuery = serde_json::from_str(block)
+                .unwrap_or_else(|e| panic!("{label} query example #{i} failed: {e}\n{block}"));
             assert_eq!(q.protocol_version, 1);
             assert!(!q.op.is_empty());
             assert!(
@@ -56,8 +54,14 @@ fn assert_examples(doc: &str, label: &str) {
             queries += 1;
         }
     }
-    assert!(queries >= 2, "{label}: expected multiple query examples, got {queries}");
-    assert!(commands >= 2, "{label}: expected multiple command examples, got {commands}");
+    assert!(
+        queries >= 2,
+        "{label}: expected multiple query examples, got {queries}"
+    );
+    assert!(
+        commands >= 2,
+        "{label}: expected multiple command examples, got {commands}"
+    );
 }
 
 #[test]
