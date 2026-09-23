@@ -32,5 +32,5 @@ ALTER TABLE awr_team.project_memberships
         'project_admin', 'developer', 'maintainer'
     ));
 
-UPDATE awr_team.schema_state SET version=19 WHERE component='awr_team';
+UPDATE awr_team.schema_state SET version=20 WHERE component='awr_team';
 COMMIT;

@@ -61,10 +61,11 @@ pub use work::{ScopedDependencyGraph, UnavailableDependency};
 
 const APPLICATION_ID: i64 = 0x41575231;
 /// Schema written by this build. Exposed for offline host compatibility negotiation.
-pub const SCHEMA_VERSION: i64 = 8;
+pub const SCHEMA_VERSION: i64 = 9;
 const CONTENT_REVIEWS_SQL: &str = include_str!("../migrations/007_content_reviews.sql");
+const RESPONSIBILITY_SQL: &str = include_str!("../migrations/008_responsibility.sql");
 const OPERATION_READSET_RECEIPTS_SQL: &str =
-    include_str!("../migrations/008_operation_readset_receipts.sql");
+    include_str!("../migrations/009_operation_readset_receipts.sql");
 const CATALOG_SQL: &str = include_str!("../migrations/001_catalog.sql");
 const DOMAIN_SQL: &str = include_str!("../migrations/002_domain.sql");
 const SEARCH_SQL: &str = include_str!("../migrations/003_search.sql");
@@ -432,10 +433,14 @@ impl Store {
                 tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(7,'content_reviews',?1)",[now_millis()?]).map_err(db_error)?;
             }
             if version < 8 {
+                tx.execute_batch(RESPONSIBILITY_SQL).map_err(db_error)?;
+                tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(8,'responsibility',?1)",[now_millis()?]).map_err(db_error)?;
+            }
+            if version < 9 {
                 tx.execute_batch(OPERATION_READSET_RECEIPTS_SQL)
                     .map_err(db_error)?;
                 tx.execute(
-                    "INSERT INTO schema_migrations(version,name,applied_at) VALUES(8,'operation_readset_receipts',?1)",
+                    "INSERT INTO schema_migrations(version,name,applied_at) VALUES(9,'operation_readset_receipts',?1)",
                     [now_millis()?],
                 )
                 .map_err(db_error)?;
@@ -615,3 +620,4 @@ impl Store {
 }
 
 mod content_review;
+mod responsibility;

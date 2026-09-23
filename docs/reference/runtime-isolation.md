@@ -84,3 +84,25 @@ API privacy checks and real CLI/MCP regression fixtures. These checks establish
 local coordination and provenance, not authentication between local users,
 tamper-proof database files, distributed locking, E4 or a release. Cross-platform
 validation remains a separate V1 gate.
+
+## Person responsibility and execution identity (WS-015)
+
+A task (work item) is the stable work unit. A **person** is the responsibility unit.
+An **execution instance** is either a person acting directly or an agent run that is
+explicitly bound to a person. Roles on one task are distinct: sole owner, collaborators,
+current executor, and independent reviewer.
+
+Assigning responsibility, accepting responsibility, and claiming temporary execution are
+separate operations with versioned events and idempotent receipts. Claiming execution
+updates the current executor only; it never steals sole ownership. An unassigned pool may
+have no owner. Personal mode may default owner=self while using the same underlying
+semantics.
+
+The same person may swap agents without changing ownership. Owner transfer requires
+authorization by the current owner and acceptance by the receiver; group names and agent
+labels are not substitute owners. Departure, disable, no-acceptor, and legacy-identity
+migration remain explicit pending states. Person↔agent bindings are stored explicitly and
+must not be inferred from `actor.kind`. History is retained in SQLite
+(`task_responsibilities`, `responsibility_events`, `responsibility_receipts`) and Team PG
+(schema 19). Coordination `claims` remain the lease surface and are linked optionally via
+`coordination_claim_id` without implying ownership.
