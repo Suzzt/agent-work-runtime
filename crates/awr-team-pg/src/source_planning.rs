@@ -14,9 +14,9 @@ use awr_team::{
     AffectedTaskImpact, BaselineView, CandidateState, DraftChange,
     OrdinaryPlanningSelfApprovePolicy, PLANNING_CODEC, PlanningApproval, PlanningCandidate,
     PlanningSuggestion, ResourceRef, SUGGESTION_ADDS_FORMAL_WORK, SUGGESTION_CLAIMABLE,
-    SuggestionState, authorize_planning_approve, authorize_planning_publish, build_candidate_diff,
-    edit_candidate, ensure_independent_review_not_downgraded, refuse_reader_suggestion_write,
-    validate_candidate,
+    SuggestionState, attested_actor_person, authorize_planning_approve, authorize_planning_publish,
+    build_candidate_diff, edit_candidate, ensure_independent_review_not_downgraded,
+    refuse_reader_suggestion_write, validate_candidate,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -29,9 +29,12 @@ pub struct SuggestionSubmit {
     pub affected_work_keys: Vec<String>,
     #[serde(default)]
     pub proposed_notes: Value,
-    /// Optional person id; defaults to authenticated actor id.
+    /// Must match the authenticated actor when present. Not a separate credential.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author_person_id: Option<String>,
+    /// When set (TMCP-023 receipt resume), reuse this suggestion identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predetermined_suggestion_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -46,9 +49,12 @@ pub struct DraftCandidateCreate {
     pub project_goal_keys: Vec<String>,
     #[serde(default)]
     pub self_approve_policy: Option<OrdinaryPlanningSelfApprovePolicy>,
-    /// Optional person id; defaults to authenticated actor id.
+    /// Must match the authenticated actor when present. Not a separate credential.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author_person_id: Option<String>,
+    /// When set (TMCP-023 receipt resume), reuse this candidate identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predetermined_candidate_id: Option<String>,
 }
 
 fn map_team(err: awr_team::TeamError) -> PgError {
@@ -88,11 +94,10 @@ impl SourceStore {
     ) -> PgResult<Value> {
         let mut client = self.connect().await?;
         crate::check_schema(&client).await?;
-        let tx = client
-            .build_transaction()
-            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
-            .start()
-            .await?;
+        // Read committed: a concurrent resume of the same predetermined id uses
+        // ON CONFLICT DO NOTHING, and repeatable read turns that into a
+        // serialization failure instead of revealing the committed row.
+        let tx = client.transaction().await?;
         let mut auth = authenticate_writer(&tx, tenant_id, project_id, bearer).await?;
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -112,11 +117,13 @@ impl SourceStore {
         }
         let (baseline_digest, baseline_epoch) =
             current_baseline(&tx, tenant_id, project_id).await?;
-        let suggestion_id = new_id();
-        let person = submit
-            .author_person_id
+        let suggestion_id = submit
+            .predetermined_suggestion_id
             .clone()
-            .unwrap_or_else(|| auth.actor_id.clone());
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(new_id);
+        let person = attested_actor_person(&auth.actor_id, submit.author_person_id.as_deref())
+            .map_err(map_team)?;
         let suggestion = PlanningSuggestion {
             codec: PLANNING_CODEC.into(),
             suggestion_id: suggestion_id.clone(),
@@ -138,41 +145,64 @@ impl SourceStore {
         suggestion.validate().map_err(map_team)?;
         let keys = serde_json::to_value(&suggestion.affected_work_keys)
             .map_err(|e| PgError::Protocol(e.to_string()))?;
-        tx.execute(
-            "INSERT INTO awr_team.planning_suggestions(
-                tenant_id, project_id, id, author_person_id, author_actor_id, author_client_id,
-                rationale, version, baseline_digest, baseline_epoch, affected_work_keys,
-                proposed_notes, state)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'open')",
-            &[
-                &tenant_id,
-                &project_id,
-                &suggestion_id,
-                &suggestion.author_person_id,
-                &auth.actor_id,
-                &auth.client_id,
-                &suggestion.rationale,
-                &(suggestion.version as i32),
-                &baseline_digest,
-                &baseline_epoch,
-                &keys,
-                &suggestion.proposed_notes,
-            ],
-        )
-        .await?;
+        let inserted = tx
+            .execute(
+                "INSERT INTO awr_team.planning_suggestions(
+                    tenant_id, project_id, id, author_person_id, author_actor_id, author_client_id,
+                    rationale, version, baseline_digest, baseline_epoch, affected_work_keys,
+                    proposed_notes, state)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'open')
+                 ON CONFLICT (tenant_id, project_id, id) DO NOTHING",
+                &[
+                    &tenant_id,
+                    &project_id,
+                    &suggestion_id,
+                    &suggestion.author_person_id,
+                    &auth.actor_id,
+                    &auth.client_id,
+                    &suggestion.rationale,
+                    &(suggestion.version as i32),
+                    &baseline_digest,
+                    &baseline_epoch,
+                    &keys,
+                    &suggestion.proposed_notes,
+                ],
+            )
+            .await?;
+        // On resume, reload the durable row so callers always see one identity.
+        let row = if inserted == 0 {
+            tx.query_one(
+                "SELECT id, version, author_person_id, author_actor_id, rationale,
+                        baseline_digest, baseline_epoch, state
+                 FROM awr_team.planning_suggestions
+                 WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+                &[&tenant_id, &project_id, &suggestion_id],
+            )
+            .await?
+        } else {
+            // Synthesize from just-inserted values via a round-trip for uniformity.
+            tx.query_one(
+                "SELECT id, version, author_person_id, author_actor_id, rationale,
+                        baseline_digest, baseline_epoch, state
+                 FROM awr_team.planning_suggestions
+                 WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+                &[&tenant_id, &project_id, &suggestion_id],
+            )
+            .await?
+        };
         let result = json!({
-            "suggestion_id": suggestion_id,
-            "version": suggestion.version,
-            "author_person_id": suggestion.author_person_id,
-            "author_actor_id": auth.actor_id,
-            "rationale": suggestion.rationale,
-            "baseline_digest": baseline_digest,
-            "baseline_epoch": baseline_epoch,
+            "suggestion_id": row.get::<_, String>(0),
+            "version": row.get::<_, i32>(1),
+            "author_person_id": row.get::<_, String>(2),
+            "author_actor_id": row.get::<_, String>(3),
+            "rationale": row.get::<_, String>(4),
+            "baseline_digest": row.get::<_, String>(5),
+            "baseline_epoch": row.get::<_, String>(6),
             "claimable": false,
             "adds_formal_work": false,
             "mutates_live_deps": false,
             "mutates_live_acceptance": false,
-            "state": "open"
+            "state": row.get::<_, String>(7),
         });
         tx.commit().await?;
         Ok(result)
@@ -215,11 +245,33 @@ impl SourceStore {
             &policy.delivery_completion_policy,
         )
         .map_err(map_team)?;
-        let person = create
-            .author_person_id
+        let person = attested_actor_person(&auth.actor_id, create.author_person_id.as_deref())
+            .map_err(map_team)?;
+        let candidate_id = create
+            .predetermined_candidate_id
             .clone()
-            .unwrap_or_else(|| auth.actor_id.clone());
-        let candidate_id = new_id();
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(new_id);
+        // Resume: if the reserved candidate already exists, return its digest.
+        if let Some(row) = tx
+            .query_opt(
+                "SELECT id, draft_revision, candidate_digest, state
+                 FROM awr_team.planning_candidates
+                 WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+                &[&tenant_id, &project_id, &candidate_id],
+            )
+            .await?
+        {
+            let result = json!({
+                "candidate_id": row.get::<_, String>(0),
+                "draft_revision": row.get::<_, i32>(1),
+                "candidate_digest": row.get::<_, String>(2),
+                "state": row.get::<_, String>(3),
+                "resumed": true,
+            });
+            tx.commit().await?;
+            return Ok(result);
+        }
         let candidate = PlanningCandidate {
             codec: PLANNING_CODEC.into(),
             candidate_id: candidate_id.clone(),
@@ -348,6 +400,7 @@ impl SourceStore {
         )
         .await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningEditDraft, None, None)?;
+        lock_candidate(&tx, tenant_id, project_id, candidate_id).await?;
         let mut candidate = load_candidate(&tx, tenant_id, project_id, candidate_id).await?;
         let (baseline_digest, baseline_epoch) =
             current_baseline(&tx, tenant_id, project_id).await?;
@@ -507,16 +560,10 @@ impl SourceStore {
         let (live_digest, live_epoch) = current_baseline(&tx, tenant_id, project_id).await?;
         ensure_baseline_current(&candidate, &live_digest, &live_epoch)?;
         authorize_candidate_readable_scope(&tx, &auth, tenant_id, project_id, &candidate).await?;
-        if let Some(person) = author_person_id {
-            // Allow callers to assert person identity for self-approve checks.
-            if candidate.author_person_id != person && auth.actor_id != person {
-                // keep stored author; person override only for approver scope
-            }
-        }
-        let mut scope = crate::workstream_auth::authority_scope(&auth, None, None);
-        if let Some(person) = author_person_id {
-            scope.person_id = person.into();
-        }
+        // Do not copy a caller-supplied person into the approver scope. That
+        // substitution both forges the receipt and clears the self-approve ban.
+        attested_actor_person(&auth.actor_id, author_person_id).map_err(map_team)?;
+        let scope = crate::workstream_auth::authority_scope(&auth, None, None);
         let resource = ResourceRef {
             tenant_id: tenant_id.into(),
             project_id: project_id.into(),
@@ -608,18 +655,24 @@ impl SourceStore {
         )
         .await?;
         authorize_domain_action(&auth, awr_team::Action::PlanningPublish, None, None)?;
+        lock_candidate(&tx, tenant_id, project_id, candidate_id).await?;
         let mut candidate = load_candidate(&tx, tenant_id, project_id, candidate_id).await?;
         let (live_digest, live_epoch) = current_baseline(&tx, tenant_id, project_id).await?;
         ensure_baseline_current(&candidate, &live_digest, &live_epoch)?;
         authorize_candidate_readable_scope(&tx, &auth, tenant_id, project_id, &candidate).await?;
-        // Attach latest approval for publish checks.
+        if candidate.state != CandidateState::Approved {
+            return Err(PgError::CandidateNotApproved);
+        }
+        let current_digest = candidate.candidate_digest().map_err(map_team)?;
+        // Only an approval of this digest counts. Do not promote drafting or
+        // published rows back to approved just because an older approval exists.
         if let Some(row) = tx
             .query_opt(
                 "SELECT id, candidate_digest, approver_person_id, approver_actor_id, self_approved
                  FROM awr_team.planning_approvals
-                 WHERE tenant_id=$1 AND project_id=$2 AND candidate_id=$3
+                 WHERE tenant_id=$1 AND project_id=$2 AND candidate_id=$3 AND candidate_digest=$4
                  ORDER BY decided_at DESC LIMIT 1",
-                &[&tenant_id, &project_id, &candidate_id],
+                &[&tenant_id, &project_id, &candidate_id, &current_digest],
             )
             .await?
         {
@@ -635,7 +688,6 @@ impl SourceStore {
                 approver_actor_id: actor,
                 self_approved,
             });
-            candidate.state = CandidateState::Approved;
             let scope = crate::workstream_auth::authority_scope(&auth, None, None);
             let resource = ResourceRef {
                 tenant_id: tenant_id.into(),
@@ -923,6 +975,26 @@ async fn append_history(
         ],
     )
     .await?;
+    Ok(())
+}
+
+async fn lock_candidate(
+    tx: &Transaction<'_>,
+    tenant_id: &str,
+    project_id: &str,
+    candidate_id: &str,
+) -> PgResult<()> {
+    let row = tx
+        .query_opt(
+            "SELECT id FROM awr_team.planning_candidates
+             WHERE tenant_id=$1 AND project_id=$2 AND id=$3
+             FOR UPDATE",
+            &[&tenant_id, &project_id, &candidate_id],
+        )
+        .await?;
+    if row.is_none() {
+        return Err(PgError::Protocol("planning candidate not found".into()));
+    }
     Ok(())
 }
 

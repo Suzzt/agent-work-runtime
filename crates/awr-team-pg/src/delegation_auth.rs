@@ -97,6 +97,18 @@ pub(crate) async fn resolve_agent_delegation(
 
     let mut chosen: Option<AgentAuthorization> = None;
     let mut chosen_actions = BTreeSet::new();
+    let task_stream = if let Some(work) = work_id.filter(|w| !w.is_empty()) {
+        crate::tx::bind_workstream_scope(tx, &auth.tenant_id, project_id).await?;
+        tx.query_opt(
+            "SELECT workstream_id FROM awr_team.workstream_ownership
+             WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3",
+            &[&auth.tenant_id, &project_id, &work],
+        )
+        .await?
+        .map(|row| row.get::<_, String>(0))
+    } else {
+        None
+    };
 
     for row in rows {
         let body: serde_json::Value = row.get(0);
@@ -125,7 +137,7 @@ pub(crate) async fn resolve_agent_delegation(
             continue;
         }
         if let Some(work) = work_id.filter(|w| !w.is_empty()) {
-            if !grant.covers_task(project_id, work) {
+            if !grant.covers_task(project_id, work, task_stream.as_deref()) {
                 continue;
             }
         } else if grant.scope.project_id() != project_id {

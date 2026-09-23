@@ -126,6 +126,6 @@ BEGIN
     END LOOP;
 END $$;
 
-UPDATE awr_team.schema_state SET version=24 WHERE component='awr_team';
+UPDATE awr_team.schema_state SET version=27 WHERE component='awr_team';
 
 COMMIT;

@@ -99,7 +99,8 @@ pub use source::planning_ops::{
 pub use source::writeback::{ActivationImpactGate, WritebackActivateRequest};
 pub use source::{
     CandidateRecord, CurrentSource, CurrentWorkstreamSource, IngestRequest, SOURCE_BINDING_FILE,
-    SoleSourceBinding, SoleSourceKind, SourceFile, SourceStore, WORKSTREAMS_FILE,
+    SOURCE_PROVENANCE_FILE, SoleSourceBinding, SoleSourceKind, SourceFile, SourceStore,
+    WORKSTREAMS_FILE,
 };
 pub use team_handoff::HandoffStore;
 pub use tx::{CommandOutcome, CommandRequest, TeamStore};
