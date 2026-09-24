@@ -1,0 +1,6 @@
+{
+  "contract_id": "awr-team-v1",
+  "version": "9.9.9",
+  "kind": "team_work_scope",
+  "scope": {"required_work_ids": ["TW-001"], "targets": {"team_work_items": 1}}
+}

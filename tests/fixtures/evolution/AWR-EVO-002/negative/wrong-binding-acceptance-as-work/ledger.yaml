@@ -1,0 +1,13 @@
+schema_version: 1
+contract_bindings:
+  - contract_id: awr-team-v1
+    version: "1.0.0"
+    path: contracts/awr-team-v1.json
+    section: team_work
+team_work:
+  # Wrong shape for awr-team-v1 — acceptance scenarios instead of work_definitions
+  acceptance_scenarios:
+    - id: TAS-001
+      title: wrongly bound
+      status: planned
+      required_gates: [claim]

@@ -1,0 +1,16 @@
+schema_version: 1
+contract_bindings:
+  - contract_id: awr-team-acceptance-v1
+    version: "1.0.0"
+    path: contracts/awr-team-acceptance-v1.json
+    section: team_acceptance
+team_acceptance:
+  acceptance_scenarios:
+    - id: TAS-001
+      title: team claim handoff
+      status: completed
+      required_gates: [claim, handoff, review]
+      gates: {claim: true, handoff: true, review: true}
+      executor: agent-a
+      reviewer: agent-a
+      evidence: [x.json]
