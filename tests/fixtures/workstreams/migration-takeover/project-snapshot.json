@@ -1,0 +1,193 @@
+{
+  "schema": "awr-workstream-migration-takeover-fixture/v1",
+  "fixture_id": "ws050-independent-realistic-1",
+  "project_id": "proj-migration-fixture",
+  "tenant_id": "tenant-migration-fixture",
+  "goals": [
+    {
+      "id": "g-team",
+      "title": "Team collaboration mainline",
+      "line": "Team",
+      "owner_person_id": "person-owner",
+      "status": "active"
+    },
+    {
+      "id": "g-evo",
+      "title": "Evolution product line",
+      "line": "EVO",
+      "owner_person_id": "person-evo",
+      "status": "active"
+    },
+    {
+      "id": "g-dec",
+      "title": "Decision governance line",
+      "line": "DEC",
+      "owner_person_id": "person-dec",
+      "status": "active"
+    },
+    {
+      "id": "g-auto",
+      "title": "Automation line",
+      "line": "AUTO",
+      "owner_person_id": "person-auto",
+      "status": "active"
+    }
+  ],
+  "actors": [
+    {
+      "id": "person-owner",
+      "kind": "person",
+      "display_name": "Owner Person"
+    },
+    {
+      "id": "person-evo",
+      "kind": "person",
+      "display_name": "EVO Owner"
+    },
+    {
+      "id": "person-dec",
+      "kind": "person",
+      "display_name": "DEC Owner"
+    },
+    {
+      "id": "person-auto",
+      "kind": "person",
+      "display_name": "AUTO Owner"
+    },
+    {
+      "id": "person-reviewer",
+      "kind": "person",
+      "display_name": "Independent Reviewer"
+    },
+    {
+      "id": "agent-bound",
+      "kind": "agent",
+      "display_name": "Delegated Coding Agent"
+    },
+    {
+      "id": "agent-orphan",
+      "kind": "agent",
+      "display_name": "Unproven Historical Agent"
+    }
+  ],
+  "person_delegations": [
+    {
+      "id": "bind-1",
+      "person_id": "person-owner",
+      "agent_id": "agent-bound",
+      "status": "active",
+      "provable": true
+    },
+    {
+      "id": "bind-weak",
+      "person_id": "person-evo",
+      "agent_id": "agent-orphan",
+      "status": "active",
+      "provable": false
+    }
+  ],
+  "sessions": [
+    {
+      "id": "sess-active",
+      "actor_id": "agent-bound",
+      "work_item_id": "W-OPEN",
+      "status": "active"
+    },
+    {
+      "id": "sess-orphan",
+      "actor_id": "agent-orphan",
+      "work_item_id": "W-OPEN",
+      "status": "ended"
+    },
+    {
+      "id": "sess-person",
+      "actor_id": "person-owner",
+      "work_item_id": "W-DONE",
+      "status": "ended"
+    }
+  ],
+  "claims": [
+    {
+      "id": "claim-active",
+      "session_id": "sess-active",
+      "actor_id": "agent-bound",
+      "work_item_id": "W-OPEN",
+      "status": "active"
+    },
+    {
+      "id": "claim-orphan",
+      "session_id": "sess-orphan",
+      "actor_id": "agent-orphan",
+      "work_item_id": "W-OPEN",
+      "status": "released"
+    },
+    {
+      "id": "claim-person",
+      "session_id": "sess-person",
+      "actor_id": "person-owner",
+      "work_item_id": "W-DONE",
+      "status": "released"
+    }
+  ],
+  "reviews": [
+    {
+      "id": "rev-person",
+      "work_item_id": "W-DONE",
+      "reviewer_actor_id": "person-reviewer",
+      "declared_role": "independent_approver",
+      "status": "accepted"
+    },
+    {
+      "id": "rev-agent-as-approver",
+      "work_item_id": "W-DONE",
+      "reviewer_actor_id": "agent-bound",
+      "declared_role": "independent_approver",
+      "status": "accepted"
+    },
+    {
+      "id": "rev-orphan-participant",
+      "work_item_id": "W-OPEN",
+      "reviewer_actor_id": "agent-orphan",
+      "declared_role": "participant",
+      "status": "pending"
+    }
+  ],
+  "work_items": [
+    {
+      "id": "W-OPEN",
+      "title": "Incomplete migration-sensitive work",
+      "status": "in_progress",
+      "goal_id": "g-team",
+      "incomplete": true
+    },
+    {
+      "id": "W-DONE",
+      "title": "Historically released work",
+      "status": "completed",
+      "goal_id": "g-evo",
+      "incomplete": false
+    },
+    {
+      "id": "W-DEC",
+      "title": "Decision backlog item",
+      "status": "ready",
+      "goal_id": "g-dec",
+      "incomplete": true
+    },
+    {
+      "id": "W-AUTO",
+      "title": "Automation backlog item",
+      "status": "ready",
+      "goal_id": "g-auto",
+      "incomplete": true
+    }
+  ],
+  "release_evidence": [
+    {
+      "id": "rel-1",
+      "work_item_id": "W-DONE",
+      "release_tag": "v0.fixture.1",
+      "evidence_digest": "sha256:fixture-release-1"
+    }
+  ]
+}

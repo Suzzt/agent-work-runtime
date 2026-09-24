@@ -1,0 +1,121 @@
+{
+  "namespace": "awr-ws-r2-ws-biz-05",
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "授权撤销拒收与重安排 交付"
+    }
+  ],
+  "work_items": [
+    {
+      "id": "R5-OWN",
+      "title": "负责人发起分工调整",
+      "status": "ready",
+      "depends_on": [],
+      "owner": null,
+      "intended_person": "person.cameron-yu",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "负责人发起分工调整 完成并可复核"
+      ],
+      "next_action": "由 Cameron Yu 经 codex_cli 推进"
+    },
+    {
+      "id": "R5-REJECT",
+      "title": "原接收人拒收交接",
+      "status": "planned",
+      "depends_on": [
+        "R5-OWN"
+      ],
+      "owner": null,
+      "intended_person": "person.finley-rao",
+      "intended_role": "executor_peer",
+      "intended_client": "claude_code",
+      "acceptance": [
+        "原接收人拒收交接 完成并可复核"
+      ],
+      "next_action": "由 Finley Rao 经 claude_code 推进"
+    },
+    {
+      "id": "R5-REVOKE",
+      "title": "Web 撤销旧 Agent 授权",
+      "status": "planned",
+      "depends_on": [
+        "R5-REJECT"
+      ],
+      "owner": null,
+      "intended_person": "person.rowan-shi",
+      "intended_role": "web_operator",
+      "intended_client": "team_web",
+      "acceptance": [
+        "Web 撤销旧 Agent 授权 完成并可复核"
+      ],
+      "next_action": "由 Rowan Shi 经 team_web 推进"
+    },
+    {
+      "id": "R5-REASSIGN",
+      "title": "重新安排接收者并补约束",
+      "status": "planned",
+      "depends_on": [
+        "R5-REVOKE"
+      ],
+      "owner": null,
+      "intended_person": "person.cameron-yu",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "重新安排接收者并补约束 完成并可复核"
+      ],
+      "next_action": "由 Cameron Yu 经 codex_cli 推进"
+    },
+    {
+      "id": "R5-FIX",
+      "title": "新接收者修订权限边界",
+      "status": "planned",
+      "depends_on": [
+        "R5-REASSIGN"
+      ],
+      "owner": null,
+      "intended_person": "person.jamie-okada",
+      "intended_role": "executor_peer",
+      "intended_client": "claude_code",
+      "acceptance": [
+        "新接收者修订权限边界 完成并可复核"
+      ],
+      "next_action": "由 Jamie Okada 经 claude_code 推进"
+    },
+    {
+      "id": "R5-REVIEW",
+      "title": "不同人员独立复核",
+      "status": "planned",
+      "depends_on": [
+        "R5-FIX"
+      ],
+      "owner": null,
+      "intended_person": "person.rowan-shi",
+      "intended_role": "reviewer",
+      "intended_client": "team_web",
+      "acceptance": [
+        "不同人员独立复核 完成并可复核"
+      ],
+      "next_action": "由 Rowan Shi 经 team_web 推进"
+    },
+    {
+      "id": "R5-DELIVER",
+      "title": "关联 PR 并完成交付",
+      "status": "planned",
+      "depends_on": [
+        "R5-REVIEW"
+      ],
+      "owner": null,
+      "intended_person": "person.cameron-yu",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "关联 PR 并完成交付 完成并可复核"
+      ],
+      "next_action": "由 Cameron Yu 经 codex_cli 推进"
+    }
+  ]
+}

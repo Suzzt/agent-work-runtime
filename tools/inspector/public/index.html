@@ -74,9 +74,17 @@
       <svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></svg>
       <span data-i18n="ui.context">Context</span>
     </a>
+    <a href="#mainline" data-view="mainline">
+      <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8 7.5l3.5 8M16 7.5l-3.5 8"/></svg>
+      <span data-i18n="ui.mainline">Mainline</span>
+    </a>
     <a href="#sources" data-view="sources">
       <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>
       <span data-i18n="ui.sources">Sources</span> <i id="navSourceCount"></i>
+    </a>
+    <a href="#team" data-view="team">
+      <svg viewBox="0 0 24 24"><path d="M16 11c1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3 1.3 3 3 3zM8 11c1.7 0 3-1.3 3-3S9.7 5 8 5 5 6.3 5 8s1.3 3 3 3z"/><path d="M8 13c-2.7 0-8 1.3-8 4v2h10v-2c0-1.5 1.1-2.7 2.7-3.4C11.4 13.2 9.7 13 8 13zM16 13c-.4 0-.8 0-1.2.1 1.7.6 2.2 1.6 2.2 2.9v2h7v-2c0-2.7-5.3-4-8-4z"/></svg>
+      <span data-i18n="ui.team_web">Team Web</span>
     </a>
   </nav>
 
@@ -366,7 +374,92 @@
       </div>
     </section>
 
+
+    <!-- Team Web loop (WS-044) -->
+    <section class="view" id="view-team" hidden>
+      <div class="view-head">
+        <div>
+          <span class="eyebrow">awr team web</span>
+          <h1><span data-i18n="ui.team_web_loop">Team Web collaboration loop</span></h1>
+          <p class="lede">
+            <span data-i18n="ui.team_web_lede">My Projects → parallel overview, cards/list and detail. Cookie web entry (not bearer-in-page). Shared server facts, authz and idempotent receipts with CLI/MCP.</span>
+          </p>
+        </div>
+      </div>
+      <div class="team-grid">
+        <aside class="panel" id="teamAuth"></aside>
+        <aside class="panel" id="teamProjects"></aside>
+        <section class="panel" id="teamOverview"></section>
+        <section class="panel" id="teamDetail"></section>
+      </div>
+      <details class="raw-fold">
+        <summary data-i18n="ui.raw_json">Raw JSON</summary>
+        <pre id="rawTeamBody" class="raw"></pre>
+      </details>
+    </section>
+
     <!-- Sources -->
+    
+    <section class="view" id="view-mainline" hidden>
+      <div class="view-head">
+        <div>
+          <span class="eyebrow">awr nav</span>
+          <h1><span data-i18n="ui.mainline_navigation">Mainline navigation</span></h1>
+          <p class="lede">
+            <span data-i18n="ui.mainline_lede">Read-only scope, cross-dependencies, accounting, blockers and concrete outcome edges. Team Web writes are available in the Team Web view (WS-044).</span>
+          </p>
+        </div>
+      </div>
+      <div class="stack-lg">
+        <div class="panel">
+          <div class="panel-h">
+            <h2 data-i18n="ui.scope_selectors">Scope selectors</h2>
+            <span class="sub" data-i18n="ui.read_only_entry">Read-only entry</span>
+          </div>
+          <div class="body form-grid">
+            <label><span data-i18n="ui.workstream">Workstream</span>
+              <input id="navWorkstream" spellcheck="false" placeholder="workstream key or id">
+            </label>
+            <label><span data-i18n="ui.goal">Goal</span>
+              <input id="navGoal" spellcheck="false" placeholder="goal key">
+            </label>
+            <label><span data-i18n="ui.milestone">Milestone</span>
+              <input id="navMilestone" spellcheck="false" placeholder="milestone key">
+            </label>
+            <label><span data-i18n="ui.work_keys">Work keys</span>
+              <input id="navWorkKeys" spellcheck="false" placeholder="KEY-1,KEY-2">
+            </label>
+            <button class="btn" id="navLoadBtn"><span data-i18n="ui.load_mainline">Load mainline</span></button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-h">
+            <h2 data-i18n="ui.accounting_and_blockers">Accounting & blockers</h2>
+            <span class="sub" id="navAccSub"></span>
+          </div>
+          <div class="body" id="navAccBody"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h">
+            <h2 data-i18n="ui.mainline_graph">Mainline graph</h2>
+            <span class="sub" data-i18n="ui.edges_are_concrete_outcomes">Edges are concrete task outcomes</span>
+          </div>
+          <div class="body" id="navGraphBody"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h">
+            <h2 data-i18n="ui.agent_guidance">Agent guidance</h2>
+            <span class="sub" data-i18n="ui.compatible_short_guidance">Compatible short guidance</span>
+          </div>
+          <div class="body" id="navGuideBody"></div>
+        </div>
+        <details class="panel rawbox" id="rawMainline">
+          <summary data-i18n="ui.raw_json">Raw JSON</summary>
+          <div class="body"><pre class="packet" id="rawMainlineBody"></pre></div>
+        </details>
+      </div>
+    </section>
+
     <section class="view" id="view-sources" hidden>
       <div class="view-head">
         <span class="eyebrow">awr intake inspect</span>
@@ -498,6 +591,7 @@
 <script src="locales/zh-CN.js"></script>
 <script src="i18n.js"></script>
 <script src="demo-data.js"></script>
+<script src="team-web.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -50,8 +50,9 @@ pub enum PgError {
     Forbidden,
     #[error("stale fence")]
     StaleFence,
-    #[error("dependency cycle")]
-    DependencyCycle,
+    /// Directed closed path (first == last) explaining the hard cycle.
+    #[error("dependency cycle: {}", .0.join(" -> "))]
+    DependencyCycle(Vec<String>),
     #[error("missing required dependency")]
     MissingDependency,
     #[error("resource conflict")]
@@ -62,8 +63,16 @@ pub enum PgError {
     ParentEvidenceRequired,
     #[error("dependency binding invalid")]
     BindingInvalid,
+    #[error("action blocked by selective invalidation or planning change: {0}")]
+    ActionBlockedByInvalidation(String),
+    #[error("planning change pending confirmation")]
+    PlanningChangePending,
     #[error("claimed work blocks activation")]
     ClaimBlocksActivation,
+    #[error("planning writeback refused: {0}")]
+    WritebackRefused(String),
+    #[error("planning activation impact unproven: {0}")]
+    ActivationImpactUnproven(String),
     #[error("graph budget exceeded")]
     GraphBudgetExceeded,
     #[error("execution not found")]

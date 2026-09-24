@@ -129,6 +129,12 @@ impl ProjectService {
         if let Some(principal) = principal {
             let id = self.id.expect("shared projects have a verified identity");
             let access = principal.workstreams.get(&id);
+            if name == "awr_team_handoff" {
+                return crate::team_handoff::handle(Value::Object(args));
+            }
+            if name == "awr_team_review" {
+                return crate::team_review::handle(Value::Object(args));
+            }
             if name == "awr_workstream" {
                 return crate::workstreams::call(&self.root, id, access, args);
             }

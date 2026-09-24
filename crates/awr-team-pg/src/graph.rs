@@ -1,8 +1,12 @@
 use crate::error::{PgError, PgResult};
 use crate::tx::{bind_scope, new_id};
+use awr_core::{
+    WorkstreamCatalog, WorkstreamDependencyEdge, WorkstreamGraphError, WorkstreamWorkBinding,
+    validate_workstream_graph,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DependencyEdge {
@@ -19,13 +23,115 @@ pub struct SplitProposal {
     pub child_work_ids: Vec<String>,
 }
 
+/// Verifiable execution resource bound (WS-021).
+///
+/// Path kinds (`file`/`dir`/`prefix`) and `workspace` are worktree-local: the
+/// same relative path in different worktrees does not conflict. `external` and
+/// `integration` are shared across worktrees (database, deployment destination,
+/// integration ref). `named` remains an opaque exact-match lock. `dir` and
+/// `prefix` are directory bounds with identical conflict rules.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResourceBound {
+    pub kind: String,
+    pub key: String,
+    /// Empty means the project-default / legacy domain. Shared kinds require "".
+    #[serde(default)]
+    pub worktree_id: String,
+}
+
+/// Lease generation + fence captured when the reservation is admitted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ResourceLeaseBind {
+    pub lease_generation: i64,
+    pub fence: i64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResourceDomain {
+    /// Local edits inside one worktree (file/dir/prefix/workspace).
+    WorktreeLocal,
+    /// Shared outside worktrees (external/integration).
+    Shared,
+    /// Opaque exact-match lock.
+    Named,
+}
+
+pub fn resource_domain(kind: &str) -> Option<ResourceDomain> {
+    match kind {
+        "file" | "dir" | "prefix" | "workspace" => Some(ResourceDomain::WorktreeLocal),
+        "external" | "integration" => Some(ResourceDomain::Shared),
+        "named" => Some(ResourceDomain::Named),
+        _ => None,
+    }
+}
+
+pub fn validate_resource_kind(kind: &str) -> PgResult<()> {
+    if resource_domain(kind).is_some() {
+        Ok(())
+    } else {
+        Err(PgError::Protocol(format!(
+            "unsupported resource kind: {kind}"
+        )))
+    }
+}
+
+/// Legacy path conflict helper: same-domain (empty worktree) comparison.
 pub fn paths_conflict(kind_a: &str, key_a: &str, kind_b: &str, key_b: &str) -> bool {
-    if kind_a == "named" || kind_b == "named" {
-        return kind_a == kind_b && key_a == key_b;
+    resources_conflict(
+        &ResourceBound {
+            kind: kind_a.into(),
+            key: key_a.into(),
+            worktree_id: String::new(),
+        },
+        &ResourceBound {
+            kind: kind_b.into(),
+            key: key_b.into(),
+            worktree_id: String::new(),
+        },
+    )
+}
+
+/// Distinct worktrees do not contend over local path/workspace resources;
+/// shared external/integration identities always contend by key.
+pub fn resources_conflict(a: &ResourceBound, b: &ResourceBound) -> bool {
+    let (Some(da), Some(db)) = (resource_domain(&a.kind), resource_domain(&b.kind)) else {
+        return false;
+    };
+    match (da, db) {
+        (ResourceDomain::Named, ResourceDomain::Named) => a.key == b.key,
+        (ResourceDomain::Named, _) | (_, ResourceDomain::Named) => false,
+        (ResourceDomain::Shared, ResourceDomain::Shared) => {
+            a.kind == b.kind && shared_keys_conflict(&a.kind, &a.key, &b.key)
+        }
+        (ResourceDomain::Shared, _) | (_, ResourceDomain::Shared) => false,
+        (ResourceDomain::WorktreeLocal, ResourceDomain::WorktreeLocal) => {
+            if a.worktree_id != b.worktree_id {
+                return false;
+            }
+            path_like_conflict(&a.kind, &a.key, &b.kind, &b.key)
+        }
+    }
+}
+
+fn shared_keys_conflict(kind: &str, key_a: &str, key_b: &str) -> bool {
+    match kind {
+        // External/integration identities are opaque URIs/refs, not path trees.
+        "external" | "integration" => key_a == key_b,
+        _ => key_a == key_b,
+    }
+}
+
+fn path_like_conflict(kind_a: &str, key_a: &str, kind_b: &str, key_b: &str) -> bool {
+    if kind_a == "workspace" || kind_b == "workspace" {
+        // Exclusive workspace reservation conflicts with any WorktreeLocal
+        // path (file/dir/prefix) in the same worktree, in either order.
+        // Caller already matched worktree_id.
+        return true;
     }
     if kind_a == "file" && kind_b == "file" {
         return canonicalize(key_a) == canonicalize(key_b);
     }
+    // dir and prefix are directory bounds; overlap with files/dirs segment-wise.
     segment_prefix_overlap(&canonicalize(key_a), &canonicalize(key_b))
 }
 
@@ -40,29 +146,60 @@ fn canonicalize(path: &str) -> String {
         .join("/")
 }
 
-/// Entry-level resource key validation/normalization. file/prefix resources
-/// are normalized to their canonical workspace-relative form; named
-/// resources keep their own identity rules and are not path-processed
-/// (CR #40 P2-2).
-fn normalize_resource_key(kind: &str, key: &str) -> PgResult<String> {
-    if kind == "named" {
-        if key.is_empty() {
-            return Err(PgError::UnsafeSourcePath("empty named resource".into()));
+/// Entry-level resource key validation/normalization (WS-021).
+pub(crate) fn normalize_resource_key(kind: &str, key: &str) -> PgResult<String> {
+    validate_resource_kind(kind)?;
+    match resource_domain(kind).expect("validated") {
+        ResourceDomain::Named | ResourceDomain::Shared => {
+            if key.is_empty() || key.len() > 4096 || key.chars().any(char::is_control) {
+                return Err(PgError::UnsafeSourcePath(format!(
+                    "invalid {kind} resource key"
+                )));
+            }
+            Ok(key.to_string())
         }
-        return Ok(key.to_string());
+        ResourceDomain::WorktreeLocal if kind == "workspace" => {
+            if key.is_empty() || key.len() > 512 || key.chars().any(char::is_control) {
+                return Err(PgError::UnsafeSourcePath(
+                    "invalid workspace resource".into(),
+                ));
+            }
+            Ok(key.to_string())
+        }
+        ResourceDomain::WorktreeLocal => {
+            // Unify separators BEFORE any segment check: a backslash '..' must not
+            // become a parent segment only after validation (CR #57 P2-1).
+            let normalized = key.replace('\\', "/");
+            if normalized.split('/').any(|segment| segment == "..") {
+                return Err(PgError::UnsafeSourcePath(key.into()));
+            }
+            let canonical = canonicalize(&normalized);
+            if canonical.is_empty() {
+                return Err(PgError::UnsafeSourcePath(key.into()));
+            }
+            Ok(canonical)
+        }
     }
-    // Unify separators BEFORE any segment check: a backslash '..' must not
-    // become a parent segment only after validation (CR #57 P2-1). The same
-    // normalized form is then checked, compared and stored.
-    let normalized = key.replace('\\', "/");
-    if normalized.split('/').any(|segment| segment == "..") {
-        return Err(PgError::UnsafeSourcePath(key.into()));
+}
+
+fn normalize_worktree_id(kind: &str, worktree_id: &str) -> PgResult<String> {
+    validate_resource_kind(kind)?;
+    match resource_domain(kind).expect("validated") {
+        ResourceDomain::Shared | ResourceDomain::Named => {
+            if !worktree_id.is_empty() {
+                return Err(PgError::Protocol(format!(
+                    "{kind} resources are shared and cannot carry a worktree_id"
+                )));
+            }
+            Ok(String::new())
+        }
+        ResourceDomain::WorktreeLocal => {
+            if worktree_id.len() > 512 || worktree_id.chars().any(char::is_control) {
+                return Err(PgError::Protocol("invalid worktree_id".into()));
+            }
+            Ok(worktree_id.to_string())
+        }
     }
-    let canonical = canonicalize(&normalized);
-    if canonical.is_empty() {
-        return Err(PgError::UnsafeSourcePath(key.into()));
-    }
-    Ok(canonical)
 }
 
 fn segment_prefix_overlap(a: &str, b: &str) -> bool {
@@ -84,7 +221,10 @@ pub fn validate_required_graph(nodes: &[String], edges: &[DependencyEdge]) -> Pg
             return Err(PgError::MissingDependency);
         }
         if edge.from == edge.to {
-            return Err(PgError::DependencyCycle);
+            return Err(PgError::DependencyCycle(vec![
+                edge.from.clone(),
+                edge.to.clone(),
+            ]));
         }
     }
     awr_core::validate_dependency_dag(
@@ -96,8 +236,89 @@ pub fn validate_required_graph(nodes: &[String], edges: &[DependencyEdge]) -> Pg
     )
     .map_err(|error| match error {
         awr_core::DependencyDagError::MissingEndpoint => PgError::MissingDependency,
-        awr_core::DependencyDagError::Cycle(_) => PgError::DependencyCycle,
+        awr_core::DependencyDagError::Cycle(path) => PgError::DependencyCycle(path),
     })
+}
+
+/// Cross-stream task DAG: A1→B1→A2 is legal; hard cycles return an explainable path.
+/// Reference (non-required) edges never form hard cycles or dangling refusals.
+pub fn validate_cross_stream_graph(
+    catalog: &WorkstreamCatalog,
+    work_ids: &[String],
+    ownership: &[WorkstreamWorkBinding],
+    edges: &[WorkstreamDependencyEdge],
+) -> PgResult<()> {
+    validate_workstream_graph(catalog, work_ids, ownership, edges).map_err(|error| match error {
+        WorkstreamGraphError::BudgetExceeded => PgError::GraphBudgetExceeded,
+        WorkstreamGraphError::InvalidOwnership | WorkstreamGraphError::InvalidRequiredEndpoint => {
+            PgError::MissingDependency
+        }
+        WorkstreamGraphError::Dependency(awr_core::DependencyDagError::MissingEndpoint) => {
+            PgError::MissingDependency
+        }
+        WorkstreamGraphError::Dependency(awr_core::DependencyDagError::Cycle(path)) => {
+            PgError::DependencyCycle(path)
+        }
+    })
+}
+
+/// Atomic graph edit under the project lock: upsert/remove edges against the
+/// committed snapshot, then re-check the complete required graph.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "snake_case")]
+pub enum EdgeMutation {
+    Upsert(DependencyEdge),
+    Remove {
+        from: String,
+        to: String,
+        relation: String,
+    },
+}
+
+/// Shared delivery outcome is identified once and referenced by consumers.
+/// Callers must not clone provider payload bytes into each consumer stream;
+/// WS-030 adoption credentials bind the same digests by reference.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SharedOutcomeRef {
+    pub provider_work_id: String,
+    pub artifact_sha256: String,
+    pub contract_sha256: String,
+}
+
+pub fn reference_shared_outcome(
+    provider_work_id: impl Into<String>,
+    artifact_sha256: impl Into<String>,
+    contract_sha256: impl Into<String>,
+) -> SharedOutcomeRef {
+    SharedOutcomeRef {
+        provider_work_id: provider_work_id.into(),
+        artifact_sha256: artifact_sha256.into(),
+        contract_sha256: contract_sha256.into(),
+    }
+}
+
+/// Ready only when every necessary (required) dependency id is satisfied.
+/// Partial satisfaction never unlocks execution.
+pub fn necessary_dependencies_ready(
+    required: impl IntoIterator<Item = impl AsRef<str>>,
+    satisfied: &BTreeSet<String>,
+) -> Result<(), Vec<String>> {
+    let missing: Vec<String> = required
+        .into_iter()
+        .map(|d| d.as_ref().to_string())
+        .filter(|d| !satisfied.contains(d))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(missing)
+    }
+}
+
+fn edge_key(edge: &DependencyEdge) -> (String, String, String) {
+    (edge.from.clone(), edge.to.clone(), edge.relation.clone())
 }
 
 /// Directional containment for scope authorization: `path` must be the
@@ -172,6 +393,8 @@ impl GraphStore {
         edges: &[DependencyEdge],
     ) -> PgResult<()> {
         require_main_scope(scope_id)?;
+        // Cheap pre-check before taking the project lock; rechecked under lock
+        // against authoritative contract ids so dangling phantoms cannot commit.
         validate_required_graph(nodes, edges)?;
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
@@ -180,31 +403,10 @@ impl GraphStore {
         // serialize on the project row, so the last writer replaces the
         // committed graph wholesale instead of merging (CR #40 P2-3).
         lock_project(&tx, tenant_id, project_id).await?;
-        tx.execute(
-            "DELETE FROM awr_team.dependency_edges
-             WHERE tenant_id=$1 AND project_id=$2 AND snapshot_id=$3 AND scope_id=$4",
-            &[&tenant_id, &project_id, &snapshot_id, &scope_id],
-        )
-        .await?;
-        for edge in edges {
-            tx.execute(
-                "INSERT INTO awr_team.dependency_edges(
-                    tenant_id, project_id, snapshot_id, scope_id, from_work_id, to_work_id,
-                    relation, required)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
-                &[
-                    &tenant_id,
-                    &project_id,
-                    &snapshot_id,
-                    &scope_id,
-                    &edge.from,
-                    &edge.to,
-                    &edge.relation,
-                    &edge.required,
-                ],
-            )
-            .await?;
-        }
+        let authoritative =
+            Self::load_contract_work_ids(&tx, tenant_id, project_id, snapshot_id, scope_id).await?;
+        validate_required_graph(&authoritative, edges)?;
+        Self::write_edges(&tx, tenant_id, project_id, snapshot_id, scope_id, edges).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -217,7 +419,45 @@ impl GraphStore {
         kind: &str,
         key: &str,
     ) -> PgResult<String> {
-        let key = normalize_resource_key(kind, key)?;
+        self.reserve_bound(
+            tenant_id,
+            project_id,
+            work_id,
+            &ResourceBound {
+                kind: kind.into(),
+                key: key.into(),
+                worktree_id: String::new(),
+            },
+            ResourceLeaseBind::default(),
+            None,
+        )
+        .await
+    }
+
+    /// Reserve a typed resource bound under the current lease generation/fence.
+    /// Worktree-local bounds do not contend across different worktree_ids;
+    /// shared external/integration bounds always contend by identity.
+    pub async fn reserve_bound(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        work_id: &str,
+        bound: &ResourceBound,
+        lease: ResourceLeaseBind,
+        execution_id: Option<&str>,
+    ) -> PgResult<String> {
+        if lease.lease_generation < 0 || lease.fence < 0 {
+            return Err(PgError::Protocol(
+                "lease generation and fence must be >= 0".into(),
+            ));
+        }
+        let key = normalize_resource_key(&bound.kind, &bound.key)?;
+        let worktree_id = normalize_worktree_id(&bound.kind, &bound.worktree_id)?;
+        let bound = ResourceBound {
+            kind: bound.kind.clone(),
+            key,
+            worktree_id,
+        };
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
         bind_scope(&tx, tenant_id, project_id).await?;
@@ -225,26 +465,55 @@ impl GraphStore {
         // operation: without the project lock, two conflicting reservations
         // can both pass the check and both commit (CR #40 P2-1).
         lock_project(&tx, tenant_id, project_id).await?;
+        // Under a narrowed project Share lock, serialize this key before the
+        // conflict scan so reverse presentation order cannot deadlock (WS-023).
+        crate::lock_order::lock_resources_sorted(
+            &tx,
+            tenant_id,
+            project_id,
+            &[crate::lock_order::ResourceLockKey::new(
+                bound.kind.clone(),
+                bound.key.clone(),
+                bound.worktree_id.clone(),
+            )],
+        )
+        .await?;
         let rows = tx
             .query(
-                "SELECT resource_kind, canonical_key FROM awr_team.resource_reservations
+                "SELECT resource_kind, canonical_key, worktree_id
+                 FROM awr_team.resource_reservations
                  WHERE tenant_id=$1 AND project_id=$2 AND state IN ('reserved', 'unknown')",
                 &[&tenant_id, &project_id],
             )
             .await?;
         for row in rows {
-            let existing_kind: String = row.get(0);
-            let existing_key: String = row.get(1);
-            if paths_conflict(kind, &key, &existing_kind, &existing_key) {
+            let existing = ResourceBound {
+                kind: row.get(0),
+                key: row.get(1),
+                worktree_id: row.get(2),
+            };
+            if resources_conflict(&bound, &existing) {
                 return Err(PgError::ResourceConflict);
             }
         }
         let id = new_id();
         tx.execute(
             "INSERT INTO awr_team.resource_reservations(
-                tenant_id, project_id, id, work_id, resource_kind, canonical_key, state)
-             VALUES ($1,$2,$3,$4,$5,$6,'reserved')",
-            &[&tenant_id, &project_id, &id, &work_id, &kind, &key],
+                tenant_id, project_id, id, work_id, resource_kind, canonical_key, state,
+                worktree_id, lease_generation, fence, execution_id)
+             VALUES ($1,$2,$3,$4,$5,$6,'reserved',$7,$8,$9,$10)",
+            &[
+                &tenant_id,
+                &project_id,
+                &id,
+                &work_id,
+                &bound.kind,
+                &bound.key,
+                &bound.worktree_id,
+                &lease.lease_generation,
+                &lease.fence,
+                &execution_id,
+            ],
         )
         .await?;
         tx.commit().await?;
@@ -566,6 +835,156 @@ impl GraphStore {
         Ok(())
     }
 
+    /// Load committed edges for one snapshot/scope (caller holds the project lock).
+    async fn load_edges(
+        tx: &tokio_postgres::Transaction<'_>,
+        tenant_id: &str,
+        project_id: &str,
+        snapshot_id: &str,
+        scope_id: &str,
+    ) -> PgResult<Vec<DependencyEdge>> {
+        let rows = tx
+            .query(
+                "SELECT from_work_id, to_work_id, relation, required
+                 FROM awr_team.dependency_edges
+                 WHERE tenant_id=$1 AND project_id=$2 AND snapshot_id=$3 AND scope_id=$4
+                 ORDER BY from_work_id, to_work_id, relation",
+                &[&tenant_id, &project_id, &snapshot_id, &scope_id],
+            )
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| DependencyEdge {
+                from: row.get(0),
+                to: row.get(1),
+                relation: row.get(2),
+                required: row.get(3),
+            })
+            .collect())
+    }
+
+    async fn load_contract_work_ids(
+        tx: &tokio_postgres::Transaction<'_>,
+        tenant_id: &str,
+        project_id: &str,
+        snapshot_id: &str,
+        scope_id: &str,
+    ) -> PgResult<Vec<String>> {
+        let rows = tx
+            .query(
+                "SELECT work_id FROM awr_team.work_contracts
+                 WHERE tenant_id=$1 AND project_id=$2 AND snapshot_id=$3 AND scope_id=$4
+                 ORDER BY work_id",
+                &[&tenant_id, &project_id, &snapshot_id, &scope_id],
+            )
+            .await?;
+        Ok(rows.into_iter().map(|row| row.get(0)).collect())
+    }
+
+    async fn write_edges(
+        tx: &tokio_postgres::Transaction<'_>,
+        tenant_id: &str,
+        project_id: &str,
+        snapshot_id: &str,
+        scope_id: &str,
+        edges: &[DependencyEdge],
+    ) -> PgResult<()> {
+        tx.execute(
+            "DELETE FROM awr_team.dependency_edges
+             WHERE tenant_id=$1 AND project_id=$2 AND snapshot_id=$3 AND scope_id=$4",
+            &[&tenant_id, &project_id, &snapshot_id, &scope_id],
+        )
+        .await?;
+        for edge in edges {
+            tx.execute(
+                "INSERT INTO awr_team.dependency_edges(
+                    tenant_id, project_id, snapshot_id, scope_id, from_work_id, to_work_id,
+                    relation, required)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+                &[
+                    &tenant_id,
+                    &project_id,
+                    &snapshot_id,
+                    &scope_id,
+                    &edge.from,
+                    &edge.to,
+                    &edge.relation,
+                    &edge.required,
+                ],
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// Atomically check+apply edge mutations against the committed graph.
+    /// Concurrent writers serialize on the project row so a cyclic union or a
+    /// dangling endpoint cannot commit. Returns the resulting edge set.
+    pub async fn apply_edge_mutations(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        snapshot_id: &str,
+        scope_id: &str,
+        mutations: &[EdgeMutation],
+    ) -> PgResult<Vec<DependencyEdge>> {
+        require_main_scope(scope_id)?;
+        let mut client = self.connect().await?;
+        let tx = client.transaction().await?;
+        bind_scope(&tx, tenant_id, project_id).await?;
+        lock_project(&tx, tenant_id, project_id).await?;
+        let nodes =
+            Self::load_contract_work_ids(&tx, tenant_id, project_id, snapshot_id, scope_id).await?;
+        let mut by_key: BTreeMap<(String, String, String), DependencyEdge> =
+            Self::load_edges(&tx, tenant_id, project_id, snapshot_id, scope_id)
+                .await?
+                .into_iter()
+                .map(|edge| (edge_key(&edge), edge))
+                .collect();
+        for mutation in mutations {
+            match mutation {
+                EdgeMutation::Upsert(edge) => {
+                    by_key.insert(edge_key(edge), edge.clone());
+                }
+                EdgeMutation::Remove { from, to, relation } => {
+                    by_key.remove(&(from.clone(), to.clone(), relation.clone()));
+                }
+            }
+        }
+        let edges: Vec<_> = by_key.into_values().collect();
+        // Re-validate the complete candidate under the same lock before write.
+        validate_required_graph(&nodes, &edges)?;
+        Self::write_edges(&tx, tenant_id, project_id, snapshot_id, scope_id, &edges).await?;
+        tx.commit().await?;
+        Ok(edges)
+    }
+
+    /// Necessary-deps readiness for one work: every required outbound edge must
+    /// resolve to a satisfied dependency id (completed local work or an adopted
+    /// WS-030 provider). Partial sets never report ready.
+    pub async fn work_necessary_deps_ready(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        snapshot_id: &str,
+        scope_id: &str,
+        work_id: &str,
+        satisfied: &BTreeSet<String>,
+    ) -> PgResult<Result<(), Vec<String>>> {
+        require_main_scope(scope_id)?;
+        let mut client = self.connect().await?;
+        let tx = client.transaction().await?;
+        bind_scope(&tx, tenant_id, project_id).await?;
+        let edges = Self::load_edges(&tx, tenant_id, project_id, snapshot_id, scope_id).await?;
+        tx.commit().await?;
+        let required: Vec<_> = edges
+            .into_iter()
+            .filter(|e| e.required && e.from == work_id)
+            .map(|e| e.to)
+            .collect();
+        Ok(necessary_dependencies_ready(required, satisfied))
+    }
+
     pub async fn graph_within_budget(
         &self,
         edges: &[DependencyEdge],
@@ -605,7 +1024,7 @@ mod tests {
         );
         assert!(matches!(
             validate_required_graph(&nodes, &[edge("a", "a", true), edge("a", "missing", true)]),
-            Err(PgError::DependencyCycle)
+            Err(PgError::DependencyCycle(_))
         ));
         assert!(matches!(
             validate_required_graph(&nodes, &[edge("a", "missing", true), edge("a", "a", true)]),
@@ -625,6 +1044,111 @@ mod tests {
         assert!(!paths_conflict("prefix", "src/a", "file", "src/abc"));
         assert!(paths_conflict("file", "src/a.rs", "file", "src/a.rs"));
         assert!(!paths_conflict("named", "lock-a", "named", "lock-b"));
+        assert!(paths_conflict("dir", "src/foo", "file", "src/foo/a.rs"));
+    }
+
+    #[test]
+    fn worktree_local_paths_do_not_conflict_across_worktrees() {
+        let a = ResourceBound {
+            kind: "file".into(),
+            key: "src/a.rs".into(),
+            worktree_id: "wt-1".into(),
+        };
+        let b = ResourceBound {
+            kind: "file".into(),
+            key: "src/a.rs".into(),
+            worktree_id: "wt-2".into(),
+        };
+        let same = ResourceBound {
+            kind: "dir".into(),
+            key: "src".into(),
+            worktree_id: "wt-1".into(),
+        };
+        assert!(!resources_conflict(&a, &b));
+        assert!(resources_conflict(&a, &same));
+    }
+
+    #[test]
+    fn shared_external_and_integration_conflict_across_worktrees() {
+        let db = ResourceBound {
+            kind: "external".into(),
+            key: "postgres://shared/db".into(),
+            worktree_id: String::new(),
+        };
+        let db2 = ResourceBound {
+            kind: "external".into(),
+            key: "postgres://shared/db".into(),
+            worktree_id: String::new(),
+        };
+        let other = ResourceBound {
+            kind: "external".into(),
+            key: "postgres://other/db".into(),
+            worktree_id: String::new(),
+        };
+        let integ = ResourceBound {
+            kind: "integration".into(),
+            key: "deploy/prod".into(),
+            worktree_id: String::new(),
+        };
+        let local = ResourceBound {
+            kind: "file".into(),
+            key: "src/a.rs".into(),
+            worktree_id: "wt-1".into(),
+        };
+        assert!(resources_conflict(&db, &db2));
+        assert!(!resources_conflict(&db, &other));
+        assert!(!resources_conflict(&db, &integ));
+        assert!(!resources_conflict(&db, &local));
+        assert!(resources_conflict(
+            &integ,
+            &ResourceBound {
+                kind: "integration".into(),
+                key: "deploy/prod".into(),
+                worktree_id: String::new(),
+            }
+        ));
+    }
+
+    #[test]
+    fn workspace_claims_are_exclusive_per_worktree() {
+        let w1 = ResourceBound {
+            kind: "workspace".into(),
+            key: "wt-1".into(),
+            worktree_id: "wt-1".into(),
+        };
+        let w1b = ResourceBound {
+            kind: "workspace".into(),
+            key: "wt-1".into(),
+            worktree_id: "wt-1".into(),
+        };
+        let w2 = ResourceBound {
+            kind: "workspace".into(),
+            key: "wt-2".into(),
+            worktree_id: "wt-2".into(),
+        };
+        assert!(resources_conflict(&w1, &w1b));
+        assert!(!resources_conflict(&w1, &w2));
+        let file = ResourceBound {
+            kind: "file".into(),
+            key: "src/main.rs".into(),
+            worktree_id: "wt-1".into(),
+        };
+        let file_other = ResourceBound {
+            kind: "file".into(),
+            key: "src/main.rs".into(),
+            worktree_id: "wt-2".into(),
+        };
+        assert!(resources_conflict(&w1, &file));
+        assert!(resources_conflict(&file, &w1));
+        assert!(!resources_conflict(&w1, &file_other));
+    }
+
+    #[test]
+    fn shared_kinds_reject_worktree_ids() {
+        assert!(normalize_worktree_id("external", "wt-1").is_err());
+        assert!(normalize_worktree_id("integration", "wt-1").is_err());
+        assert!(normalize_worktree_id("named", "wt-1").is_err());
+        assert_eq!(normalize_worktree_id("file", "wt-1").unwrap(), "wt-1");
     }
 
     #[test]
@@ -644,10 +1168,14 @@ mod tests {
                 required: true,
             },
         ];
-        assert!(matches!(
-            validate_required_graph(&nodes, &cycle),
-            Err(PgError::DependencyCycle)
-        ));
+        let err = validate_required_graph(&nodes, &cycle).unwrap_err();
+        match err {
+            PgError::DependencyCycle(path) => {
+                assert_eq!(path.first(), path.last());
+                assert!(path.len() >= 3, "explainable closed path: {path:?}");
+            }
+            other => panic!("expected cycle path, got {other}"),
+        }
         let missing = vec![DependencyEdge {
             from: "a".into(),
             to: "z".into(),
@@ -660,5 +1188,89 @@ mod tests {
         ));
         assert!(require_main_scope("feature").is_err());
         assert!(require_main_scope("main").is_ok());
+    }
+
+    #[test]
+    fn cross_stream_chain_is_acyclic_and_hard_cycle_returns_path() {
+        let catalog = WorkstreamCatalog {
+            version: awr_core::WORKSTREAM_CATALOG_VERSION,
+            project_id: "project".into(),
+            legacy_default: None,
+            workstreams: [1, 2]
+                .into_iter()
+                .map(|n| awr_core::Workstream {
+                    id: awr_core::Id::from(n),
+                    project_id: "project".into(),
+                    external_key: format!("s{n}"),
+                    title: format!("stream {n}"),
+                    state: awr_core::WorkstreamState::Active,
+                    authority_version: 1,
+                    goal_keys: vec![],
+                    acceptance_contracts: vec![],
+                })
+                .collect(),
+        };
+        let ownership: Vec<_> = [("A1", 1), ("B1", 2), ("A2", 1)]
+            .into_iter()
+            .map(|(id, stream)| WorkstreamWorkBinding {
+                project_id: "project".into(),
+                workstream_id: awr_core::Id::from(stream),
+                work_item_id: id.into(),
+            })
+            .collect();
+        let ids: Vec<_> = ownership.iter().map(|b| b.work_item_id.clone()).collect();
+        let edge = |from: usize, to: usize, required| WorkstreamDependencyEdge {
+            from: ownership[from].clone(),
+            to: ownership[to].clone(),
+            required,
+        };
+        let ok = vec![edge(0, 1, true), edge(1, 2, true)];
+        assert!(validate_cross_stream_graph(&catalog, &ids, &ownership, &ok).is_ok());
+        let cyclic = vec![edge(0, 1, true), edge(1, 2, true), edge(2, 0, true)];
+        let err = validate_cross_stream_graph(&catalog, &ids, &ownership, &cyclic).unwrap_err();
+        match err {
+            PgError::DependencyCycle(path) => {
+                assert_eq!(
+                    path,
+                    vec![
+                        "A1".to_string(),
+                        "B1".to_string(),
+                        "A2".to_string(),
+                        "A1".to_string()
+                    ]
+                );
+            }
+            other => panic!("expected explainable path, got {other}"),
+        }
+    }
+
+    #[test]
+    fn necessary_deps_require_complete_satisfaction_and_shared_outcomes_are_refs() {
+        let satisfied = BTreeSet::from(["B1".into()]);
+        assert_eq!(
+            necessary_dependencies_ready(["B1", "C1"], &satisfied),
+            Err(vec!["C1".to_string()])
+        );
+        let both = BTreeSet::from(["B1".into(), "C1".into()]);
+        assert_eq!(necessary_dependencies_ready(["B1", "C1"], &both), Ok(()));
+        let a = reference_shared_outcome("A1", "art", "contract");
+        let b = reference_shared_outcome("A1", "art", "contract");
+        let c = reference_shared_outcome("A1", "art-other", "contract");
+        assert_eq!(a, b, "consumers share one outcome identity");
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn parent_segments_cannot_enter_a_resource_key() {
+        assert!(normalize_resource_key("file", "src/../secret").is_err());
+        assert!(normalize_resource_key("dir", r"src\..\secret").is_err());
+        assert_eq!(
+            normalize_resource_key("file", "src/./a.rs").unwrap(),
+            "src/a.rs"
+        );
+        assert_eq!(
+            normalize_resource_key("prefix", "src//foo/./bar").unwrap(),
+            "src/foo/bar"
+        );
     }
 }

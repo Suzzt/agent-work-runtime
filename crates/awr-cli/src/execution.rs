@@ -402,6 +402,9 @@ fn supervise(root: &Path, id: Id) -> Result<()> {
                                 observed_at: now_millis()?,
                             };
                             let _ = socket.write_all(&serde_json::to_vec(&reply)?);
+                            // Close the write side so the probe sees EOF instead of
+                            // waiting out its read timeout after a complete reply.
+                            let _ = socket.shutdown(std::net::Shutdown::Write);
                         }
                     }
                 }

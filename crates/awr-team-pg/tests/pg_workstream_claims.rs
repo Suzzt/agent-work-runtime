@@ -744,7 +744,7 @@ async fn legacy_or_reassigned_active_rows_cannot_be_silently_adopted_after_expir
 async fn schema_eleven_is_atomic_and_preserves_unattributed_claim_history() {
     let (_guard, admin, _, _store) = setup().await;
     // Reconstruct schema 10 in this process's exclusive database.
-    admin.batch_execute("DROP TABLE awr_team.access_changes;
+    admin.batch_execute("DROP TABLE IF EXISTS awr_team.execution_attributions; DROP TABLE IF EXISTS awr_team.operator_quarantines; DROP TABLE IF EXISTS awr_team.backup_operations; DROP TABLE IF EXISTS awr_team.history_migrations; DROP TABLE IF EXISTS awr_team.access_changes;
         ALTER TABLE awr_team.resource_reservations DROP COLUMN execution_id;
         ALTER TABLE awr_team.executions DROP CONSTRAINT executions_resource_identity;
         ALTER TABLE awr_team.executions DROP COLUMN attestation_grant_version;
@@ -783,4 +783,52 @@ async fn schema_eleven_is_atomic_and_preserves_unattributed_claim_history() {
             .await
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn claim_inspect_never_sets_execution_authorized() {
+    let (_guard, admin, _, store) = setup().await;
+    enable_writes(&admin).await;
+    let commands = store.commands();
+    let result = commands
+        .execute(TENANT, PROJECT, A, acquire(&store, "inspect-auth").await)
+        .await
+        .unwrap();
+    let claim = result["receipt"]["data"].clone();
+
+    // No executions yet — inspection must still report execution_authorized=false.
+    let exec_count: i64 = admin
+        .query_one(
+            "SELECT count(*) FROM awr_team.executions
+             WHERE tenant_id=$1 AND project_id=$2",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(exec_count, 0);
+
+    let viewed = inspect(&store, A, &claim).await;
+    assert_eq!(viewed["execution_authorized"], false);
+    // Advisory eligibility may be true for an eligible holder, but is not permission.
+    assert!(viewed.get("execution_eligibility_advisory").is_some());
+
+    // Different client with read on the same stream still must not get start permission.
+    admin
+        .batch_execute(
+            "INSERT INTO awr_team.workstream_grants(
+                tenant_id,project_id,actor_id,client_id,workstream_id,
+                authority_version,can_read,can_write,active)
+             VALUES (
+                'reader-tenant','reader-project','agent','cli-b',
+                '00000000000000000000000001',1,true,false,true)
+             ON CONFLICT (tenant_id,project_id,actor_id,client_id,workstream_id)
+             DO UPDATE SET can_read=true, active=true,
+               grant_version=awr_team.workstream_grants.grant_version+1;",
+        )
+        .await
+        .unwrap();
+    let other = inspect(&store, B, &claim).await;
+    assert_eq!(other["execution_authorized"], false);
+    assert_eq!(other["owned_by_client"], false);
 }

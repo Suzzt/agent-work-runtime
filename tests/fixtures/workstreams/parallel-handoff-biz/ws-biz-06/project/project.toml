@@ -1,0 +1,23 @@
+[project]
+name = "时间预测与阶段验收"
+external_key = "awr-ws-r2-ws-biz-06"
+
+[[sources]]
+domain = "goal"
+role = "primary"
+path = "GOALS.md"
+
+[[sources]]
+domain = "plan"
+role = "primary"
+path = "PLAN.md"
+
+[[sources]]
+domain = "rules"
+role = "primary"
+path = "RULES.md"
+
+[[sources]]
+domain = "ledger"
+role = "primary"
+path = "work-ledger.json"

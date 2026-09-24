@@ -1,0 +1,81 @@
+{
+  "schema": "team_mcp_acceptance",
+  "schema_version": "1.0.0",
+  "work": "AWR-TMCP-051",
+  "scenario_id": "TMCP-BIZ-02",
+  "namespace": "team-mcp-v1/biz-parallel-replan",
+  "status": "blocked_pending_trial_participants",
+  "recorded_at_cst": null,
+  "source_commit": null,
+  "delivery_commit": null,
+  "delivery_remote_sha": null,
+  "persons": [
+    {
+      "person_id": "person.blair-nguyen",
+      "display_name": "Blair Nguyen",
+      "role": "developer",
+      "preferred_client": "claude_code"
+    },
+    {
+      "person_id": "person.alex-chen",
+      "display_name": "Alex Chen",
+      "role": "developer",
+      "preferred_client": "codex_cli"
+    },
+    {
+      "person_id": "person.riley-park",
+      "display_name": "Riley Park",
+      "role": "reviewer",
+      "preferred_client": "codex_cli"
+    }
+  ],
+  "named_clients": [
+    "codex_cli",
+    "claude_code"
+  ],
+  "gates": {
+    "natural_client_initiation": {
+      "status": "待验",
+      "evidence_paths": [],
+      "blocker": "Awaiting live multi-person remote MCP run with distinct persons and named clients."
+    },
+    "actual_tool_or_role_execution": {
+      "status": "待验",
+      "evidence_paths": [],
+      "blocker": "Awaiting live multi-person remote MCP run with distinct persons and named clients."
+    },
+    "real_artifact": {
+      "status": "待验",
+      "evidence_paths": [],
+      "blocker": "Awaiting live multi-person remote MCP run with distinct persons and named clients."
+    },
+    "business_followup_1": {
+      "status": "待验",
+      "evidence_paths": [],
+      "blocker": "Awaiting live multi-person remote MCP run with distinct persons and named clients."
+    },
+    "business_followup_2": {
+      "status": "待验",
+      "evidence_paths": [],
+      "blocker": "Awaiting live multi-person remote MCP run with distinct persons and named clients."
+    },
+    "independent_review": {
+      "status": "待验",
+      "evidence_paths": [],
+      "blocker": "Awaiting live multi-person remote MCP run with distinct persons and named clients."
+    },
+    "delivery": {
+      "status": "待验",
+      "evidence_paths": [],
+      "blocker": "Awaiting live multi-person remote MCP run with distinct persons and named clients."
+    },
+    "traceable_receipt": {
+      "status": "待验",
+      "evidence_paths": [],
+      "blocker": "Awaiting live multi-person remote MCP run with distinct persons and named clients."
+    }
+  },
+  "notes": [
+    "Fixture and harness shipped; live gates remain 待验 until two developer persons + independent reviewer operate named clients against a trial stack."
+  ]
+}

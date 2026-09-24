@@ -1,0 +1,23 @@
+[project]
+name = "并线补齐共享契约"
+external_key = "team-mcp-v1/biz-parallel-replan"
+
+[[sources]]
+domain = "goal"
+role = "primary"
+path = "GOALS.md"
+
+[[sources]]
+domain = "plan"
+role = "primary"
+path = "PLAN.md"
+
+[[sources]]
+domain = "rules"
+role = "primary"
+path = "RULES.md"
+
+[[sources]]
+domain = "ledger"
+role = "primary"
+path = "work-ledger.json"

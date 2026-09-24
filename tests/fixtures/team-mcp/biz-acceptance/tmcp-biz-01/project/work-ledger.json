@@ -1,0 +1,99 @@
+{
+  "namespace": "team-mcp-v1/biz-role-filter",
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "星河协作台角色过滤 交付"
+    }
+  ],
+  "work_items": [
+    {
+      "id": "RF-SURVEY",
+      "title": "盘点现有列表与角色字段",
+      "status": "ready",
+      "depends_on": [],
+      "owner": null,
+      "intended_person": "person.alex-chen",
+      "intended_role": "executor",
+      "acceptance": [
+        "盘点现有列表与角色字段 完成并可复核"
+      ],
+      "next_action": "由 Alex Chen 推进"
+    },
+    {
+      "id": "RF-IMPL",
+      "title": "实现角色过滤查询",
+      "status": "planned",
+      "depends_on": [
+        "RF-SURVEY"
+      ],
+      "owner": null,
+      "intended_person": "person.alex-chen",
+      "intended_role": "executor",
+      "acceptance": [
+        "实现角色过滤查询 完成并可复核"
+      ],
+      "next_action": "由 Alex Chen 推进"
+    },
+    {
+      "id": "RF-UX",
+      "title": "调整过滤芯片交互",
+      "status": "planned",
+      "depends_on": [
+        "RF-IMPL"
+      ],
+      "owner": null,
+      "intended_person": "person.blair-nguyen",
+      "intended_role": "executor_peer",
+      "acceptance": [
+        "调整过滤芯片交互 完成并可复核"
+      ],
+      "next_action": "由 Blair Nguyen 推进"
+    },
+    {
+      "id": "RF-BOUND",
+      "title": "修复试用边界泄漏",
+      "status": "planned",
+      "depends_on": [
+        "RF-UX"
+      ],
+      "owner": null,
+      "intended_person": "person.alex-chen",
+      "intended_role": "executor",
+      "acceptance": [
+        "修复试用边界泄漏 完成并可复核"
+      ],
+      "next_action": "由 Alex Chen 推进"
+    },
+    {
+      "id": "RF-REVIEW",
+      "title": "独立复核交付",
+      "status": "planned",
+      "depends_on": [
+        "RF-BOUND"
+      ],
+      "owner": null,
+      "intended_person": "person.riley-park",
+      "intended_role": "reviewer",
+      "acceptance": [
+        "独立复核交付 完成并可复核"
+      ],
+      "next_action": "由 Riley Park 推进"
+    },
+    {
+      "id": "RF-DELIVER",
+      "title": "关联 PR 并完成交付",
+      "status": "planned",
+      "depends_on": [
+        "RF-REVIEW"
+      ],
+      "owner": null,
+      "intended_person": "person.alex-chen",
+      "intended_role": "executor",
+      "acceptance": [
+        "关联 PR 并完成交付 完成并可复核"
+      ],
+      "next_action": "由 Alex Chen 推进"
+    }
+  ]
+}

@@ -175,15 +175,29 @@ async fn stale_preconditions_invalid_context_and_forged_fields_do_not_write() {
         "session.start",
         json!({"conversation_id":"test"}),
     );
+    // Audit cursor is not business CAS; stale project revision alone must not block.
+    let mut stale_cursor = serde_json::to_value(&start).unwrap();
+    stale_cursor["expected_project_revision"] = json!("0");
+    assert!(
+        commands
+            .execute(
+                TENANT,
+                PROJECT,
+                A,
+                serde_json::from_value(stale_cursor).unwrap(),
+            )
+            .await
+            .is_ok()
+    );
     let before = counts(&admin).await;
     for field in [
-        "expected_project_revision",
         "expected_authority_version",
         "expected_ownership_version",
         "expected_contract_hash",
         "coordinator_epoch",
     ] {
         let mut value = serde_json::to_value(&start).unwrap();
+        value["request_id"] = json!(format!("stale-{field}"));
         value[field] = if field == "expected_contract_hash" {
             json!("0".repeat(64))
         } else {
@@ -516,4 +530,93 @@ async fn in_flight_write_waits_for_grant_revocation_and_cannot_use_previous_perm
     revoke.commit().await.unwrap();
     assert!(matches!(write.await.unwrap(), Err(PgError::Forbidden)));
     assert_eq!(counts(&admin).await, before);
+}
+
+#[tokio::test]
+async fn unrelated_workstream_commands_do_not_conflict_on_audit_cursor() {
+    let (_guard, admin, _, store) = setup().await;
+    enable_writes(&admin).await;
+    admin
+        .batch_execute(
+            "UPDATE awr_team.workstream_grants SET can_write=true,grant_version=grant_version+1
+             WHERE client_id IN ('cli-a','cli-b')",
+        )
+        .await
+        .unwrap();
+    // Grant B write on stream 2 (b-private).
+    let commands = std::sync::Arc::new(store.commands());
+    let prepared_a = prepare(&store, A, "a").await;
+    let prepared_b = prepare(&store, B, "b-private").await;
+    // Advance audit cursor with an unrelated write on work a.
+    let first = command(
+        &prepared_a,
+        "a-start",
+        "session.start",
+        json!({"conversation_id":"alpha-1"}),
+    );
+    commands.execute(TENANT, PROJECT, A, first).await.unwrap();
+    // Stale prepare for work b must still commit; project_revision moved.
+    let stale_b = command(
+        &prepared_b,
+        "b-start",
+        "session.start",
+        json!({"conversation_id":"beta-1"}),
+    );
+    let result = commands
+        .execute(TENANT, PROJECT, B, stale_b)
+        .await
+        .expect("unrelated audit cursor must not block work b");
+    assert_eq!(result["replayed"], false);
+    let revs = admin
+        .query(
+            "SELECT project_revision FROM awr_team.events
+             WHERE tenant_id=$1 AND project_id=$2 ORDER BY project_revision,event_index,id",
+            &[&TENANT, &PROJECT],
+        )
+        .await
+        .unwrap();
+    let mut cursor = 0i64;
+    for row in revs {
+        let rev: i64 = row.get(0);
+        assert!(rev >= cursor, "audit cursors must remain ordered");
+        cursor = rev;
+    }
+    // Concurrent same-task conflicting checkpoints: exactly one writer wins.
+    let sid: String = admin
+        .query_one(
+            "SELECT id FROM awr_team.sessions WHERE conversation_id='alpha-1'",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let prepared = prepare(&store, A, "a").await;
+    let one = command(
+        &prepared,
+        "cp-race-1",
+        "session.checkpoint",
+        json!({"session_id":sid,"expected_session_version":"1",
+            "context_hash":prepared["data"]["context_hash"],"next_action":"one","open_loops":[]}),
+    );
+    let mut two = one.clone();
+    two.request_id = "cp-race-2".into();
+    two.args["next_action"] = json!("two");
+    let (a, b) = tokio::join!(
+        commands.execute(TENANT, PROJECT, A, one),
+        commands.execute(TENANT, PROJECT, A, two)
+    );
+    assert!(
+        a.is_ok() != b.is_ok(),
+        "same-task race must not lose both updates"
+    );
+    let row = admin
+        .query_one(
+            "SELECT session_version,(SELECT count(*) FROM awr_team.checkpoints WHERE session_id=$1)
+             FROM awr_team.sessions WHERE id=$1",
+            &[&sid],
+        )
+        .await
+        .unwrap();
+    assert_eq!(row.get::<_, i64>(0), 2);
+    assert_eq!(row.get::<_, i64>(1), 1);
 }

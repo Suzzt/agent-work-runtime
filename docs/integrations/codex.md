@@ -5,6 +5,8 @@
 > commands. This page keeps Codex merge paths, `client install`, and dated
 > verification. See [host integration layers](README.md).
 
+WS-024 named adapter id: `codex_cli` (start/status/stop_confirmation/reconnect/forensics). See [named agent host](named-agent-host.md).
+
 AWR supplies current project facts, work context and recoverable session memory.
 Codex performs the work using its available tools. The local workflow below uses
 AWR's CLI and stdio MCP against the same initialized project. AWR 0.3.3
