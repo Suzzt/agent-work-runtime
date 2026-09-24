@@ -1,5 +1,5 @@
 use crate::{PgError, PgResult};
-use awr_core::{Id, WorkstreamAccess, WorkstreamCatalog, WorkstreamGrant};
+use awr_core::{Id, WorkstreamAccess, WorkstreamAction, WorkstreamCatalog, WorkstreamGrant};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -38,9 +38,16 @@ fn token_id(token: &str) -> PgResult<&str> {
 }
 
 pub(crate) struct ReaderAuthority {
+    pub tenant_id: String,
     pub actor_id: String,
     pub client_id: String,
     pub actor_kind: String,
+    /// Raw project_memberships.role (legacy or TMCP template name).
+    pub role: String,
+    pub role_template: awr_team::RoleTemplate,
+    pub membership_version: i64,
+    /// Explicit independent review.decide grant (never implied by role template).
+    pub independent_review: bool,
     pub execution_access: BTreeMap<Id, ExecutionAccess>,
     pub access: WorkstreamAccess,
     pub catalog: WorkstreamCatalog,
@@ -50,6 +57,12 @@ pub(crate) struct ReaderAuthority {
     pub revision: i64,
     pub binding: String,
     pub grant_versions: BTreeMap<Id, i64>,
+    /// When `Some`, TMCP actions are this set (membership ∩ WS-016 delegation).
+    /// Agents always carry `Some` after resolution (empty = deny). Humans/system
+    /// keep `None` and use the membership template unchanged.
+    pub delegated_actions: Option<std::collections::BTreeSet<awr_team::Action>>,
+    /// Covering WS-016 authorization id when `delegated_actions` is populated.
+    pub delegation_id: Option<String>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -67,7 +80,16 @@ pub(crate) async fn authenticate(
     project: &str,
     token: &str,
 ) -> PgResult<ReaderAuthority> {
-    authenticate_inner(tx, tenant, project, token, false).await
+    authenticate_inner(tx, tenant, project, token, false, ProjectLockMode::Share).await
+}
+
+/// How writers lock the project row during admission.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ProjectLockMode {
+    /// Source/admin and ordinary task writers serialize the project (audit order).
+    Exclusive,
+    /// Reserved for narrower task interleaving once audit cursors use a sequence.
+    Share,
 }
 
 pub(crate) async fn authenticate_writer(
@@ -76,7 +98,17 @@ pub(crate) async fn authenticate_writer(
     project: &str,
     token: &str,
 ) -> PgResult<ReaderAuthority> {
-    authenticate_inner(tx, tenant, project, token, true).await
+    authenticate_inner(tx, tenant, project, token, true, ProjectLockMode::Exclusive).await
+}
+
+#[allow(dead_code)]
+pub(crate) async fn authenticate_task_writer(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    token: &str,
+) -> PgResult<ReaderAuthority> {
+    authenticate_inner(tx, tenant, project, token, true, ProjectLockMode::Share).await
 }
 
 async fn authenticate_inner(
@@ -85,6 +117,7 @@ async fn authenticate_inner(
     project: &str,
     token: &str,
     write: bool,
+    lock: ProjectLockMode,
 ) -> PgResult<ReaderAuthority> {
     let credential_id = token_id(token)?;
     let hash = workstream_credential_hash(token)?;
@@ -97,11 +130,10 @@ async fn authenticate_inner(
         )
         .await?
         .ok_or(PgError::Forbidden)?;
-    // Lock the project before identity/policy records; source/admin protocols
-    // use the same admission -> project order.
-    // Writers keep the existing project serialization barrier until the
-    // operation-read-set protocol replaces it. Never upgrade a shared lock.
-    let project_query = if write {
+    // Lock the project before identity/policy records; source/admin and ordinary
+    // task writers use Exclusive for a total audit order. Never upgrade a shared
+    // lock inside the same transaction.
+    let project_query = if write && lock == ProjectLockMode::Exclusive {
         "SELECT active_snapshot_id,coordinator_epoch,project_revision,status FROM awr_team.projects
         WHERE tenant_id=$1 AND id=$2 FOR UPDATE"
     } else {
@@ -112,7 +144,7 @@ async fn authenticate_inner(
         .query_opt(project_query, &[&tenant, &project])
         .await?
         .ok_or(PgError::Forbidden)?;
-    let identity = tx.query_opt("SELECT c.actor_id,c.client_id,m.membership_version,m.role,a.kind
+    let identity = tx.query_opt("SELECT c.actor_id,c.client_id,m.membership_version,m.role,a.kind,m.independent_review
         FROM awr_team.credentials c
         JOIN awr_team.tenants t ON t.id=c.tenant_id
         JOIN awr_team.actors a ON a.tenant_id=c.tenant_id AND a.id=c.actor_id
@@ -131,6 +163,7 @@ async fn authenticate_inner(
     let membership: i64 = identity.get(2);
     let role: String = identity.get(3);
     let actor_kind: String = identity.get(4);
+    let independent_review: bool = identity.get(5);
     let snapshot: String = p
         .get::<_, Option<String>>(0)
         .ok_or(PgError::InactiveCandidate)?;
@@ -161,8 +194,8 @@ async fn authenticate_inner(
             .parse()
             .map_err(|_| PgError::Forbidden)?;
         let authority: i64 = row.get(1);
-        let write = row.get::<_, bool>(3) && role != "reader";
-        let manage = row.get::<_, bool>(4) && role == "admin";
+        let write = row.get::<_, bool>(3) && membership_allows_write(&role);
+        let manage = row.get::<_, bool>(4) && membership_allows_manage(&role);
         execution_access.insert(
             id,
             ExecutionAccess {
@@ -193,10 +226,16 @@ async fn authenticate_inner(
         grants,
     };
     access.validate()?;
+    let role_template = map_membership_role(&role).ok_or(PgError::Forbidden)?;
     Ok(ReaderAuthority {
+        tenant_id: tenant.into(),
         actor_id: actor,
         client_id: client,
         actor_kind,
+        role,
+        role_template,
+        membership_version: membership,
+        independent_review,
         execution_access,
         access,
         catalog,
@@ -206,5 +245,923 @@ async fn authenticate_inner(
         project_status: p.get(3),
         binding,
         grant_versions,
+        delegated_actions: None,
+        delegation_id: None,
     })
+}
+
+/// Map membership role labels onto TMCP-010 role templates.
+/// Legacy reader/reviewer/worker/admin remain valid DB values; template names are
+/// accepted for forward compatibility when membership storage expands (TMCP-012).
+pub fn map_membership_role(role: &str) -> Option<awr_team::RoleTemplate> {
+    use awr_team::RoleTemplate::*;
+    Some(match role {
+        "reader" | "reviewer" => Reader,
+        "worker" | "developer" => Developer,
+        "maintainer" => Maintainer,
+        "admin" | "project_admin" => ProjectAdmin,
+        _ => return None,
+    })
+}
+
+fn membership_allows_write(role: &str) -> bool {
+    !matches!(role, "reader")
+}
+
+fn membership_allows_manage(role: &str) -> bool {
+    matches!(role, "admin" | "project_admin")
+}
+
+/// Map a workstream command op onto a TMCP-010 business action.
+/// Attest/reconcile are special authorities (not template actions).
+pub fn command_business_action(op: &str) -> Option<awr_team::Action> {
+    use awr_team::Action::*;
+    Some(match op {
+        "session.start" | "session.checkpoint" | "session.end" => SessionMaintainOwn,
+        "claim.acquire" | "claim.renew" | "claim.release" | "handoff.propose"
+        | "handoff.accept" | "handoff.reject" | "handoff.cancel" | "handoff.timeout"
+        | "handoff.inspect" => ClaimManageOwn,
+        "execution.prepare" | "execution.start" | "execution.cancel" | "execution.report" => {
+            ExecutionRequestAndReportOwn
+        }
+        "evidence.submit"
+        | "review.open"
+        | "delivery.submit_and_request_review"
+        | "delivery.register_pr"
+        | "delivery.observe_pr" => DeliverySubmitAndRequestReview,
+        "review.accept" | "review.return" | "review.decide" => ReviewDecide,
+        // Rework is author/executor acknowledgment of a return — not independent review.
+        "work.rework" => DeliverySubmitAndRequestReview,
+        "work.complete" | "delivery.finalize" => DeliveryFinalize,
+        "planning.propose" => PlanningPropose,
+        "planning.edit_draft" => PlanningEditDraft,
+        "planning.approve" => PlanningApprove,
+        "planning.publish" => PlanningPublish,
+        "access.manage_project" => AccessManageProject,
+        "audit.read_project" => AuditReadProject,
+        "execution.attest" | "execution.reconcile" => return None,
+        _ => return None,
+    })
+}
+
+/// Every authenticated workstream query is a `work.read` decision. Discovery
+/// lists are navigation-only and still require live read authority.
+pub fn query_business_action(op: &str) -> Option<awr_team::Action> {
+    const QUERIES: &[&str] = &[
+        "capabilities",
+        "workstreams.list",
+        "work.list",
+        "work.search",
+        "work.prepare",
+        "events.list",
+        "session.inspect",
+        "work.recovery",
+        "command.inspect",
+        "claim.inspect",
+        "execution.inspect",
+        "handoff.inspect",
+        "evidence.inspect",
+        "review.inspect",
+        "completion.inspect",
+        "delivery.inspect",
+        "source.content",
+        "artifact.content",
+        "planning.outcome",
+        "audit.history",
+        "audit.export",
+        "audit.count",
+    ];
+    if QUERIES.contains(&op) {
+        Some(awr_team::Action::WorkRead)
+    } else {
+        None
+    }
+}
+
+fn now_unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Build the TMCP-010 authority scope from verified credential facts only.
+pub(crate) fn authority_scope(
+    auth: &ReaderAuthority,
+    stream: Option<Id>,
+    work_id: Option<&str>,
+) -> awr_team::AuthorityScope {
+    let mut scope = awr_team::authority_from_template(
+        auth.role_template,
+        auth.tenant_id.clone(),
+        auth.access.project_id.clone(),
+        auth.actor_id.clone(),
+        auth.client_id.clone(),
+    );
+    scope.workstream_id = stream.map(|id| id.to_string());
+    if let Some(work) = work_id {
+        if !work.is_empty() {
+            scope.work_ids.insert(work.into());
+        }
+    }
+    scope.execution_identity = Some(auth.actor_id.clone());
+    if let Some(actions) = &auth.delegated_actions {
+        // Agents: never inherit the full membership template (TMCP-030).
+        scope.allowed_actions = actions.clone();
+        // Delegation alone never confers independent review.
+        scope.independent_review_grant = false;
+    } else if auth.independent_review && awr_team::independent_review_eligible(auth.role_template) {
+        // Explicit membership grant on an eligible template (TMCP-031).
+        scope.independent_review_grant = true;
+        scope.allowed_actions.insert(awr_team::Action::ReviewDecide);
+    }
+    scope.policy_version = awr_team::PERMISSION_POLICY_VERSION;
+    scope.revoked = false;
+    scope
+}
+
+/// Shared action decision used by PG command/query paths and HTTP/MCP (same store).
+/// Bodies, tool names, reconnects and old protocols never supply the scope.
+pub(crate) fn authorize_domain_action(
+    auth: &ReaderAuthority,
+    action: awr_team::Action,
+    stream: Option<Id>,
+    work_id: Option<&str>,
+) -> PgResult<()> {
+    // Re-derive from the live membership label so stale template caches cannot drift.
+    let live = map_membership_role(&auth.role).ok_or(PgError::Forbidden)?;
+    if crate::delegation_auth::actor_requires_explicit_delegation(&auth.actor_kind) {
+        match &auth.delegated_actions {
+            None => return Err(PgError::Forbidden),
+            Some(actions) if actions.is_empty() => return Err(PgError::Forbidden),
+            Some(actions) if !actions.contains(&action) => return Err(PgError::Forbidden),
+            Some(_) => {}
+        }
+    }
+    if live != auth.role_template || auth.membership_version < 1 {
+        return Err(PgError::Forbidden);
+    }
+    let mut scope = authority_scope(auth, stream, work_id);
+    // `validate_reviewer` already treats membership role `reviewer` as the
+    // approval-capable label. Do not grant this to readers, workers, or admins:
+    // `review.decide` stays a separate grant for every other template.
+    if action == awr_team::Action::ReviewDecide && auth.role == "reviewer" {
+        scope.independent_review_grant = true;
+        scope.allowed_actions.insert(awr_team::Action::ReviewDecide);
+    }
+    let resource = awr_team::ResourceRef {
+        tenant_id: auth.tenant_id.clone(),
+        project_id: auth.access.project_id.clone(),
+        workstream_id: stream.map(|id| id.to_string()),
+        work_id: work_id.filter(|s| !s.is_empty()).map(str::to_owned),
+    };
+    awr_team::authorize_action(&scope, action, &resource, now_unix_ms()).map_err(|err| match err {
+        awr_team::TeamError::PermissionDenied(_) => PgError::Forbidden,
+        _ => PgError::Forbidden,
+    })
+}
+
+/// Shared Team domain-entry authority for HTTP/MCP/PG command paths.
+/// Combines the WS-014 write-boundary contract with TMCP-010 business actions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DomainAuthority {
+    /// Explicit write grant that may preserve work while a stream is paused.
+    WritePreserve,
+    /// Explicit write grant on an active workstream (ordinary mutations).
+    WriteActive,
+    /// Trusted executor attestation (system actor + explicit grant).
+    Attest,
+    /// Operator reconciliation (manage + explicit reconcile grant).
+    Reconcile,
+}
+
+/// When authorization is rechecked relative to idempotent replay.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CommandAuthPhase {
+    /// Before mutation: permits exact receipt replay after credential checks.
+    Admission,
+    /// After replay miss: enforces stream activity and special execution grants.
+    Effect,
+}
+
+/// Map a Team workstream command op to its domain authority. Unknown ops are
+/// unsupported capabilities and must be refused by callers.
+pub(crate) fn command_authority(op: &str) -> Option<DomainAuthority> {
+    Some(match op {
+        "session.checkpoint" | "session.end" | "claim.release" | "execution.cancel"
+        | "execution.report" | "handoff.reject" | "handoff.cancel" | "handoff.timeout"
+        | "handoff.inspect" | "review.return" | "work.rework" => DomainAuthority::WritePreserve,
+        "session.start"
+        | "claim.acquire"
+        | "claim.renew"
+        | "execution.prepare"
+        | "execution.start"
+        | "handoff.propose"
+        | "handoff.accept"
+        | "evidence.submit"
+        | "review.open"
+        | "review.accept"
+        | "review.decide"
+        | "work.complete"
+        | "delivery.finalize"
+        | "delivery.submit_and_request_review"
+        | "delivery.register_pr"
+        | "delivery.observe_pr" => DomainAuthority::WriteActive,
+        "execution.attest" => DomainAuthority::Attest,
+        "execution.reconcile" => DomainAuthority::Reconcile,
+        _ => return None,
+    })
+}
+
+fn has_write(auth: &ReaderAuthority, stream: Id) -> bool {
+    auth.access
+        .grants
+        .iter()
+        .any(|grant| grant.workstream_id == stream && grant.write)
+}
+
+/// Shared authorization used by Team PG command dispatch (HTTP/MCP call the same
+/// store). Request bodies, tool names and reconnects never supply grants.
+///
+/// Admission always requires a current read grant, an explicit write bit, and the
+/// matching TMCP-010 business action so readers cannot mutate through any variant
+/// and developers cannot exercise planning/access privileges. Effect adds
+/// active-stream or attest/reconcile checks after idempotent replay so historical
+/// receipts remain replayable for the original client even if the stream later
+/// pauses or a special grant is revoked. Auth failure returns before business writes.
+pub(crate) fn authorize_command(
+    auth: &ReaderAuthority,
+    stream: Id,
+    work_id: &str,
+    op: &str,
+    phase: CommandAuthPhase,
+) -> PgResult<()> {
+    let required = command_authority(op).ok_or_else(|| {
+        PgError::Unsupported(format!("unsupported workstream command capability: {op}"))
+    })?;
+    auth.access
+        .authorize(&auth.catalog, stream, WorkstreamAction::Read)?;
+    // Template actions for ordinary commands; attest/reconcile stay special-only.
+    if let Some(action) = command_business_action(op) {
+        authorize_domain_action(auth, action, Some(stream), Some(work_id))?;
+    } else if !matches!(
+        required,
+        DomainAuthority::Attest | DomainAuthority::Reconcile
+    ) {
+        return Err(PgError::Forbidden);
+    }
+    if !has_write(auth, stream) {
+        return Err(PgError::Forbidden);
+    }
+    if phase == CommandAuthPhase::Admission {
+        return Ok(());
+    }
+    match required {
+        DomainAuthority::WritePreserve => Ok(()),
+        DomainAuthority::WriteActive => {
+            auth.access
+                .authorize(&auth.catalog, stream, WorkstreamAction::Write)?;
+            Ok(())
+        }
+        DomainAuthority::Attest => {
+            if auth.actor_kind == "agent"
+                || auth.actor_kind == "human" && auth.role_template != auth.role_template
+            {
+                // agents never attest; product-role humans also never auto-upgrade
+                // (attest bit requires actor_kind==system in authenticate).
+            }
+            if auth.actor_kind != "system"
+                || !auth
+                    .execution_access
+                    .get(&stream)
+                    .is_some_and(|access| access.attest)
+            {
+                return Err(PgError::Forbidden);
+            }
+            Ok(())
+        }
+        DomainAuthority::Reconcile => {
+            if auth.actor_kind == "agent"
+                || !auth
+                    .execution_access
+                    .get(&stream)
+                    .is_some_and(|access| access.reconcile)
+            {
+                return Err(PgError::Forbidden);
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Shared read-side action gate (search/count/pagination/events/inspect).
+pub(crate) fn authorize_query(
+    auth: &ReaderAuthority,
+    stream: Option<Id>,
+    work_id: Option<&str>,
+    op: &str,
+) -> PgResult<()> {
+    let action = query_business_action(op).ok_or_else(|| {
+        PgError::Unsupported(format!("unsupported workstream query capability: {op}"))
+    })?;
+    authorize_domain_action(auth, action, stream, work_id)
+}
+
+/// Capability metadata that makes `scope=main` historical semantics, old-client
+/// write refusal, and the local-file vs server-ACL boundary explicit. Callers
+/// merge these into live capabilities responses; unsupported keys stay refused.
+pub(crate) fn workstream_boundary_capabilities() -> serde_json::Value {
+    json!({
+        "scope_id": "main",
+        "scope_main_semantics": "historical_team_rows_retain_scope_id_main_while_workstream_id_isolates",
+        "old_client_write_boundary": "legacy_unscoped_team_entrypoints_refuse_enabled_projects",
+        "authorization": "transactional_workstream_grants",
+        "domain_entry_authorization": "shared_command_gate",
+        "action_authorization": "tmcp_010_shared_decision",
+        "delegation_action_intersection": "tmcp_030_ws016_intersect",
+        "trusted_executor_upgrade": "never_from_product_roles",
+        "permission_policy_id": awr_team::PERMISSION_POLICY_ID,
+        "permission_policy_version": awr_team::PERMISSION_POLICY_VERSION,
+        "write_authorization_phases": ["admission_write_grant", "effect_active_or_special"],
+        "unsupported_capabilities": "refused",
+        "local_file_access": "not_server_acl_or_confidentiality_sandbox",
+        "reference_runner_effects": "operator_local_bounded_files_require_explicit_attestation_grant",
+        "operator_recovery_inspection": "schema_owner_cli_read_only_enabled_projects",
+        "operator_history_migration": "sessions_inactive_claims_events_v1",
+        "operator_enabled_backup": "logical_manifest_fencing_and_ownership_rebuild_v1",
+        "frontend_filtering": false
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use awr_core::{
+        WORKSTREAM_CATALOG_VERSION, Workstream, WorkstreamCatalog, WorkstreamGrant, WorkstreamState,
+    };
+
+    fn id(value: u128) -> Id {
+        Id::from(value)
+    }
+
+    fn catalog(state: WorkstreamState) -> WorkstreamCatalog {
+        WorkstreamCatalog {
+            version: WORKSTREAM_CATALOG_VERSION,
+            project_id: "project".into(),
+            legacy_default: Some(id(1)),
+            workstreams: vec![Workstream {
+                id: id(1),
+                project_id: "project".into(),
+                external_key: "api".into(),
+                title: "api".into(),
+                state,
+                authority_version: 1,
+                goal_keys: vec!["g".into()],
+                acceptance_contracts: vec!["c".into()],
+            }],
+        }
+    }
+
+    fn authority(
+        write: bool,
+        manage: bool,
+        attest: bool,
+        reconcile: bool,
+        state: WorkstreamState,
+    ) -> ReaderAuthority {
+        authority_with_role(
+            if manage {
+                "admin"
+            } else if write {
+                "worker"
+            } else {
+                "reader"
+            },
+            write,
+            manage,
+            attest,
+            reconcile,
+            state,
+        )
+    }
+
+    fn authority_with_role(
+        role: &str,
+        write: bool,
+        manage: bool,
+        attest: bool,
+        reconcile: bool,
+        state: WorkstreamState,
+    ) -> ReaderAuthority {
+        let stream = id(1);
+        let mut execution_access = BTreeMap::new();
+        execution_access.insert(stream, ExecutionAccess { attest, reconcile });
+        let role_template = map_membership_role(role).expect("test role");
+        ReaderAuthority {
+            tenant_id: "tenant".into(),
+            actor_id: "actor".into(),
+            client_id: "client".into(),
+            actor_kind: "system".into(),
+            role: role.into(),
+            role_template,
+            membership_version: 1,
+            independent_review: false,
+            execution_access,
+            access: WorkstreamAccess {
+                project_id: "project".into(),
+                subject: "subject".into(),
+                grants: vec![WorkstreamGrant {
+                    workstream_id: stream,
+                    authority_version: 1,
+                    read: true,
+                    write,
+                    manage,
+                }],
+            },
+            catalog: catalog(state),
+            snapshot: "snap".into(),
+            epoch: "epoch".into(),
+            project_status: "active".into(),
+            revision: 1,
+            binding: "binding".into(),
+            grant_versions: BTreeMap::from([(stream, 1)]),
+            delegated_actions: None,
+            delegation_id: None,
+        }
+    }
+
+    #[test]
+    fn every_supported_command_maps_to_a_domain_authority() {
+        for op in crate::workstream_command::COMMANDS {
+            assert!(
+                command_authority(op).is_some(),
+                "missing authority mapping for {op}"
+            );
+        }
+        assert_eq!(command_authority("planning.publish"), None);
+        assert_eq!(command_authority("work.claim"), None);
+    }
+
+    #[test]
+    fn admission_rejects_readers_and_unknown_capabilities() {
+        let reader = authority(false, false, false, false, WorkstreamState::Active);
+        assert!(matches!(
+            authorize_command(
+                &reader,
+                id(1),
+                "work-a",
+                "session.start",
+                CommandAuthPhase::Admission
+            ),
+            Err(PgError::Forbidden)
+        ));
+        let writer = authority(true, false, false, false, WorkstreamState::Active);
+        assert!(matches!(
+            authorize_command(
+                &writer,
+                id(1),
+                "work-a",
+                "planning.publish",
+                CommandAuthPhase::Admission
+            ),
+            Err(PgError::Unsupported(_))
+        ));
+        assert!(
+            authorize_command(
+                &writer,
+                id(1),
+                "work-a",
+                "session.checkpoint",
+                CommandAuthPhase::Admission
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn effect_enforces_active_stream_and_special_grants_after_admission() {
+        let paused_writer = authority(true, false, false, false, WorkstreamState::Paused);
+        assert!(
+            authorize_command(
+                &paused_writer,
+                id(1),
+                "work-a",
+                "session.end",
+                CommandAuthPhase::Effect
+            )
+            .is_ok()
+        );
+        assert!(matches!(
+            authorize_command(
+                &paused_writer,
+                id(1),
+                "work-a",
+                "session.start",
+                CommandAuthPhase::Effect
+            ),
+            Err(PgError::Workstream(awr_core::WorkstreamError::Inactive))
+        ));
+
+        let writer = authority(true, false, false, false, WorkstreamState::Active);
+        assert!(matches!(
+            authorize_command(
+                &writer,
+                id(1),
+                "work-a",
+                "execution.attest",
+                CommandAuthPhase::Effect
+            ),
+            Err(PgError::Forbidden)
+        ));
+        assert!(matches!(
+            authorize_command(
+                &writer,
+                id(1),
+                "work-a",
+                "execution.reconcile",
+                CommandAuthPhase::Effect
+            ),
+            Err(PgError::Forbidden)
+        ));
+
+        let attester = authority(true, false, true, false, WorkstreamState::Active);
+        assert!(
+            authorize_command(
+                &attester,
+                id(1),
+                "work-a",
+                "execution.attest",
+                CommandAuthPhase::Effect
+            )
+            .is_ok()
+        );
+
+        let reconciler = authority(true, true, false, true, WorkstreamState::Active);
+        assert!(
+            authorize_command(
+                &reconciler,
+                id(1),
+                "work-a",
+                "execution.reconcile",
+                CommandAuthPhase::Effect
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn membership_roles_map_onto_tmcp_templates() {
+        assert_eq!(
+            map_membership_role("reader"),
+            Some(awr_team::RoleTemplate::Reader)
+        );
+        assert_eq!(
+            map_membership_role("reviewer"),
+            Some(awr_team::RoleTemplate::Reader)
+        );
+        assert_eq!(
+            map_membership_role("worker"),
+            Some(awr_team::RoleTemplate::Developer)
+        );
+        assert_eq!(
+            map_membership_role("developer"),
+            Some(awr_team::RoleTemplate::Developer)
+        );
+        assert_eq!(
+            map_membership_role("maintainer"),
+            Some(awr_team::RoleTemplate::Maintainer)
+        );
+        assert_eq!(
+            map_membership_role("admin"),
+            Some(awr_team::RoleTemplate::ProjectAdmin)
+        );
+        assert_eq!(
+            map_membership_role("project_admin"),
+            Some(awr_team::RoleTemplate::ProjectAdmin)
+        );
+        assert_eq!(map_membership_role("nope"), None);
+    }
+
+    #[test]
+    fn command_ops_map_to_tmcp_actions_and_specials_stay_unmapped() {
+        for op in ["session.start", "session.checkpoint", "session.end"] {
+            assert_eq!(
+                command_business_action(op),
+                Some(awr_team::Action::SessionMaintainOwn)
+            );
+        }
+        for op in ["claim.acquire", "claim.renew", "claim.release"] {
+            assert_eq!(
+                command_business_action(op),
+                Some(awr_team::Action::ClaimManageOwn)
+            );
+        }
+        for op in [
+            "execution.prepare",
+            "execution.start",
+            "execution.cancel",
+            "execution.report",
+        ] {
+            assert_eq!(
+                command_business_action(op),
+                Some(awr_team::Action::ExecutionRequestAndReportOwn)
+            );
+        }
+        assert_eq!(command_business_action("execution.attest"), None);
+        assert_eq!(command_business_action("execution.reconcile"), None);
+        assert_eq!(
+            command_business_action("planning.publish"),
+            Some(awr_team::Action::PlanningPublish)
+        );
+        assert_eq!(
+            query_business_action("work.search"),
+            Some(awr_team::Action::WorkRead)
+        );
+        assert_eq!(
+            query_business_action("events.list"),
+            Some(awr_team::Action::WorkRead)
+        );
+        assert_eq!(query_business_action("unknown"), None);
+    }
+
+    #[test]
+    fn reader_and_developer_action_matrix_at_domain_gate() {
+        let reader = authority_with_role(
+            "reader",
+            false,
+            false,
+            false,
+            false,
+            WorkstreamState::Active,
+        );
+        assert!(matches!(
+            authorize_domain_action(&reader, awr_team::Action::WorkRead, Some(id(1)), Some("w")),
+            Ok(())
+        ));
+        assert!(matches!(
+            authorize_domain_action(
+                &reader,
+                awr_team::Action::ClaimManageOwn,
+                Some(id(1)),
+                Some("w")
+            ),
+            Err(PgError::Forbidden)
+        ));
+        assert!(matches!(
+            authorize_command(
+                &reader,
+                id(1),
+                "w",
+                "claim.acquire",
+                CommandAuthPhase::Admission
+            ),
+            Err(PgError::Forbidden)
+        ));
+        assert!(matches!(
+            authorize_command(
+                &reader,
+                id(1),
+                "w",
+                "review.accept",
+                CommandAuthPhase::Admission
+            ),
+            Err(PgError::Forbidden)
+        ));
+        assert!(matches!(
+            authorize_command(
+                &reader,
+                id(1),
+                "w",
+                "work.complete",
+                CommandAuthPhase::Admission
+            ),
+            Err(PgError::Forbidden)
+        ));
+
+        let developer =
+            authority_with_role("worker", true, false, false, false, WorkstreamState::Active);
+        assert!(
+            authorize_command(
+                &developer,
+                id(1),
+                "w",
+                "session.start",
+                CommandAuthPhase::Admission
+            )
+            .is_ok()
+        );
+        assert!(
+            authorize_command(
+                &developer,
+                id(1),
+                "w",
+                "execution.prepare",
+                CommandAuthPhase::Admission
+            )
+            .is_ok()
+        );
+        assert!(
+            authorize_command(
+                &developer,
+                id(1),
+                "w",
+                "evidence.submit",
+                CommandAuthPhase::Admission
+            )
+            .is_ok()
+        );
+        assert!(matches!(
+            authorize_command(
+                &developer,
+                id(1),
+                "w",
+                "review.accept",
+                CommandAuthPhase::Admission
+            ),
+            Err(PgError::Forbidden)
+        ));
+        let reviewer = authority_with_role(
+            "reviewer",
+            true,
+            false,
+            false,
+            false,
+            WorkstreamState::Active,
+        );
+        assert!(
+            authorize_command(
+                &reviewer,
+                id(1),
+                "w",
+                "review.accept",
+                CommandAuthPhase::Admission
+            )
+            .is_ok()
+        );
+        assert!(matches!(
+            authorize_command(
+                &reviewer,
+                id(1),
+                "w",
+                "evidence.submit",
+                CommandAuthPhase::Admission
+            ),
+            Err(PgError::Forbidden)
+        ));
+        assert!(matches!(
+            authorize_domain_action(
+                &developer,
+                awr_team::Action::PlanningPublish,
+                Some(id(1)),
+                Some("w")
+            ),
+            Err(PgError::Forbidden)
+        ));
+        assert!(matches!(
+            authorize_domain_action(
+                &developer,
+                awr_team::Action::PlanningEditDraft,
+                Some(id(1)),
+                Some("w")
+            ),
+            Err(PgError::Forbidden)
+        ));
+        assert!(matches!(
+            authorize_domain_action(
+                &developer,
+                awr_team::Action::AccessManageProject,
+                Some(id(1)),
+                Some("w")
+            ),
+            Err(PgError::Forbidden)
+        ));
+
+        let maintainer = authority_with_role(
+            "maintainer",
+            true,
+            false,
+            false,
+            false,
+            WorkstreamState::Active,
+        );
+        assert!(
+            authorize_domain_action(
+                &maintainer,
+                awr_team::Action::PlanningPublish,
+                Some(id(1)),
+                Some("w")
+            )
+            .is_ok()
+        );
+        assert!(matches!(
+            authorize_domain_action(
+                &maintainer,
+                awr_team::Action::AccessManageProject,
+                Some(id(1)),
+                Some("w")
+            ),
+            Err(PgError::Forbidden)
+        ));
+
+        let admin = authority_with_role("admin", true, true, false, false, WorkstreamState::Active);
+        assert!(
+            authorize_domain_action(
+                &admin,
+                awr_team::Action::AccessManageProject,
+                Some(id(1)),
+                Some("w")
+            )
+            .is_ok()
+        );
+        assert!(matches!(
+            authorize_domain_action(
+                &admin,
+                awr_team::Action::ReviewDecide,
+                Some(id(1)),
+                Some("w")
+            ),
+            Err(PgError::Forbidden)
+        ));
+    }
+
+    #[test]
+    fn expired_or_revoked_scope_and_work_bounds_are_refused() {
+        let auth = authority(true, false, false, false, WorkstreamState::Active);
+        let resource = awr_team::ResourceRef {
+            tenant_id: "tenant".into(),
+            project_id: "project".into(),
+            workstream_id: Some(id(1).to_string()),
+            work_id: Some("w".into()),
+        };
+        let mut scope = authority_scope(&auth, Some(id(1)), Some("w"));
+        scope.revoked = true;
+        assert!(matches!(
+            awr_team::authorize_action(&scope, awr_team::Action::SessionMaintainOwn, &resource, 1),
+            Err(awr_team::TeamError::PermissionDenied(_))
+        ));
+        scope.revoked = false;
+        scope.not_after_unix_ms = Some(10);
+        assert!(matches!(
+            awr_team::authorize_action(&scope, awr_team::Action::SessionMaintainOwn, &resource, 11),
+            Err(awr_team::TeamError::PermissionDenied(_))
+        ));
+        scope.not_after_unix_ms = None;
+        scope.policy_version = 0;
+        assert!(matches!(
+            awr_team::authorize_action(&scope, awr_team::Action::SessionMaintainOwn, &resource, 1),
+            Err(awr_team::TeamError::PermissionDenied(_))
+        ));
+        scope.policy_version = awr_team::PERMISSION_POLICY_VERSION;
+        let other = awr_team::ResourceRef {
+            work_id: Some("other-work".into()),
+            ..resource.clone()
+        };
+        assert!(matches!(
+            awr_team::authorize_action(&scope, awr_team::Action::SessionMaintainOwn, &other, 1),
+            Err(awr_team::TeamError::PermissionDenied(_))
+        ));
+        let other_ws = awr_team::ResourceRef {
+            workstream_id: Some(id(2).to_string()),
+            ..resource
+        };
+        assert!(matches!(
+            awr_team::authorize_action(&scope, awr_team::Action::SessionMaintainOwn, &other_ws, 1),
+            Err(awr_team::TeamError::PermissionDenied(_))
+        ));
+    }
+
+    #[test]
+    fn boundary_capabilities_make_scope_main_and_local_file_limits_explicit() {
+        let caps = workstream_boundary_capabilities();
+        assert_eq!(caps["scope_id"], "main");
+        assert_eq!(caps["frontend_filtering"], false);
+        assert_eq!(
+            caps["operator_recovery_inspection"],
+            "schema_owner_cli_read_only_enabled_projects"
+        );
+        assert_eq!(
+            caps["operator_history_migration"],
+            "sessions_inactive_claims_events_v1"
+        );
+        assert_eq!(
+            caps["operator_enabled_backup"],
+            "logical_manifest_fencing_and_ownership_rebuild_v1"
+        );
+        assert_eq!(caps["unsupported_capabilities"], "refused");
+        assert_eq!(
+            caps["local_file_access"],
+            "not_server_acl_or_confidentiality_sandbox"
+        );
+        assert_eq!(
+            caps["old_client_write_boundary"],
+            "legacy_unscoped_team_entrypoints_refuse_enabled_projects"
+        );
+        assert_eq!(caps["domain_entry_authorization"], "shared_command_gate");
+        assert_eq!(caps["action_authorization"], "tmcp_010_shared_decision");
+        assert_eq!(caps["permission_policy_id"], awr_team::PERMISSION_POLICY_ID);
+        assert_eq!(
+            caps["permission_policy_version"],
+            awr_team::PERMISSION_POLICY_VERSION
+        );
+    }
 }

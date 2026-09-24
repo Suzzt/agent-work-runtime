@@ -1,0 +1,304 @@
+{
+  "schema": "awr-tmcp-050-protocol-counterexamples-v1",
+  "work": "AWR-TMCP-050",
+  "policy_id": "awr-team-mcp-permission-v1",
+  "policy_version": 1,
+  "required_count": 18,
+  "matrix_exhaustive": true,
+  "pg_isolation": {
+    "test_env_var": "AWR_TEAM_TEST_DATABASE_URL",
+    "runtime_env_var": "AWR_TEAM_DATABASE_URL",
+    "process_exclusive_db": true,
+    "runtime_url_must_not_be_cleaned": true,
+    "mocked_predicates_not_service_pass": true
+  },
+  "cases": [
+    {
+      "id": "role_action_matrix",
+      "required_result": "All role/action cells obey the matrix; every allowed action has a successful control.",
+      "positive_control_required": true,
+      "transports": [
+        "unit",
+        "pg",
+        "http",
+        "mcp"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::role_action_matrix",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "execution_not_planning",
+      "required_result": "Developer can work on granted task but cannot activate proposals or change acceptance/deps.",
+      "positive_control_required": true,
+      "transports": [
+        "pg",
+        "mcp"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::execution_not_planning",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "cross_scope_identity",
+      "required_result": "Forged actor/client and cross-tenant/project/stream/task cannot transfer authority.",
+      "positive_control_required": true,
+      "transports": [
+        "pg",
+        "http",
+        "mcp"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::cross_scope_identity",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "read_surface_isolation",
+      "required_result": "Search, counts, pagination, errors, source/artifact and audit export do not disclose hidden material.",
+      "positive_control_required": true,
+      "transports": [
+        "pg",
+        "mcp"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::read_surface_isolation",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "revocation_race",
+      "required_result": "Expiry and revocation rechecked at action boundary including reconnects and replay.",
+      "positive_control_required": true,
+      "transports": [
+        "pg",
+        "http",
+        "mcp"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::revocation_race",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "least_privilege_delegation",
+      "required_result": "Admin agents do not inherit all privileges; nested delegation cannot enlarge authority.",
+      "positive_control_required": true,
+      "transports": [
+        "pg"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::least_privilege_delegation",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "scoped_admin_and_last_admin",
+      "required_result": "Concurrent changes preserve recovery route without self-escalation or tenant-wide credential effects.",
+      "positive_control_required": true,
+      "transports": [
+        "pg"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::scoped_admin_and_last_admin",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "secret_delivery_boundary",
+      "required_result": "Raw credentials and DB details never enter tool messages, audit or public fixtures.",
+      "positive_control_required": true,
+      "transports": [
+        "pg",
+        "http",
+        "mcp"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::secret_delivery_boundary",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "proposal_approval_binding",
+      "required_result": "Unapproved or edited proposal is not executable; old approval cannot publish changed bytes.",
+      "positive_control_required": true,
+      "transports": [
+        "pg",
+        "mcp"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::proposal_approval_binding",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "source_cas_and_crash",
+      "required_result": "Stale sources, concurrent patches and crashes preserve one coherent active snapshot.",
+      "positive_control_required": true,
+      "transports": [
+        "pg"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::source_cas_and_crash",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "live_source_publication",
+      "required_result": "Unrelated changes do not stop other work; affected/unknown executions cannot be bypassed.",
+      "positive_control_required": true,
+      "transports": [
+        "pg"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::live_source_publication",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "graph_integrity",
+      "required_result": "Concurrent valid proposals cannot activate cyclic/dangling graph; identity survives split/cancel.",
+      "positive_control_required": true,
+      "transports": [
+        "pg"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::graph_integrity",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "idempotent_outcome",
+      "required_result": "Lost replies return exact old outcome only for identical intent; no duplicate grant/task/publication.",
+      "positive_control_required": true,
+      "transports": [
+        "pg",
+        "http",
+        "mcp"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::idempotent_outcome",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "runtime_state_authority",
+      "required_result": "Source done or GitHub merge cannot invent completion receipts or execution trust.",
+      "positive_control_required": true,
+      "transports": [
+        "pg"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::runtime_state_authority",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "review_person_and_version",
+      "required_result": "Self-review via another Agent and stale PR head/contract cannot satisfy independent review.",
+      "positive_control_required": true,
+      "transports": [
+        "pg"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::review_person_and_version",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "audit_atomicity",
+      "required_result": "Business mutation cannot commit without required audit; denied actions reveal no secrets/writes.",
+      "positive_control_required": true,
+      "transports": [
+        "pg"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::audit_atomicity",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "legacy_and_operator_separation",
+      "required_result": "Old coarse grants and local owner commands cannot bypass scoped service.",
+      "positive_control_required": true,
+      "transports": [
+        "pg",
+        "http"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::legacy_and_operator_separation",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    },
+    {
+      "id": "discovery_is_not_authority",
+      "required_result": "Hidden tools are not the security boundary; direct calls and transport variants checked by domain.",
+      "positive_control_required": true,
+      "transports": [
+        "pg",
+        "http",
+        "mcp"
+      ],
+      "entry_point": "crates/awr-team-pg/tests/pg_protocol_matrix.rs::discovery_is_not_authority",
+      "assertions": [
+        "positive_control_ok",
+        "negative_control_denied",
+        "no_secret_leak"
+      ],
+      "results_included": false
+    }
+  ]
+}

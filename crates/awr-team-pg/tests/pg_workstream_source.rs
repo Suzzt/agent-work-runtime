@@ -422,7 +422,7 @@ async fn complete_bundle_rejects_missing_dependencies_cycles_and_ambiguous_codec
     cycle.contracts[0].contract.required_dependencies = vec!["integration".into()];
     assert!(matches!(
         store.ingest(package(&cycle)).await,
-        Err(PgError::DependencyCycle)
+        Err(PgError::DependencyCycle(_))
     ));
     let mut both = package(&bundle());
     both.files.extend(legacy_package().files);

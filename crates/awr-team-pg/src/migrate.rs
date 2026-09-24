@@ -1,7 +1,7 @@
 use crate::error::{PgError, PgResult};
 use tokio_postgres::Client;
 
-pub const EXPECTED_SCHEMA_VERSION: i32 = 14;
+pub const EXPECTED_SCHEMA_VERSION: i32 = 31;
 const MIGRATIONS: &[(&str, i32)] = &[
     (include_str!("../migrations/20260917000001_init.sql"), 1),
     (
@@ -55,6 +55,74 @@ const MIGRATIONS: &[(&str, i32)] = &[
     (
         include_str!("../migrations/20260921000014_operator_access.sql"),
         14,
+    ),
+    (
+        include_str!("../migrations/20260922000015_history_migrations.sql"),
+        15,
+    ),
+    (
+        include_str!("../migrations/20260922000016_backup_operations.sql"),
+        16,
+    ),
+    (
+        include_str!("../migrations/20260922000017_operator_quarantines.sql"),
+        17,
+    ),
+    (
+        include_str!("../migrations/20260922000018_execution_attributions.sql"),
+        18,
+    ),
+    (
+        include_str!("../migrations/20260922000019_responsibility.sql"),
+        19,
+    ),
+    (
+        include_str!("../migrations/20260922000020_project_admin_access.sql"),
+        20,
+    ),
+    (
+        include_str!("../migrations/20260922000021_planning_drafts.sql"),
+        21,
+    ),
+    (
+        include_str!("../migrations/20260922000022_execution_resource_bounds.sql"),
+        22,
+    ),
+    (
+        include_str!("../migrations/20260922000023_agent_authorization.sql"),
+        23,
+    ),
+    (
+        include_str!("../migrations/20260922000024_team_handoff.sql"),
+        24,
+    ),
+    (
+        include_str!("../migrations/20260923000025_review_person_independence.sql"),
+        25,
+    ),
+    (
+        include_str!("../migrations/20260923000026_delivery_deps.sql"),
+        26,
+    ),
+    (
+        include_str!("../migrations/20260923000027_selective_invalidation.sql"),
+        27,
+    ),
+    (
+        include_str!("../migrations/20260923000028_planning_writeback.sql"),
+        28,
+    ),
+    (
+        include_str!("../migrations/20260923000029_planning_mcp_ops.sql"),
+        29,
+    ),
+    (
+        include_str!("../migrations/20260923000030_pr_delivery_review.sql"),
+        30,
+    ),
+    (
+        include_str!("../migrations/20260923000031_ops_audit.sql"),
+        31,
     ),
 ];
 

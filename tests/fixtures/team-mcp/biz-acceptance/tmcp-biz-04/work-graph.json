@@ -1,0 +1,62 @@
+{
+  "namespace": "team-mcp-v1/biz-pr-reconnect",
+  "nodes": [
+    {
+      "key": "RC-REWORK",
+      "role": "executor",
+      "person_id": "person.blair-nguyen",
+      "client_adapter": "claude_code",
+      "depends_on": []
+    },
+    {
+      "key": "RC-RECONNECT",
+      "role": "executor",
+      "person_id": "person.blair-nguyen",
+      "client_adapter": "claude_code",
+      "depends_on": [
+        "RC-REWORK"
+      ]
+    },
+    {
+      "key": "RC-ROOT",
+      "role": "executor_peer",
+      "person_id": "person.alex-chen",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "RC-RECONNECT"
+      ]
+    },
+    {
+      "key": "RC-COMPAT",
+      "role": "executor",
+      "person_id": "person.blair-nguyen",
+      "client_adapter": "claude_code",
+      "depends_on": [
+        "RC-ROOT"
+      ]
+    },
+    {
+      "key": "RC-REVIEW",
+      "role": "reviewer",
+      "person_id": "person.riley-park",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "RC-COMPAT"
+      ]
+    },
+    {
+      "key": "RC-DELIVER",
+      "role": "executor",
+      "person_id": "person.blair-nguyen",
+      "client_adapter": "claude_code",
+      "depends_on": [
+        "RC-REVIEW"
+      ]
+    }
+  ],
+  "reviewer_distinct_from": [
+    "executor",
+    "executor_peer"
+  ],
+  "handoff_requirement": "执行、同伴与复核必须是不同 person；禁止同一 agent 会话同时签署执行与独立复核。"
+}

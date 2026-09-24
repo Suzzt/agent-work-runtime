@@ -1,0 +1,11 @@
+# Copy to an operator-controlled path, e.g. /etc/awr/team-service.toml.
+# Bind loopback and terminate HTTPS at the reverse proxy (TMCP-041).
+version = 1
+listen = "127.0.0.1:9908"
+# Non-empty only when listen is non-loopback; include host:port clients send.
+allowed_hosts = []
+
+[[projects]]
+key = "example"
+tenant_id = "tenant-a"
+project_id = "project-a"
