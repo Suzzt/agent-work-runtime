@@ -65,7 +65,7 @@ fn assessment_replay_compare_and_killswitch_cli_chain() {
     let candidate = fixture_root.join("candidate-snapshot.json");
     assert!(
         baseline.is_file() && candidate.is_file(),
-        "run awr-runtime assessment_offline tests first to materialize fixtures"
+        "checked-in replay fixtures are required; tests must not rewrite them"
     );
 
     let missing = ok_json(&["--json", "assessment", "replay"]);
