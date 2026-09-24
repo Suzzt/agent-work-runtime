@@ -18,7 +18,8 @@ proposal/budget does not auto-expand.
 
 Docs pointer: `docs/benchmarks/evolution-acceptance-matrix.md`
 
-Validate:
+Validate from a clean checkout. The script reads this fixture. A private
+`.local/awr-evolution-20260919` copy is optional; if present, it must match.
 
 ```sh
 python3 scripts/evolution/verify_evo_001_plan.py
