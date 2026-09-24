@@ -55,6 +55,8 @@ mod compaction;
 pub use compaction::*;
 mod guidance;
 pub use guidance::*;
+mod fact_snapshot;
+pub use fact_snapshot::*;
 mod ordinary;
 pub use ordinary::*;
 mod responsibility;

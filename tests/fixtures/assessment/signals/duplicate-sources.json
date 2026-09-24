@@ -1,0 +1,10 @@
+{
+  "case": "duplicate_identical_entity_versions_ok",
+  "description": "Duplicate entity version refs with the same version are accepted; conflicting versions are rejected elsewhere.",
+  "entity_versions": [
+    {"entity_kind": "work", "entity_id": "w1", "version": "5"},
+    {"entity_kind": "work", "entity_id": "w1", "version": "5"},
+    {"entity_kind": "source", "entity_id": "p1", "version": "s1"}
+  ],
+  "expect": {"reject": false}
+}

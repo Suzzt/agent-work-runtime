@@ -24,6 +24,7 @@ pub use host_save::{
 };
 mod agent_authorization;
 mod execution;
+mod fact_snapshot;
 mod fs_sync;
 mod management;
 mod mutation;
@@ -92,6 +93,10 @@ pub use execution::{
     HostIsolationEvidence, IsolationClass, classify_isolation, inspect_execution,
     inspect_work_executions, isolation_basis, refuse_unverified_strong_isolation,
     render_execution_observations,
+};
+pub use fact_snapshot::{
+    PREPARE_FACT_MAX_BYTES, PREPARE_FACT_MAX_CANDIDATES, PREPARE_FACT_MAX_SCAN_OPS,
+    PreparedFactView, fact_snapshot_from_prepared_view, prepared_view_from_prepare_json,
 };
 pub mod host_adapter;
 pub use host_adapter::{
