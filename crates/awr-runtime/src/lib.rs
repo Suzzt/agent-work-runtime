@@ -43,6 +43,7 @@ pub use work_edit::edit_work;
 mod selective_invalidation;
 mod work_graph;
 mod workstream_accounting;
+mod workstream_eta;
 mod workstream_usage;
 pub use selective_invalidation::{
     AdoptedConsumerEdge, BoundaryDecision, BoundaryRevalidation, BoundarySnapshot,
@@ -61,6 +62,11 @@ pub use workstream_accounting::{
     OwnershipTransfer, ScopeAccountingError, TransferAccountingOutcome, VerifiedStageObservation,
     VerifiedWorkObservation, account_approved_scope, goal_query_view,
     refuse_goal_query_as_contract_rate, transfer_work_preserving_history, unique_owned_work_keys,
+};
+pub use workstream_eta::{
+    AttestedEtaProject, EtaRuntimeError, attach_observation_handoff, estimate_and_persist,
+    observation_handoff_for_estimate, query_eta_forecast, query_eta_forecasts_for_target,
+    record_acceptance_datum, record_historical_sample, reestimate_and_persist,
 };
 pub use workstream_usage::{
     AttestedUsageProject, UsageRuntimeError, ingest_usage_receipt, query_usage_cost_totals,

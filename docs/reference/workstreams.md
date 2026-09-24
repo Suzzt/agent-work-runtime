@@ -147,6 +147,18 @@ first body under a success result. Measured time/usage
 with coverage is handed to WS-043 as historical observation only —
 cumulative-duration fields must never be presented as estimated remaining time.
 
+WS-043 builds calibrated expected acceptance time and stage checkpoints on top
+of that handoff: append-only forecast records (target, generated_at, task-graph
+version, strategy, sample/method versions, intervals, assumptions, unknowns);
+critical-path scheduling under real concurrency and available executors without
+summing parallel durations or waiting on unrelated mainlines; separate
+effective-execution, dependency/human-wait, and calendar-window components with
+evidence-backed queue exclusions; cold-start provisional/unestimable labels and
+calibrated intervals only after frozen sample+holdout gates (coverage/width/
+error/missing-rate reported; LLM narrative is never a precise promise); and
+reestimates on dependency/rework/executor/capacity changes that preserve
+before/after reasons while isolating historical samples from acceptance data.
+
 Legacy projects retain one compatible default scope and existing identities.
 Existing project, work and session identifiers remain opaque strings, including
 Team identifiers that are not ULIDs. Tenant adapters must obtain catalog and
