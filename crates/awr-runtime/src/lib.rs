@@ -24,6 +24,7 @@ pub use host_save::{
 };
 mod agent_authorization;
 mod execution;
+mod explanation_chain;
 mod fact_snapshot;
 mod fs_sync;
 mod management;
@@ -93,6 +94,12 @@ pub use execution::{
     HostIsolationEvidence, IsolationClass, classify_isolation, inspect_execution,
     inspect_work_executions, isolation_basis, refuse_unverified_strong_isolation,
     render_execution_observations,
+};
+pub use explanation_chain::{
+    CompletionExplanationInput, DeliveryExplanationInput, EXPLANATION_CHAIN_PROFILE,
+    ExplanationAuthority, ExplanationChainInput, ExplanationChainResult, FORBIDDEN_RERUN_CUES,
+    ProbeSupport, UnresolvedSideEffect, compose_explanation_chain,
+    explanation_chain_from_prepare_json, prior_explanation_still_valid,
 };
 pub use fact_snapshot::{
     PREPARE_FACT_MAX_BYTES, PREPARE_FACT_MAX_CANDIDATES, PREPARE_FACT_MAX_SCAN_OPS,

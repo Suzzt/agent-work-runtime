@@ -70,7 +70,7 @@ as `not_evaluated` or field `state=unsupported` until implemented):
   `awr_core::assessment_envelope` (`compose_assessment_envelope` /
   `evaluate_assessment`); fixtures under `tests/fixtures/assessment/envelope/`.
 - Counterexample corpus (DEC-013)
-- Composition pipeline (DEC-020) and CLI/MCP field injection (DEC-021)
+- Composition pipeline (DEC-020) — `awr_runtime::explanation_chain` (`compose_explanation_chain`); binds five-layer explanations + advisories on existing prepare/assess judgments without a second adjudicator. CLI/MCP field injection remains DEC-021.
 - Context packing / retention explain (DEC-030+)
 - AUTO / model routing (never core)
 
@@ -413,7 +413,30 @@ delivery unknown, time budget) fail closed and are not offset by averages.
 Envelope stack marker: `tests/fixtures/assessment/envelope/manifest.json`
 sets `dec_013_started: true`.
 
-## 15. Related pages
+## 15. DEC-020 explanation chain (prepare / management binding)
+
+Consumes the DEC-010..013 public bases (`FactSnapshot`, `AssessmentEnvelope`,
+counterexample corpus) and attaches a five-layer explanation chain on top of
+**existing** prepare/assess conclusions. EVO-012 still owns behavior fixes.
+
+| Item | Behavior |
+| --- | --- |
+| Entry | `awr_runtime::{compose_explanation_chain, explanation_chain_from_prepare_json}` |
+| Profile | `prepare_explanation_chain_v1` (schema id remains `awr-assessment-envelope-v1`) |
+| Layers | Maps `work_readiness` / `execution_admission` / `context_completeness` / `delivery_observation` / `completion_validity` from prepare + management receipts; unchecked facets stay `not_evaluated` with explicit unchecked notes |
+| Advisories | Finite `ADVISORY_ACTION_CODES` only; unresolved side effects → sole advice `query_original_operation_result` |
+| Forbidden re-run cues | Never advise re-run from `high_coverage` / `low_risk` / `small_change` (and aliases) |
+| Invalidation | `prior_explanation_still_valid` — source/contract/auth change or stop/revoke invalidates cached explanations |
+| Unsupported probes | Explicit `ProbeSupport::Unsupported` → `unknown`; must not claim a real process was stopped |
+| Replay | Same prepare inputs + policy + `as_of` → identical `assessment_hash` |
+
+Machine tests: `crates/awr-runtime/tests/explanation_chain.rs` (acceptance + C01/C03/C07/C08/C15/P01 reuse).
+
+Corpus marker: `tests/fixtures/assessment/counterexamples/manifest.json` sets
+`dec_020_started: true`.
+
+## 16. Related pages
+
 
 
 
