@@ -1,0 +1,52 @@
+{
+  "work": "AWR-DEC-011",
+  "pr_url": "https://github.com/originoneai/awr/pull/147",
+  "pr_number": 147,
+  "head_sha": "06a7a4ecc87794a86645df596f2bd008ae0e16e8",
+  "base_sha": "ed035731a03ab9285d92eb6e83ba12c7e56196de",
+  "base_branch": "codex/awr-dec-010-reuse-assessment-contract",
+  "acceptance_mapping": {
+    "1_snapshot_identity_scope_version_conflicts": {
+      "status": "met",
+      "evidence": [
+        "crates/awr-core/src/fact_snapshot.rs",
+        "crates/awr-core/tests/fact_snapshot.rs",
+        "tests/fixtures/assessment/signals/version-conflict.json",
+        "tests/fixtures/assessment/signals/duplicate-sources.json"
+      ]
+    },
+    "2_source_quality_and_missing_git_diff": {
+      "status": "met",
+      "evidence": [
+        "crates/awr-core/src/fact_snapshot.rs",
+        "tests/fixtures/assessment/signals/stale-snapshot.json",
+        "tests/fixtures/assessment/signals/partial-results.json",
+        "tests/fixtures/assessment/signals/missing-git-diff.json",
+        "tests/fixtures/assessment/signals/verified-host-asserted.json"
+      ],
+      "forbidden_coercions_checked": [
+        "missing_git_diff_not_changed_lines_zero",
+        "missing_git_diff_not_low_risk"
+      ]
+    },
+    "3_reuse_one_query_and_bounds": {
+      "status": "met",
+      "evidence": [
+        "crates/awr-runtime/src/fact_snapshot.rs",
+        "crates/awr-runtime/tests/fact_snapshot.rs",
+        "tests/fixtures/assessment/signals/over-limit.json"
+      ],
+      "scan_ops_on_prepared_view": 1,
+      "no_implicit_git_ast_network_on_prepare": true
+    }
+  },
+  "acceptance_all_pass": true,
+  "tests_run": [
+    "python3 tests/fixtures/assessment/signals/verify.py",
+    "cargo test -p awr-core --test fact_snapshot --test assessment_contract --locked",
+    "cargo test -p awr-runtime --test fact_snapshot --locked",
+    "python3 scripts/check_public_tree.py"
+  ],
+  "source_of_slim": "/workspace/awr-dec011-wt/.local/awr-dec-011/completion-evidence.json",
+  "independently_rechecked_by": "AWR-DEC-060"
+}

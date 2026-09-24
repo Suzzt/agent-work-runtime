@@ -1,0 +1,647 @@
+{
+  "schema_id": "awr-assessment-mvp-perf-raw-v1",
+  "schema_version": 1,
+  "work": "AWR-DEC-060",
+  "recorded_at": "2026-09-23T06:47:23+08:00",
+  "timezone": "Asia/Taipei",
+  "source_sha": "189e4a2af57587c667ea1925d6745264e3138714",
+  "environment": {
+    "offline": true,
+    "model_configured": false,
+    "network_calls_intended": false,
+    "note": "Harness runs parse/hash of frozen replay fixtures only; no model client, no network."
+  },
+  "statistics_note": "Raw samples retained. Do not invent ROI. p95 labeling requires N>=30 (satisfied for parse/hash microbench) but these timings are NOT candidate overhead budgets and do NOT bind budgets.json.",
+  "budgets_status_at_capture": "frozen_slots_pending_baseline_binding",
+  "samples": [
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 0,
+      "elapsed_ms": 0.015034,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 1,
+      "elapsed_ms": 0.028421,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 2,
+      "elapsed_ms": 0.020664,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 3,
+      "elapsed_ms": 0.019038,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 4,
+      "elapsed_ms": 0.016689,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 5,
+      "elapsed_ms": 0.013614,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 6,
+      "elapsed_ms": 0.013664,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 7,
+      "elapsed_ms": 0.013661,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 8,
+      "elapsed_ms": 0.013664,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 9,
+      "elapsed_ms": 0.012966,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 10,
+      "elapsed_ms": 0.013573,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 11,
+      "elapsed_ms": 0.013263,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 12,
+      "elapsed_ms": 0.013314,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 13,
+      "elapsed_ms": 0.012982,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 14,
+      "elapsed_ms": 0.013407,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 15,
+      "elapsed_ms": 0.012971,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 16,
+      "elapsed_ms": 0.012925,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 17,
+      "elapsed_ms": 0.020475,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 18,
+      "elapsed_ms": 0.0196,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 19,
+      "elapsed_ms": 0.021867,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 20,
+      "elapsed_ms": 0.01998,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 21,
+      "elapsed_ms": 0.01353,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 22,
+      "elapsed_ms": 0.01318,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 23,
+      "elapsed_ms": 0.013594,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 24,
+      "elapsed_ms": 0.016031,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 25,
+      "elapsed_ms": 0.013519,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 26,
+      "elapsed_ms": 0.013986,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 27,
+      "elapsed_ms": 0.013599,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 28,
+      "elapsed_ms": 0.013635,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "baseline",
+      "sample_index": 29,
+      "elapsed_ms": 0.013323,
+      "return_bytes": 3224,
+      "sha256": "f221f34a54fe8b0f0a13e2a92bd8553beb81c676e202086788a03490bd4afcca",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 0,
+      "elapsed_ms": 0.013893,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 1,
+      "elapsed_ms": 0.013806,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 2,
+      "elapsed_ms": 0.013467,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 3,
+      "elapsed_ms": 0.013427,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 4,
+      "elapsed_ms": 0.013428,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 5,
+      "elapsed_ms": 0.013253,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 6,
+      "elapsed_ms": 0.013209,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 7,
+      "elapsed_ms": 0.013615,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 8,
+      "elapsed_ms": 0.013455,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 9,
+      "elapsed_ms": 0.013565,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 10,
+      "elapsed_ms": 0.013232,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 11,
+      "elapsed_ms": 0.013013,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 12,
+      "elapsed_ms": 0.020015,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 13,
+      "elapsed_ms": 0.017555,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 14,
+      "elapsed_ms": 0.024022,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 15,
+      "elapsed_ms": 0.018894,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 16,
+      "elapsed_ms": 0.0138,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 17,
+      "elapsed_ms": 0.01344,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 18,
+      "elapsed_ms": 0.013482,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 19,
+      "elapsed_ms": 0.01314,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 20,
+      "elapsed_ms": 0.0133,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 21,
+      "elapsed_ms": 0.013363,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 22,
+      "elapsed_ms": 0.013852,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 23,
+      "elapsed_ms": 0.013308,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 24,
+      "elapsed_ms": 0.01489,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 25,
+      "elapsed_ms": 0.013371,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 26,
+      "elapsed_ms": 0.013224,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 27,
+      "elapsed_ms": 0.013596,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 28,
+      "elapsed_ms": 0.013174,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    },
+    {
+      "kind": "replay_snapshot_parse_hash",
+      "arm": "candidate",
+      "sample_index": 29,
+      "elapsed_ms": 0.013146,
+      "return_bytes": 3218,
+      "sha256": "fd3f8d2bbda9fb252a10e450689898d059d26749c0cb959a66a0567adbd7087d",
+      "model_or_network_requests": false,
+      "warmup": false
+    }
+  ],
+  "retained_harness_receipts": {
+    "path": "tests/benchmarks/assessment/sample-receipts.json",
+    "baseline_costs": {
+      "collect_ms": 10.0,
+      "judge_ms": 1.0,
+      "output_ms": 2.0,
+      "return_bytes": 1200,
+      "read_ops": 1
+    },
+    "candidate_ok_costs": {
+      "collect_ms": 11.0,
+      "judge_ms": 1.2,
+      "output_ms": 2.4,
+      "return_bytes": 1800,
+      "read_ops": 1
+    },
+    "candidate_hard_fail_costs": {
+      "collect_ms": 11.0,
+      "judge_ms": 1.2,
+      "output_ms": 2.4,
+      "return_bytes": 1800,
+      "read_ops": 1
+    }
+  },
+  "forbid": [
+    "fabricate_ms_improvement",
+    "derive_dollar_savings",
+    "claim_later_version_candidate_from_unbound_budgets"
+  ]
+}

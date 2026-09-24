@@ -123,3 +123,75 @@ rule-version-attributed diffs plus full retained failure samples. Advice
 remain). See [`docs/reference/assessment.md`](../reference/assessment.md) §17 and
 `awr assessment compare` / `awr assessment advice-mode`.
 
+## 10. DEC-060 first-batch independent acceptance gate
+
+This section is the **first-batch delivery note** for the model-free explanation
+closed loop. It independently re-checks DEC-010 / 011 / 012 / 013 / 020 / 021 /
+022 acceptance evidence and counts **eight** first-batch items separately
+(those seven cards plus this gate). It does **not** rebuild a second assessment
+stack.
+
+Machine companions:
+
+- Evidence pack: [`tests/fixtures/assessment/mvp-acceptance/`](../../tests/fixtures/assessment/mvp-acceptance/)
+  (checked-in equivalent of planned `.local/awr-decision-20260920/mvp-acceptance/`)
+- Gate harness: [`tests/benchmarks/assessment/prove_acceptance_dec060.py`](../../tests/benchmarks/assessment/prove_acceptance_dec060.py)
+- Re-run helper: [`tests/benchmarks/assessment/run_offline_gate.py`](../../tests/benchmarks/assessment/run_offline_gate.py)
+
+### Acceptance mapping
+
+| # | Acceptance (Chinese) | Where proven |
+| --- | --- | --- |
+| 1 | 010/011/012/013/020/021/022 的验收证据与本门均逐项核对，首批8项独立计数。 | `mvp-acceptance/{manifest,gate-checklist,prior-acceptance}/`; prove AC1 |
+| 2 | 实际断网/无模型配置路径、CLI/MCP 一致性、关键拒绝和禁用回退通过；全部性能原始数据保留。 | `mvp-acceptance/{offline-path,perf-raw,budget-crosscheck}.json`; reuse DEC-021/022 tests; prove AC2 |
+| 3 | 测试只证明当前离线解释能力，不代证整个14项、AUTO、Team、原生宿主或已发布版本。 | `mvp-acceptance/non-claims.json` + explicit assertions in prove AC3 |
+
+### Eight first-batch items (independent count)
+
+| # | Work | Role |
+| --- | --- | --- |
+| 1 | AWR-DEC-010 | Reuse mapping + AssessmentEnvelope contract |
+| 2 | AWR-DEC-011 | Bounded FactSnapshot + source-quality labels |
+| 3 | AWR-DEC-012 | Typed envelope unknown/conflict semantics |
+| 4 | AWR-DEC-013 | Counterexample corpus + compare budgets |
+| 5 | AWR-DEC-020 | Explanation chain over existing judgments |
+| 6 | AWR-DEC-021 | Optional CLI/MCP explain without breaking legacy |
+| 7 | AWR-DEC-022 | Offline replay, shadow compare, advice kill-switch |
+| 8 | AWR-DEC-060 | Independent acceptance gate (this note) |
+
+None of these substitutes for the full 14-item suite, AUTO, Team, native host,
+or a released version.
+
+### Budgets and ROI
+
+Pre-registered `tests/benchmarks/assessment/budgets.json` remains
+`frozen_slots_pending_baseline_binding` at this gate. DEC-060 **retains** raw
+performance samples under `mvp-acceptance/perf-raw/` and **refuses** to invent
+millisecond gains, dollar savings, or later-version candidacy until baseline
+slots are bound with measured evidence.
+
+### Follow-on enhancements and scheduling conditions
+
+See `mvp-acceptance/follow-ons.json`. Condensed:
+
+1. Bind baseline budgets before any later-version overhead pass/fail.
+2. DEC-061 covers the full 14-item applicable layers — not claimed here.
+3. Context packing / retention explain (DEC-030+) after this gate.
+4. AUTO routing requires separate authorization.
+5. DEC-040 / DEC-041 / EVO-000 are **not** started by this card.
+
+### How to re-verify (offline)
+
+```sh
+python3 tests/benchmarks/assessment/prove_acceptance_dec060.py
+python3 tests/benchmarks/assessment/run_offline_gate.py
+# optional fuller cargo walk:
+python3 tests/benchmarks/assessment/run_offline_gate.py --full
+```
+
+### Boundaries (unchanged)
+
+- Assessment read-only; no model or network path
+- Missing fields stay missing (never zero-filled); unknown ≠ false
+- Reuses DEC-010..022 evidence, fixtures, offline replay, CLI/MCP explain, kill-switch
+- Tests prove **current offline explain** only (explicit non-claims in pack)

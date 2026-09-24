@@ -1,0 +1,27 @@
+{
+  "work": "AWR-DEC-021",
+  "pr_url": "https://github.com/originoneai/awr/pull/151",
+  "pr_number": 151,
+  "head_sha": "5bbf18f2bf7899eb9c2f968c71a971a8d149b0a7",
+  "base_sha": "89d0cfc97cee2f2b764ff3b7cebefe3b36b12b7e",
+  "base_branch": "codex/awr-dec-020-explanation-chain",
+  "acceptance_mapping": {
+    "1": "CLI/MCP share assessment_hash; explain-off preserves full/summary/action + grouped MCP (capability assessment.explain negotiated)",
+    "2": "no extra tool round-trip; envelope does not re-embed rendered_context; wire_bytes + rendered_context_bytes measured; basis_refs locate details",
+    "3": "explain default off keeps legacy path; side_effects never claim/complete/auto-invoke tools; incomplete prepare error shape preserved"
+  },
+  "acceptance_all_pass": true,
+  "tests_run": [
+    "cargo test -p awr-runtime --lib assessment_explain --offline → 4 passed",
+    "cargo test -p awr-runtime --test explanation_chain --offline → 10 passed",
+    "cargo test -p awr-cli --test assessment_explain_cli --offline → 3 passed",
+    "cargo test -p awr-mcp --test assessment_explain_mcp --offline → 2 passed",
+    "cargo test -p awr-cli --test host_capabilities --offline → 6 passed",
+    "cargo test -p awr-mcp --test stdio action_view_preserves --offline → 1 passed",
+    "cargo test -p awr-mcp --test stdio summary_views --offline → 1 passed",
+    "python3 tests/fixtures/assessment/contracts/verify.py → OK",
+    "python3 tests/fixtures/assessment/counterexamples/verify.py → OK"
+  ],
+  "source_of_slim": "/workspace/awr-dec021-wt/.local/awr-dec-021/completion-evidence.json",
+  "independently_rechecked_by": "AWR-DEC-060"
+}

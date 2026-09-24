@@ -1,0 +1,47 @@
+{
+  "work": "AWR-DEC-012",
+  "pr_url": "https://github.com/originoneai/awr/pull/148",
+  "pr_number": 148,
+  "head_sha": "29ccd5e603a12169aa77beec846ed4d4591ac64a",
+  "base_sha": "06a7a4ecc87794a86645df596f2bd008ae0e16e8",
+  "base_branch": "codex/awr-dec-011-bounded-fact-snapshot",
+  "acceptance_mapping": {
+    "1_support_vocab_preserve_raw_unknown_not_false": {
+      "status": "met",
+      "evidence": [
+        "crates/awr-core/src/assessment_envelope.rs",
+        "crates/awr-core/tests/assessment_envelope.rs",
+        "tests/fixtures/assessment/envelope/support-vocab.json"
+      ]
+    },
+    "2_versioned_rules_refs_coverage_no_confidence": {
+      "status": "met",
+      "evidence": [
+        "crates/awr-core/src/assessment_envelope.rs",
+        "tests/fixtures/assessment/envelope/no-confidence.json",
+        "docs/reference/assessment.md"
+      ]
+    },
+    "3_pure_inputs_hard_rule_stable_sort_resource_limits": {
+      "status": "met",
+      "evidence": [
+        "tests/fixtures/assessment/envelope/hard-rule-vs-score.json",
+        "tests/fixtures/assessment/envelope/reason-order.json",
+        "tests/fixtures/assessment/envelope/resource-limits.json",
+        "tests/fixtures/assessment/envelope/replay-identity.json"
+      ]
+    }
+  },
+  "acceptance_all_pass": true,
+  "tests_run": [
+    "python3 tests/fixtures/assessment/envelope/verify.py",
+    "python3 tests/fixtures/assessment/signals/verify.py",
+    "python3 tests/fixtures/assessment/contracts/verify.py",
+    "cargo test -p awr-core --lib assessment_envelope --locked",
+    "cargo test -p awr-core --test assessment_envelope --test assessment_contract --test fact_snapshot --locked",
+    "cargo test -p awr-runtime --test fact_snapshot --locked",
+    "python3 scripts/check_public_tree.py"
+  ],
+  "source_of_slim": "/workspace/awr-dec012-wt/.local/awr-dec-012/completion-evidence.json",
+  "independently_rechecked_by": "AWR-DEC-060"
+}

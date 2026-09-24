@@ -1,0 +1,26 @@
+{
+  "work": "AWR-DEC-022",
+  "pr_url": "https://github.com/originoneai/awr/pull/152",
+  "pr_number": 152,
+  "head_sha": "8758d0375d0d133659d27628794dea40d7a01c93",
+  "base_sha": "5bbf18f2bf7899eb9c2f968c71a971a8d149b0a7",
+  "base_branch": "codex/awr-dec-021-optional-cli-mcp-explanations",
+  "acceptance_mapping": {
+    "1": "offline ReplaySnapshot recomputes fixed inputs only; missing snapshot => not_replayable; no production/tool/model I/O",
+    "2": "shadow_compare same-input reasons/advice/hard-rejects/costs; diffs cite rule hashes; failure samples retained in full",
+    "3": "shadow never adopts execution/context and has no daemon; Disabled kill-switch restores prior advice only and keeps hard protections"
+  },
+  "acceptance_all_pass": true,
+  "tests_run": [
+    "cargo test -p awr-runtime --lib assessment_ --offline → 9 passed",
+    "cargo test -p awr-runtime --test assessment_offline --offline → 4 passed",
+    "cargo test -p awr-cli --test assessment_offline_cli --offline → 2 passed",
+    "cargo test -p awr-runtime --test explanation_chain --offline → 10 passed",
+    "cargo test -p awr-cli --test assessment_explain_cli --offline → 3 passed",
+    "python3 tests/fixtures/assessment/counterexamples/verify.py → OK",
+    "python3 tests/benchmarks/assessment/verify.py → OK",
+    "python3 tests/benchmarks/assessment/prove_acceptance_dec022.py → OK"
+  ],
+  "source_of_slim": "/workspace/awr-dec022-wt/.local/awr-dec-022/completion-evidence.json",
+  "independently_rechecked_by": "AWR-DEC-060"
+}

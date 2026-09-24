@@ -1,0 +1,39 @@
+{
+  "schema_id": "awr-assessment-mvp-non-claims-v1",
+  "schema_version": 1,
+  "work": "AWR-DEC-060",
+  "proves": [
+    "current_offline_model_free_explanation_closed_loop",
+    "first_batch_eight_items_independently_counted",
+    "L1_L2_offline_resources_only"
+  ],
+  "does_not_prove": [
+    {
+      "id": "full_14_item_suite",
+      "statement": "Does not prove the entire 14-item core enhancement suite.",
+      "deferred_to": "AWR-DEC-061"
+    },
+    {
+      "id": "AUTO",
+      "statement": "Does not prove AUTO capability/cost routing or model experiments.",
+      "deferred_to": "separate AUTO authorization"
+    },
+    {
+      "id": "Team",
+      "statement": "Does not prove Team PG / Team MCP / multi-tenant workflows.",
+      "deferred_to": "TMCP / WS tracks"
+    },
+    {
+      "id": "native_host",
+      "statement": "Does not prove native host control (e.g. Codex native) or host process probes.",
+      "deferred_to": "WS-024 and later host cards"
+    },
+    {
+      "id": "released_version",
+      "statement": "Does not prove a released product version (e.g. 0.5.0) or published artifact.",
+      "deferred_to": "release track after independent gate"
+    }
+  ],
+  "explicit_test_assertions_required": true,
+  "note": "Tests and docs for DEC-060 must fail if they claim any does_not_prove item."
+}

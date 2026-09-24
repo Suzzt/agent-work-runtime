@@ -1,0 +1,72 @@
+{
+  "work": "AWR-DEC-010",
+  "pr_url": "https://github.com/originoneai/awr/pull/146",
+  "pr_number": 146,
+  "head_sha": "ed035731a03ab9285d92eb6e83ba12c7e56196de",
+  "base_sha": "8fa6679981c823842282a0a4b5b79b9c7165b2a4",
+  "base_branch": null,
+  "acceptance_mapping": {
+    "1_tip_inventory": {
+      "status": "met",
+      "verified_main_sha": "8fa6679981c823842282a0a4b5b79b9c7165b2a4",
+      "evidence": [
+        "docs/reference/assessment.md#1-tip-inventory-and-deltas",
+        "tests/fixtures/assessment/contracts/baseline-inventory.json"
+      ],
+      "surfaces": [
+        "management",
+        "prepare",
+        "status",
+        "context"
+      ]
+    },
+    "2_first_batch_scope": {
+      "status": "met",
+      "provides": [
+        "management_assessment",
+        "action_rationale"
+      ],
+      "layers_mapped": [
+        "work_readiness",
+        "execution_admission",
+        "context_completeness",
+        "delivery_observation",
+        "completion_validity"
+      ],
+      "not_introduced": [
+        "general_scheduler",
+        "model_client",
+        "new_Decision_authority"
+      ],
+      "evidence": [
+        "docs/reference/assessment.md#2-first-batch-scope",
+        "tests/fixtures/assessment/contracts/layers.json",
+        "tests/fixtures/assessment/contracts/manifest.json"
+      ]
+    },
+    "3_frozen_contract": {
+      "status": "met",
+      "schema": "awr-assessment-envelope-v1",
+      "reason_codes": "tests/fixtures/assessment/contracts/reason-codes.json",
+      "read_boundaries": "tests/fixtures/assessment/contracts/read-boundaries.json",
+      "legacy_compat": "tests/fixtures/assessment/contracts/legacy-compat.json",
+      "consumers": [
+        "cli",
+        "mcp"
+      ],
+      "unsupported_fields": "explicit unknown",
+      "evidence": [
+        "docs/reference/assessment.md",
+        "tests/fixtures/assessment/contracts/"
+      ]
+    }
+  },
+  "acceptance_all_pass": true,
+  "tests_run": [
+    "python3 tests/fixtures/assessment/contracts/verify.py",
+    "cargo test -p awr-core --test assessment_contract --test management --locked",
+    "python3 scripts/check_public_tree.py"
+  ],
+  "source_of_slim": "/workspace/awr-dec010-wt/.local/awr-dec-010/completion-evidence.json",
+  "independently_rechecked_by": "AWR-DEC-060"
+}
