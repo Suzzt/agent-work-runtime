@@ -98,14 +98,11 @@ pub fn normalize_receipt_for_explanation(value: &Value) -> Result<Value> {
         return Ok(value.clone());
     }
     // Assess-shaped: top-level `work` is a string key and `decision` sits at the root.
-    let work_key = value
-        .get("work")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            Error::InvalidInput(
-                "assessment explain requires prepare work.external_key or assess work key".into(),
-            )
-        })?;
+    let work_key = value.get("work").and_then(|v| v.as_str()).ok_or_else(|| {
+        Error::InvalidInput(
+            "assessment explain requires prepare work.external_key or assess work key".into(),
+        )
+    })?;
     let management = json!({
         "contract_fingerprint": value.get("contract_fingerprint"),
         "decision": value.get("decision"),
@@ -135,10 +132,8 @@ pub fn normalize_receipt_for_explanation(value: &Value) -> Result<Value> {
 }
 
 fn delivery_from_receipt(value: &Value) -> DeliveryExplanationInput {
-    let waiting = value
-        .pointer("/continuity/state")
-        .and_then(|v| v.as_str())
-        == Some("waiting_user");
+    let waiting =
+        value.pointer("/continuity/state").and_then(|v| v.as_str()) == Some("waiting_user");
     let wait_refs = value
         .pointer("/continuity/waits")
         .and_then(|v| v.as_array())
@@ -156,10 +151,7 @@ fn delivery_from_receipt(value: &Value) -> DeliveryExplanationInput {
     let mut unresolved = Vec::new();
     if let Some(diags) = value.get("diagnostics").and_then(|v| v.as_array()) {
         for d in diags {
-            let code = d
-                .get("code")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
+            let code = d.get("code").and_then(|v| v.as_str()).unwrap_or_default();
             if code.contains("execution_result_requires_query")
                 || code == "execution_result_requires_query"
             {
@@ -199,9 +191,7 @@ fn delivery_from_receipt(value: &Value) -> DeliveryExplanationInput {
         wait_refs,
         unresolved_side_effects: unresolved,
         historically_prepared: value.get("stage").and_then(|v| v.as_str()) == Some("prepared"),
-        ack_present: value
-            .get("context_consumed")
-            .and_then(|v| v.as_bool()),
+        ack_present: value.get("context_consumed").and_then(|v| v.as_bool()),
         exec_state_probe: Some(ProbeSupport::Unsupported),
         host_process_probe: Some(ProbeSupport::Unsupported),
         soft_rerun_cues: vec![],
@@ -220,13 +210,11 @@ fn authority_from_receipt(value: &Value) -> ExplanationAuthority {
         .and_then(|v| v.as_str())
         .map(str::to_string)
         .or_else(|| {
-            value
-                .get("project_revision")
-                .map(|v| match v {
-                    Value::Number(n) => n.to_string(),
-                    Value::String(s) => s.clone(),
-                    _ => v.to_string(),
-                })
+            value.get("project_revision").map(|v| match v {
+                Value::Number(n) => n.to_string(),
+                Value::String(s) => s.clone(),
+                _ => v.to_string(),
+            })
         });
     ExplanationAuthority {
         contract_hash: contract,
@@ -458,24 +446,20 @@ mod tests {
         assert_eq!(explanation["side_effects"]["updated_completion"], false);
         assert_eq!(explanation["side_effects"]["auto_invoked_tools"], false);
         assert_eq!(explanation["side_effects"]["model_or_network"], false);
-        assert_eq!(
-            explanation["metrics"]["prepare_context_duplicated"],
-            false
-        );
-        assert_eq!(
-            explanation["metrics"]["rendered_context_bytes"],
-            rendered
-        );
+        assert_eq!(explanation["metrics"]["prepare_context_duplicated"], false);
+        assert_eq!(explanation["metrics"]["rendered_context_bytes"], rendered);
         let full = wire_bytes(&out).unwrap();
         let legacy = wire_bytes(&original).unwrap();
         assert!(full > legacy);
         // Envelope must not contain the rendered prepare body string.
         let envelope = serde_json::to_string(&explanation["envelope"]).unwrap();
-        assert!(!envelope.contains(
-            original["context"]["work_context"]["rendered_context"]
-                .as_str()
-                .unwrap()
-        ));
+        assert!(
+            !envelope.contains(
+                original["context"]["work_context"]["rendered_context"]
+                    .as_str()
+                    .unwrap()
+            )
+        );
         assert_eq!(
             explanation["metrics"]["explanation_embeds_rendered_context"],
             false

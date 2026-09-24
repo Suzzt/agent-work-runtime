@@ -479,7 +479,8 @@ read-only: no model/network, missing fields stay missing, unknown ≠ false.
 | Replay bounds | Recomputes fixed inputs only; `reread_production_state=false`, `reran_tools=false`, `model_or_network_requests=false` |
 | Shadow compare | `awr_runtime::shadow_compare`; CLI `awr assessment compare --baseline … --candidate …` |
 | Compare dimensions | Same-input reasons, advisory codes, hard rejects, costs; diffs cite rule/policy version hashes; divergent samples retained in full |
-| Shadow adoption | `execution_adoption=false`, `context_adoption=false`; **no background daemon** |
+| Shadow adoption | `execution_adoption=false`, `context_adoption=false` for shadow **and** enabled; this card does not adopt advice into execution or context; **no background daemon** |
+| Costs | Collect and judge samples stay absent until measured. Only serialized envelope bytes are recorded. A candidate that loosens a hard gate or drops a hard reject does not pass. |
 | Advice modes | `disabled` (kill-switch) / `shadow` / `enabled` via `AdviceDeliveryMode` |
 | Kill-switch | `disabled` restores prior advice behavior only (omit new explain); **does not** remove claim/completion/admission/source-freshness/stop-revoke hard protections |
 | Offline chain | prepare/explain → change source → `prior_explanation_still_valid=false` → reassess (see `assessment_offline` tests) |

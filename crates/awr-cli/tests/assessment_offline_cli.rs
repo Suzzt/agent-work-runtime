@@ -59,8 +59,8 @@ fn assessment_capabilities_advertise_replay_shadow_and_advice_mode() {
 
 #[test]
 fn assessment_replay_compare_and_killswitch_cli_chain() {
-    let fixture_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures/assessment/replay");
+    let fixture_root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/assessment/replay");
     let baseline = fixture_root.join("baseline-snapshot.json");
     let candidate = fixture_root.join("candidate-snapshot.json");
     assert!(
@@ -75,25 +75,31 @@ fn assessment_replay_compare_and_killswitch_cli_chain() {
     assert_eq!(missing["report"]["reran_tools"], false);
     assert_eq!(missing["report"]["model_or_network_requests"], false);
 
-    let replayed = ok_json([
-        "--json",
-        "assessment",
-        "replay",
-        "--snapshot",
-        baseline.to_str().unwrap(),
-    ].as_slice());
+    let replayed = ok_json(
+        [
+            "--json",
+            "assessment",
+            "replay",
+            "--snapshot",
+            baseline.to_str().unwrap(),
+        ]
+        .as_slice(),
+    );
     assert_eq!(replayed["report"]["status"], "replayed");
     assert!(replayed["report"]["assessment_hash"].as_str().is_some());
 
-    let compared = ok_json([
-        "--json",
-        "assessment",
-        "compare",
-        "--baseline",
-        baseline.to_str().unwrap(),
-        "--candidate",
-        candidate.to_str().unwrap(),
-    ].as_slice());
+    let compared = ok_json(
+        [
+            "--json",
+            "assessment",
+            "compare",
+            "--baseline",
+            baseline.to_str().unwrap(),
+            "--candidate",
+            candidate.to_str().unwrap(),
+        ]
+        .as_slice(),
+    );
     assert_eq!(compared["report"]["same_inputs"], true);
     assert_eq!(compared["report"]["execution_adoption"], false);
     assert_eq!(compared["report"]["context_adoption"], false);
@@ -103,7 +109,10 @@ fn assessment_replay_compare_and_killswitch_cli_chain() {
     assert_eq!(disabled["mode"], "disabled");
     assert_eq!(disabled["effect"]["restores_prior_advice_behavior"], true);
     assert_eq!(disabled["effect"]["new_advice_attached"], false);
-    assert_eq!(disabled["hard_protections_after_disable"]["claim_guards"], true);
+    assert_eq!(
+        disabled["hard_protections_after_disable"]["claim_guards"],
+        true
+    );
 
     let shadow = ok_json(&["--json", "assessment", "advice-mode", "--mode", "shadow"]);
     assert_eq!(shadow["mode"], "shadow");
