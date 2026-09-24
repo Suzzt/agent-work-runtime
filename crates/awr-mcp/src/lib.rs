@@ -10,6 +10,8 @@ mod operations;
 mod project;
 mod requests;
 mod schema;
+mod team_handoff;
+mod team_review;
 mod waiting;
 mod workstreams;
 
@@ -55,6 +57,8 @@ impl AwrServer {
                     catalog.insert(0, tool);
                 }
                 catalog.push(crate::workstreams::tool());
+                catalog.push(crate::team_handoff::tool());
+                catalog.push(crate::team_review::tool());
             }
             catalog
         } else if shared {

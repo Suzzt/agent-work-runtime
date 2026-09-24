@@ -7,6 +7,7 @@ mod compile;
 mod completeness;
 mod delta;
 mod hard;
+mod invalidation;
 mod related;
 pub use bootstrap::{BootstrapContext, BootstrapPack, BootstrapRequest, bootstrap};
 pub use branch::BranchContextBinding;
@@ -29,6 +30,10 @@ pub use delta::{
 };
 pub use hard::{
     HardContext, HardWork, RuleScopeInput, RuleSelection, SourceVersion, hard_context, select_rules,
+};
+pub use invalidation::{
+    InvalidationContextGaps, ReadinessBlock, ReadinessBlockReason, invalidation_context_gaps,
+    readiness_complete_with_gaps,
 };
 pub use related::{
     DecisionFact, DecisionGap, DependencyFact, EvidenceGap, EvidenceSummary, RelatedWorkContext,

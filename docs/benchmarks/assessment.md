@@ -84,6 +84,10 @@ Hard rules:
 - candidate tool-call delta default max = 0 vs baseline
 - output return-bytes absolute ceiling = 262144 until revised with evidence
 - hard-constraint failures fail the compare even if soft averages look good
+- `compare.py` does not label a pair passed while budget status is still
+  `frozen_slots_pending_baseline_binding`
+- a missing cost field stays missing; it is not treated as zero and cannot
+  look like a millisecond improvement
 
 ## 7. How to verify (offline)
 

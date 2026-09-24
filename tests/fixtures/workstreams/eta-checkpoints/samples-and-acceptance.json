@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "kind": "eta-sample-acceptance-isolation",
+  "historical_samples": [
+    {
+      "sample_id": "hist-001",
+      "work_kind": "default",
+      "observed_execution_ms": 42,
+      "observed_wait_ms": 3,
+      "source_ledger": "historical_observation"
+    },
+    {
+      "sample_id": "hist-002",
+      "work_kind": "default",
+      "observed_execution_ms": 45,
+      "observed_wait_ms": 2,
+      "source_ledger": "historical_observation"
+    }
+  ],
+  "acceptance_data": [
+    {
+      "acceptance_id": "acc-001",
+      "work_id": "card-043",
+      "accepted_at_ms": 1700000005000
+    }
+  ],
+  "forbidden": [
+    "sample.source_ledger == acceptance",
+    "sample_id colliding with acceptance_id"
+  ]
+}

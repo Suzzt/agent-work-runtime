@@ -84,9 +84,6 @@ impl Action {
             Self::Recovery(a) => a.session(),
         }
     }
-    pub(super) fn requires_active_stream(&self) -> bool {
-        matches!(self, Self::Prepare(_) | Self::Start(_))
-    }
 }
 
 // The remote coordinator can validate portable lexical scope, not inspect the
@@ -165,6 +162,7 @@ async fn prepare(
         "",
     )
     .await?;
+    require_clear_of_selective_blocks(tx, tenant, project, &command.work_id).await?;
     require_paths(contract, &a.declared_scope)?;
     let id = crate::tx::new_id();
     let declared = json!(a.declared_scope);
@@ -184,6 +182,45 @@ async fn prepare(
         "dispatched":false,"admission":"not_evaluated","fencing_class":"uncontrolled",
         "exactly_once_supported":false,"scope_validation":"lexical_contract_only"}),
     )
+}
+
+/// Refuse prepare/start when an active planning-change block or invalid
+/// dependency binding targets this work. Live check in the admission
+/// transaction — a prior Allow boundary receipt is not fresh permission.
+pub(crate) async fn require_clear_of_selective_blocks(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    work: &str,
+) -> PgResult<()> {
+    if let Some(change_id) = tx
+        .query_opt(
+            "SELECT change_id FROM awr_team.planning_change_action_blocks
+             WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3 AND active=true
+             ORDER BY change_id LIMIT 1",
+            &[&tenant, &project, &work],
+        )
+        .await?
+        .map(|r| r.get::<_, String>(0))
+    {
+        return Err(PgError::ActionBlockedByInvalidation(change_id));
+    }
+    let invalid: bool = tx
+        .query_one(
+            "SELECT EXISTS(
+                SELECT 1 FROM awr_team.dependency_bindings
+                 WHERE tenant_id=$1 AND project_id=$2
+                   AND downstream_work_id=$3 AND valid=false)",
+            &[&tenant, &project, &work],
+        )
+        .await?
+        .get(0);
+    if invalid {
+        return Err(PgError::ActionBlockedByInvalidation(
+            "invalid_dependency_binding".into(),
+        ));
+    }
+    Ok(())
 }
 
 async fn require_enabled(

@@ -1,0 +1,62 @@
+{
+  "namespace": "team-mcp-v1/biz-member-handoff",
+  "nodes": [
+    {
+      "key": "MH-TAKEOVER",
+      "role": "executor",
+      "person_id": "person.alex-chen",
+      "client_adapter": "codex_cli",
+      "depends_on": []
+    },
+    {
+      "key": "MH-RETIRE",
+      "role": "executor",
+      "person_id": "person.alex-chen",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "MH-TAKEOVER"
+      ]
+    },
+    {
+      "key": "MH-FIELD",
+      "role": "executor_peer",
+      "person_id": "person.blair-nguyen",
+      "client_adapter": "claude_code",
+      "depends_on": [
+        "MH-RETIRE"
+      ]
+    },
+    {
+      "key": "MH-REWORK",
+      "role": "executor",
+      "person_id": "person.alex-chen",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "MH-FIELD"
+      ]
+    },
+    {
+      "key": "MH-REVIEW",
+      "role": "reviewer",
+      "person_id": "person.riley-park",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "MH-REWORK"
+      ]
+    },
+    {
+      "key": "MH-DELIVER",
+      "role": "executor",
+      "person_id": "person.alex-chen",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "MH-REVIEW"
+      ]
+    }
+  ],
+  "reviewer_distinct_from": [
+    "executor",
+    "executor_peer"
+  ],
+  "handoff_requirement": "执行、同伴与复核必须是不同 person；禁止同一 agent 会话同时签署执行与独立复核。"
+}

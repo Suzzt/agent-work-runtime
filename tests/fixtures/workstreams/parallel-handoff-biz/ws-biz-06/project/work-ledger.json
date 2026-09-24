@@ -1,0 +1,121 @@
+{
+  "namespace": "awr-ws-r2-ws-biz-06",
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "时间预测与阶段验收 交付"
+    }
+  ],
+  "work_items": [
+    {
+      "id": "T6-FORECAST",
+      "title": "写入验收窗口预测",
+      "status": "ready",
+      "depends_on": [],
+      "owner": null,
+      "intended_person": "person.nicky-fang",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "写入验收窗口预测 完成并可复核"
+      ],
+      "next_action": "由 Nicky Fang 经 codex_cli 推进"
+    },
+    {
+      "id": "T6-CORE",
+      "title": "并行推进核心功能",
+      "status": "planned",
+      "depends_on": [
+        "T6-FORECAST"
+      ],
+      "owner": null,
+      "intended_person": "person.peyton-cho",
+      "intended_role": "executor_peer",
+      "intended_client": "claude_code",
+      "acceptance": [
+        "并行推进核心功能 完成并可复核"
+      ],
+      "next_action": "由 Peyton Cho 经 claude_code 推进"
+    },
+    {
+      "id": "T6-CP1",
+      "title": "Web 检查点一试用与记录",
+      "status": "planned",
+      "depends_on": [
+        "T6-CORE"
+      ],
+      "owner": null,
+      "intended_person": "person.sydney-ma",
+      "intended_role": "web_operator",
+      "intended_client": "team_web",
+      "acceptance": [
+        "Web 检查点一试用与记录 完成并可复核"
+      ],
+      "next_action": "由 Sydney Ma 经 team_web 推进"
+    },
+    {
+      "id": "T6-ADJ",
+      "title": "按偏差调整需求与依赖",
+      "status": "planned",
+      "depends_on": [
+        "T6-CP1"
+      ],
+      "owner": null,
+      "intended_person": "person.nicky-fang",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "按偏差调整需求与依赖 完成并可复核"
+      ],
+      "next_action": "由 Nicky Fang 经 codex_cli 推进"
+    },
+    {
+      "id": "T6-CP2",
+      "title": "Web 检查点二验证方向",
+      "status": "planned",
+      "depends_on": [
+        "T6-ADJ"
+      ],
+      "owner": null,
+      "intended_person": "person.sydney-ma",
+      "intended_role": "web_operator",
+      "intended_client": "team_web",
+      "acceptance": [
+        "Web 检查点二验证方向 完成并可复核"
+      ],
+      "next_action": "由 Sydney Ma 经 team_web 推进"
+    },
+    {
+      "id": "T6-REVIEW",
+      "title": "独立验收真实成果",
+      "status": "planned",
+      "depends_on": [
+        "T6-CP2"
+      ],
+      "owner": null,
+      "intended_person": "person.sydney-ma",
+      "intended_role": "reviewer",
+      "intended_client": "team_web",
+      "acceptance": [
+        "独立验收真实成果 完成并可复核"
+      ],
+      "next_action": "由 Sydney Ma 经 team_web 推进"
+    },
+    {
+      "id": "T6-DELIVER",
+      "title": "关联 PR 并完成交付",
+      "status": "planned",
+      "depends_on": [
+        "T6-REVIEW"
+      ],
+      "owner": null,
+      "intended_person": "person.nicky-fang",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "关联 PR 并完成交付 完成并可复核"
+      ],
+      "next_action": "由 Nicky Fang 经 codex_cli 推进"
+    }
+  ]
+}
