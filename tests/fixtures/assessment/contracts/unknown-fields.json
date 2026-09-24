@@ -1,0 +1,35 @@
+{
+  "verified_main_sha": "8fa6679981c823842282a0a4b5b79b9c7165b2a4",
+  "rule": "unsupported_or_missing_fields_are_explicit_unknown",
+  "envelope_path": "unsupported_fields",
+  "examples": {
+    "layers.delivery_observation.changed_lines": "unknown",
+    "assessments.model_success_probability": "unknown",
+    "identity.collector_version": "unknown",
+    "limits.scan_ops": "unknown",
+    "management.observation.active_elapsed_ms": "unknown"
+  },
+  "forbidden_coercions": [
+    {
+      "from": "missing_git_diff",
+      "not_to": "changed_lines=0"
+    },
+    {
+      "from": "missing_observation",
+      "not_to": "false_or_no_risk"
+    },
+    {
+      "from": "unknown_execution",
+      "not_to": "safe_to_retry"
+    },
+    {
+      "from": "rule_score",
+      "not_to": "calibrated_probability"
+    },
+    {
+      "from": "inference",
+      "not_to": "verified_fact"
+    }
+  ],
+  "layer_default_when_unchecked": "not_evaluated"
+}

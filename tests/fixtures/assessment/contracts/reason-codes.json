@@ -1,0 +1,111 @@
+{
+  "verified_main_sha": "8fa6679981c823842282a0a4b5b79b9c7165b2a4",
+  "host_assertion_triggers": {
+    "single_outcome": "multiple_outcomes",
+    "bounded_scope": "scope_requires_planning",
+    "single_executor": "handoff_or_collaboration",
+    "no_deferred_wait": "deferred_wait",
+    "plan_valid": "plan_invalidated",
+    "outcome_known": "query_outcome_before_retry"
+  },
+  "unit_trigger": {
+    "field": "independently_schedulable_units",
+    "threshold": 2,
+    "code": "independent_work_units"
+  },
+  "runtime_codes": [
+    {
+      "code": "unresolved_dependencies",
+      "basis": "source_projection"
+    },
+    {
+      "code": "work_contract_changed",
+      "basis": "source_projection"
+    },
+    {
+      "code": "persistent_wait",
+      "basis": "runtime_history",
+      "event_kind": "mcp.wait_created"
+    },
+    {
+      "code": "work_handoff",
+      "basis": "runtime_history",
+      "event_kind": "work.handoff"
+    },
+    {
+      "code": "cross_session_resume",
+      "basis": "runtime_history",
+      "event_kind": "session.resumed"
+    },
+    {
+      "code": "execution_result_requires_query",
+      "basis": "runtime_recorded_state"
+    },
+    {
+      "code": "continuous_management_retained",
+      "basis": "runtime_history"
+    }
+  ],
+  "reason_bases": [
+    "host_assertion",
+    "runtime_history",
+    "source_projection",
+    "runtime_recorded_state"
+  ],
+  "unknown_observation_fields": [
+    "single_outcome",
+    "bounded_scope",
+    "single_executor",
+    "no_deferred_wait",
+    "plan_valid",
+    "outcome_known",
+    "independently_schedulable_units"
+  ],
+  "reevaluation_signals": [
+    {
+      "code": "active_elapsed_at_least_30_minutes",
+      "when": "active_elapsed_ms >= 1800000"
+    },
+    {
+      "code": "at_least_3_completed_rework_cycles",
+      "when": "completed_rework_cycles >= 3"
+    }
+  ],
+  "required_actions_all_modes": [
+    "preserve_identity_intent_scope_and_current_state",
+    "consume_required_context_and_hard_rules",
+    "retain_completion_basis_and_actual_outcome",
+    "check_source_versions_permissions_claims_and_request_identity"
+  ],
+  "required_actions_continuous": [
+    "maintain_dependencies_and_ownership",
+    "checkpoint_at_wait_handoff_interruption_and_phase_change",
+    "maintain_next_action_wait_conditions_and_open_loops",
+    "query_unknown_results_before_any_retry"
+  ],
+  "required_actions_conditional": [
+    "assess_unknown_management_facts",
+    "reevaluate_scope_plan_and_recovery_without_automatic_upgrade"
+  ],
+  "admission_gaps": [
+    "source_acceptance_missing_or_ambiguous",
+    "goal_context_missing"
+  ],
+  "assess_next_actions": [
+    "repair_required_context_before_execution",
+    "record_current_assessment_with_explicit_host_observations",
+    "follow_required_actions_and_existing_workflow"
+  ],
+  "advisory_action_codes": [
+    "continue_prepare_current_work",
+    "query_original_operation_result",
+    "collect_user_reply",
+    "refresh_sources",
+    "repair_required_materials",
+    "inspect_claim_conflict",
+    "request_human_review",
+    "record_management_observations",
+    "no_advisory"
+  ],
+  "observation_basis_constant": "host_assertion_not_independently_verified"
+}

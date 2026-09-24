@@ -1,0 +1,92 @@
+{
+  "verified_main_sha": "8fa6679981c823842282a0a4b5b79b9c7165b2a4",
+  "design_snapshot_sha_non_authoritative": "e3bfac4ef0dd14b06f97eb4c972e90d62861a6d1",
+  "tip_surfaces": [
+    {
+      "id": "management",
+      "symbols": [
+        "awr_core::ManagementObservation",
+        "awr_core::ManagementReason",
+        "awr_core::ManagementMode",
+        "awr_core::ManagementDecision",
+        "awr_core::decide_management",
+        "awr_runtime::assess_management",
+        "awr_runtime::manage_work"
+      ],
+      "cli": [
+        "work assess",
+        "work manage"
+      ],
+      "mcp": [
+        "awr_work_assess",
+        "awr_work_manage"
+      ],
+      "delta": "reuse; DEC-010 freezes envelope mapping only"
+    },
+    {
+      "id": "prepare",
+      "symbols": [
+        "awr_runtime::prepare_work",
+        "awr_runtime::guide_prepared_work",
+        "awr_runtime::summarize_work_response"
+      ],
+      "cli": [
+        "work prepare",
+        "work prepare --response-view action|summary|full"
+      ],
+      "mcp": [
+        "awr_work_prepare"
+      ],
+      "notes": "prepare embeds management; action view supplies ActionGuidance",
+      "delta": "reuse; explain field negotiated later without new command names"
+    },
+    {
+      "id": "status",
+      "symbols": [
+        "awr_runtime::action_status",
+        "awr_runtime::action_status_page",
+        "awr_runtime::summarize_status"
+      ],
+      "cli": [
+        "status --view action",
+        "status --view summary|full"
+      ],
+      "queues": [
+        "current",
+        "ready",
+        "waiting",
+        "blocked"
+      ],
+      "delta": "reuse EVO-034 queues; first batch cites as delivery_observation refs only when present"
+    },
+    {
+      "id": "context",
+      "symbols": [
+        "awr_context::ContextCompleteness",
+        "awr_context::assess_completeness",
+        "awr_context::hard_context",
+        "awr_context::select_rules",
+        "awr_context::budget_context"
+      ],
+      "delta": "reuse; layer context_completeness maps flags; packing explain is DEC-030"
+    }
+  ],
+  "dec010_deltas": [
+    "AssessmentEnvelope schema freeze",
+    "facts/observation/inference vocabulary",
+    "five named layers with not_evaluated default",
+    "capability-negotiated explain without occupying decision show",
+    "explicit unknown for unsupported fields"
+  ],
+  "source_paths_checked": [
+    "crates/awr-core/src/management.rs",
+    "crates/awr-runtime/src/management.rs",
+    "crates/awr-runtime/src/workflow.rs",
+    "crates/awr-runtime/src/guidance.rs",
+    "crates/awr-runtime/src/status_action.rs",
+    "crates/awr-runtime/src/response_view.rs",
+    "crates/awr-context/src/completeness.rs",
+    "crates/awr-core/src/guidance.rs",
+    "docs/reference/management.md"
+  ]
+}
