@@ -2,6 +2,7 @@
 """Verify AWR-EVO-000 execution-baseline gate artifacts."""
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -9,6 +10,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL = ROOT / ".local/awr-evolution-20260919"
 MIRROR = ROOT / "tests/fixtures/evolution/AWR-EVO-000"
+MATRIX = ROOT / "docs/reference/team-v1-evidence-matrix.json"
+HISTORICAL = ROOT / "docs/reference/team-v1-historical-agent-evidence-v1.json"
 REQUIRED_BASELINE_KEYS = {
     "schema",
     "work",
@@ -100,6 +103,10 @@ def main() -> int:
 
     den = baseline["preserved_denominators"]
     counts = den.get("team_v1_evidence_matrix_counts") or {}
+    matrix = load(MATRIX)
+    matrix_counts = matrix.get("counts") or {}
+    if len(matrix.get("cases") or []) != matrix_counts.get("required"):
+        fail("evidence matrix case count does not match counts.required")
     for key, expected in (
         ("required", 69),
         ("real_agent_accepted", 42),
@@ -108,6 +115,17 @@ def main() -> int:
     ):
         if counts.get(key) != expected:
             fail(f"Team V1 denominator {key} changed or missing: {counts.get(key)}")
+        if matrix_counts.get(key) != expected:
+            fail(f"evidence matrix {key} is {matrix_counts.get(key)}, expected {expected}")
+    hist = den.get("team_v1_historical_agent_evidence") or {}
+    recorded = str(hist.get("fingerprint") or "")
+    digest = recorded.removeprefix("sha256:")
+    actual = hashlib.sha256(HISTORICAL.read_bytes()).hexdigest()
+    if not digest or digest != actual:
+        fail("historical evidence fingerprint does not match the checked-in file")
+    matrix_hist = (matrix.get("historical_agent_evidence") or {}).get("index_sha256")
+    if matrix_hist != actual:
+        fail("evidence matrix historical index hash does not match the file")
     if den.get("explicit_non_rewrite") is not True:
         fail("explicit_non_rewrite must be true")
 
