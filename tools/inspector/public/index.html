@@ -82,6 +82,10 @@
       <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>
       <span data-i18n="ui.sources">Sources</span> <i id="navSourceCount"></i>
     </a>
+    <a href="#team" data-view="team">
+      <svg viewBox="0 0 24 24"><path d="M16 11c1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3 1.3 3 3 3zM8 11c1.7 0 3-1.3 3-3S9.7 5 8 5 5 6.3 5 8s1.3 3 3 3z"/><path d="M8 13c-2.7 0-8 1.3-8 4v2h10v-2c0-1.5 1.1-2.7 2.7-3.4C11.4 13.2 9.7 13 8 13zM16 13c-.4 0-.8 0-1.2.1 1.7.6 2.2 1.6 2.2 2.9v2h7v-2c0-2.7-5.3-4-8-4z"/></svg>
+      <span data-i18n="ui.team_web">Team Web</span>
+    </a>
   </nav>
 
   <main>
@@ -370,6 +374,30 @@
       </div>
     </section>
 
+
+    <!-- Team Web loop (WS-044) -->
+    <section class="view" id="view-team" hidden>
+      <div class="view-head">
+        <div>
+          <span class="eyebrow">awr team web</span>
+          <h1><span data-i18n="ui.team_web_loop">Team Web collaboration loop</span></h1>
+          <p class="lede">
+            <span data-i18n="ui.team_web_lede">My Projects → parallel overview, cards/list and detail. Cookie web entry (not bearer-in-page). Shared server facts, authz and idempotent receipts with CLI/MCP.</span>
+          </p>
+        </div>
+      </div>
+      <div class="team-grid">
+        <aside class="panel" id="teamAuth"></aside>
+        <aside class="panel" id="teamProjects"></aside>
+        <section class="panel" id="teamOverview"></section>
+        <section class="panel" id="teamDetail"></section>
+      </div>
+      <details class="raw-fold">
+        <summary data-i18n="ui.raw_json">Raw JSON</summary>
+        <pre id="rawTeamBody" class="raw"></pre>
+      </details>
+    </section>
+
     <!-- Sources -->
     
     <section class="view" id="view-mainline" hidden>
@@ -378,7 +406,7 @@
           <span class="eyebrow">awr nav</span>
           <h1><span data-i18n="ui.mainline_navigation">Mainline navigation</span></h1>
           <p class="lede">
-            <span data-i18n="ui.mainline_lede">Read-only scope, cross-dependencies, accounting, blockers and concrete outcome edges. Team Web writes stay on WS-044.</span>
+            <span data-i18n="ui.mainline_lede">Read-only scope, cross-dependencies, accounting, blockers and concrete outcome edges. Team Web writes are available in the Team Web view (WS-044).</span>
           </p>
         </div>
       </div>
@@ -563,6 +591,7 @@
 <script src="locales/zh-CN.js"></script>
 <script src="i18n.js"></script>
 <script src="demo-data.js"></script>
+<script src="team-web.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

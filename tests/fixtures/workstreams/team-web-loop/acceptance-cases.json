@@ -1,0 +1,75 @@
+{
+  "schema": "awr-team-web-loop-acceptance/v1",
+  "work": "AWR-WS-044",
+  "cases": [
+    {
+      "id": "web_entry_cookie_auth",
+      "covers": [
+        1
+      ],
+      "asserts": [
+        "login_sets_http_only_cookie",
+        "logout_revokes",
+        "classic_origin_still_denied",
+        "no_bearer_in_page_js"
+      ]
+    },
+    {
+      "id": "my_projects_overview_cards",
+      "covers": [
+        2
+      ],
+      "asserts": [
+        "my_projects",
+        "owner_agent_outcome_blocker_next",
+        "card_list_toggle",
+        "graph_dep_drilldown"
+      ]
+    },
+    {
+      "id": "shared_collab_writes",
+      "covers": [
+        3
+      ],
+      "asserts": [
+        "accept_responsibility",
+        "select_agent",
+        "run_pause_visibility",
+        "blocker_response",
+        "handoff_receive",
+        "submit_review",
+        "rework",
+        "accept",
+        "idempotent_receipts"
+      ]
+    },
+    {
+      "id": "blocker_detail_privacy",
+      "covers": [
+        4
+      ],
+      "asserts": [
+        "prerequisite_outcome",
+        "release_condition",
+        "check_basis",
+        "visible_upstream_drill",
+        "hidden_non_leaking_hint",
+        "codes_in_detail_layer"
+      ]
+    },
+    {
+      "id": "interaction_guards_i18n",
+      "covers": [
+        5
+      ],
+      "asserts": [
+        "personal_and_team_views",
+        "en_zh",
+        "reconnect",
+        "expired_ops",
+        "double_click_guard",
+        "no_enterprise_wizards"
+      ]
+    }
+  ]
+}

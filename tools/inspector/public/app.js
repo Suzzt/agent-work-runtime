@@ -1834,7 +1834,10 @@
 
   // Navigation
 
-  const VIEWS = ['overview', 'work', 'context', 'mainline', 'sources'];
+  // Team Web collaboration loop handle (WS-044); initialized in boot().
+  let teamWeb = null;
+
+  const VIEWS = ['overview', 'work', 'context', 'mainline', 'sources', 'team'];
 
   function go(view) {
     if (VIEWS.indexOf(view) < 0) view = 'overview';
@@ -1847,6 +1850,9 @@
     window.scrollTo({ top: 0 });
     if (view === 'mainline' && !state.raw.mainline) {
       loadMainline().catch((e) => errorBlock(e, 'awr nav'));
+    }
+    if (view === 'team' && window.AWR_TEAM_WEB && teamWeb) {
+      teamWeb.refresh().catch((e) => errorBlock(e, 'team web'));
     }
   }
 
@@ -2004,6 +2010,13 @@
   async function boot() {
     restoreTheme();
     wire();
+    if (window.AWR_TEAM_WEB && typeof window.AWR_TEAM_WEB.createTeamWeb === 'function') {
+      teamWeb = window.AWR_TEAM_WEB.createTeamWeb({
+        i18n: i18n,
+        $: $,
+        callApi: callApi,
+      });
+    }
     go((location.hash || '#overview').slice(1));
     await loadAll();
 
@@ -2018,7 +2031,9 @@
 
   // Test exports; browsers have no module object and skip this block.
   if (typeof module !== 'undefined' && module.exports) {
+    // teamWeb may be null in non-browser fixtures
     module.exports = {
+      teamWeb: () => teamWeb,
       createGenerationGuard, state, detailGuard, renderWorkDetail, normStatus, renderWork, loadWorkPage,
       renderPacketSize, doCompile, renderQueueList, fillWorkSelect, loadAll,
     };

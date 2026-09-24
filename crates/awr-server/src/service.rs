@@ -2,6 +2,7 @@
 //! inside PostgreSQL; tenant/actor/client/grants are never taken from its JSON.
 mod action_auth;
 mod mcp;
+mod web;
 
 pub use crate::named_agent_host::{
     named_agent_host_capabilities, negotiate_named_adapter, usable_named_clients,
@@ -45,6 +46,10 @@ pub struct ServiceConfig {
     pub listen: SocketAddr,
     #[serde(default)]
     pub allowed_hosts: Vec<String>,
+    /// Exact browser Origins allowed to use the designed `/v1/web/*` entry (WS-044).
+    /// Classic `/v1/projects/*` and MCP continue to reject any Origin.
+    #[serde(default)]
+    pub allowed_web_origins: Vec<String>,
     pub projects: Vec<ProjectBinding>,
 }
 
@@ -96,15 +101,28 @@ impl ServiceConfig {
                     .into(),
             );
         }
+        if self.allowed_web_origins.len() > 64
+            || self.allowed_web_origins.iter().any(|s| {
+                s.is_empty()
+                    || s.len() > 255
+                    || !(s.starts_with("http://") || s.starts_with("https://"))
+                    || s.chars().any(|c| c.is_whitespace())
+                    || s.contains('*')
+            })
+        {
+            return Err("allowed_web_origins must be exact http(s) Origins".into());
+        }
         Ok(())
     }
 }
 
-struct StateData {
+pub(crate) struct StateData {
     store: WorkstreamReadStore,
     commands: WorkstreamCommandStore,
     projects: BTreeMap<String, ProjectBinding>,
     hosts: Vec<String>,
+    web_origins: Vec<String>,
+    web_sessions: Arc<web::WebSessionStore>,
     permits: Arc<tokio::sync::Semaphore>,
 }
 
@@ -119,6 +137,7 @@ pub fn router(
         hosts.push(actual.to_string());
         hosts.push(format!("localhost:{}", actual.port()));
     }
+    let web_origins = config.allowed_web_origins;
     let state = Arc::new(StateData {
         commands: store.commands(),
         store,
@@ -128,6 +147,8 @@ pub fn router(
             .map(|p| (p.key.clone(), p))
             .collect(),
         hosts,
+        web_origins,
+        web_sessions: Arc::new(web::WebSessionStore::default()),
         permits: Arc::new(tokio::sync::Semaphore::new(64)),
     });
     let mut router = Router::new()
@@ -175,10 +196,11 @@ pub fn router(
     for project in state.projects.values() {
         router = router.merge(mcp::router(state.clone(), project.clone()));
     }
+    router = router.merge(web::router(state.clone()));
     Ok(router)
 }
 
-fn response(status: StatusCode, value: Value) -> Response {
+pub(crate) fn response(status: StatusCode, value: Value) -> Response {
     (
         status,
         [
@@ -190,7 +212,7 @@ fn response(status: StatusCode, value: Value) -> Response {
         .into_response()
 }
 
-fn denied() -> Response {
+pub(crate) fn denied() -> Response {
     response(
         StatusCode::FORBIDDEN,
         json!({"code":"Forbidden","message":"access denied"}),
@@ -228,6 +250,17 @@ async fn dispatch(
     let Some(token) = bearer(&headers) else {
         return denied();
     };
+    dispatch_authorized(state, key, token, body, write).await
+}
+
+/// Shared query/command path used by classic bearer transport and the Web entry.
+pub(crate) async fn dispatch_authorized(
+    state: Arc<StateData>,
+    key: String,
+    token: &str,
+    body: Bytes,
+    write: bool,
+) -> Response {
     let Some(project) = state.projects.get(&key) else {
         return denied();
     };
@@ -347,14 +380,14 @@ async fn access_outcome(
     access_dispatch(state, key, headers, body, AccessOp::Outcome).await
 }
 
-enum AccessOp {
+pub(crate) enum AccessOp {
     Inspect,
     Preview,
     Apply,
     Outcome,
 }
 
-async fn access_dispatch(
+pub(crate) async fn access_dispatch(
     state: Arc<StateData>,
     key: String,
     headers: HeaderMap,
@@ -367,6 +400,16 @@ async fn access_dispatch(
     let Some(token) = bearer(&headers) else {
         return denied();
     };
+    access_dispatch_authorized(state, key, token, body, op).await
+}
+
+pub(crate) async fn access_dispatch_authorized(
+    state: Arc<StateData>,
+    key: String,
+    token: &str,
+    body: Bytes,
+    op: AccessOp,
+) -> Response {
     let Some(project) = state.projects.get(&key) else {
         return denied();
     };
@@ -471,7 +514,7 @@ fn allowed_request(state: &StateData, headers: &HeaderMap) -> bool {
             })
 }
 
-fn bearer(headers: &HeaderMap) -> Option<&str> {
+pub(crate) fn bearer(headers: &HeaderMap) -> Option<&str> {
     let mut values = headers.get_all("authorization").iter();
     let value = values.next()?;
     if values.next().is_some() {
@@ -667,11 +710,11 @@ fn unavailable_value() -> Value {
     json!({"code":"Unavailable","message":"request outcome unavailable; inspect a command before retrying with its original identity"})
 }
 
-fn unavailable() -> Response {
+pub(crate) fn unavailable() -> Response {
     response(StatusCode::SERVICE_UNAVAILABLE, unavailable_value())
 }
 
-fn error_response(error: PgError) -> Response {
+pub(crate) fn error_response(error: PgError) -> Response {
     let (status, value) = public_error(error);
     response(status, value)
 }
