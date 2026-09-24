@@ -1,0 +1,54 @@
+{
+  "namespace": "awr-ws-r2-ws-biz-05",
+  "delegations": [
+    {
+      "delegation_id": "del.ws-biz-05.executor",
+      "person_id": "person.cameron-yu",
+      "client_adapter": "codex_cli",
+      "actions": [
+        "claim",
+        "execution",
+        "evidence.submit",
+        "delivery.register_pr",
+        "work.rework"
+      ],
+      "scope": "workstream"
+    },
+    {
+      "delegation_id": "del.ws-biz-05.peer",
+      "person_id": "person.finley-rao",
+      "client_adapter": "claude_code",
+      "actions": [
+        "claim",
+        "execution",
+        "evidence.submit",
+        "handoff.reject"
+      ],
+      "scope": "workstream"
+    },
+    {
+      "delegation_id": "del.ws-biz-05.reassignee",
+      "person_id": "person.jamie-okada",
+      "client_adapter": "claude_code",
+      "actions": [
+        "claim",
+        "execution",
+        "evidence.submit"
+      ],
+      "scope": "workstream"
+    },
+    {
+      "delegation_id": "del.ws-biz-05.reviewer",
+      "person_id": "person.rowan-shi",
+      "client_adapter": "team_web",
+      "actions": [
+        "review.open",
+        "review.decide",
+        "delivery.finalize",
+        "web.ops"
+      ],
+      "scope": "workstream",
+      "independent_review": true
+    }
+  ]
+}

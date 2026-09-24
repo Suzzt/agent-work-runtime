@@ -1,0 +1,34 @@
+{
+  "contract_id": "awr-workstream-parallel-handoff-biz-harness-v1",
+  "version": "1.0.0",
+  "work": "AWR-WS-051",
+  "scope_revision": 2,
+  "authority": {
+    "contract": "tests/fixtures/workstreams/parallel-handoff-biz/catalog.json",
+    "isolation": ".local/awr-ws-051/awr-workstream-isolation-v1.json",
+    "version": "1.0.0"
+  },
+  "required_gates": [
+    "natural_client_initiation",
+    "actual_tool_or_role_execution",
+    "real_artifact",
+    "business_followup_1",
+    "business_followup_2",
+    "independent_review",
+    "delivery",
+    "traceable_receipt"
+  ],
+  "target_scenarios": 6,
+  "named_clients": [
+    "codex_cli",
+    "claude_code"
+  ],
+  "required_surfaces": [
+    "codex_cli",
+    "claude_code",
+    "team_web"
+  ],
+  "evidence_root": ".local/awr-workstream-implementation-20260921/business/scope-r2",
+  "status_authority": "live_trial_only",
+  "ledger_shape": "workstream_parallel_handoff_biz_acceptance"
+}

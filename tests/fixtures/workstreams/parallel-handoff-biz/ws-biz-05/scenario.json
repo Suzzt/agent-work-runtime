@@ -1,0 +1,144 @@
+{
+  "scenario_id": "WS-BIZ-05",
+  "fixture_version": "1.0.0",
+  "scope_revision": 2,
+  "namespace": "awr-ws-r2-ws-biz-05",
+  "business_title": "授权撤销拒收与重安排",
+  "purpose": "成员授权变化、拒收与重新安排后的交付",
+  "hard_gate": "auth_revoke_and_reject",
+  "summary": "团队调整分工，接收人拒收且原 Agent 授权撤销；负责人重安排后新接收者修订并由不同人员复核交付。",
+  "project_directory": "project",
+  "work_graph": "work-graph.json",
+  "identities": "identities.json",
+  "delegations": "delegations.json",
+  "entry_work": "R5-OWN",
+  "participants": {
+    "executor": {
+      "person_ref": "executor",
+      "purpose": "主执行开发者，经命名客户端推进"
+    },
+    "executor_peer": {
+      "person_ref": "peer",
+      "purpose": "同伴开发者或同人第二 Agent"
+    },
+    "reviewer": {
+      "person_ref": "reviewer",
+      "purpose": "与执行者独立的复核 person"
+    },
+    "web_operator": {
+      "person_ref": "web_operator",
+      "purpose": "真实 Team Web 操作者"
+    }
+  },
+  "person_bindings": {
+    "executor": "person.cameron-yu",
+    "peer": "person.finley-rao",
+    "reviewer": "person.rowan-shi",
+    "web_operator": "person.rowan-shi",
+    "reassignee": "person.jamie-okada"
+  },
+  "named_clients": [
+    "codex_cli",
+    "claude_code"
+  ],
+  "required_surfaces": [
+    "codex_cli",
+    "claude_code",
+    "team_web"
+  ],
+  "reviewer_distinct_from": [
+    "executor",
+    "executor_peer"
+  ],
+  "same_person_dual_agent": false,
+  "initial_request": "团队调整成员分工，一位接收人无法接手且原 Agent 的授权需要撤销。请在协作台完成拒收与撤销，不要让旧客户端继续开工。",
+  "natural_initiation_contract": "团队调整成员分工，一位接收人无法接手且原 Agent 的授权需要撤销。请在协作台完成拒收与撤销，不要让旧客户端继续开工。",
+  "prelude": null,
+  "followups": [
+    {
+      "number": 1,
+      "request": "拒收已生效。请重新安排接收者，补齐业务约束与可用成果说明。",
+      "contract_followup": "拒收后负责人重新安排接收者，并补齐业务约束与可用成果。",
+      "publish": [
+        {
+          "source": "updates/round-1/materials/reassign.md",
+          "target": "materials/reassign.md",
+          "expected_previous_sha256": null
+        }
+      ],
+      "required_observation": "拒收已生效。请重新安排接收者，补齐业务约束与可用成果说明。"
+    },
+    {
+      "number": 2,
+      "request": "新接收者发现缺少权限边界说明，请修订后由不同人员复核并交付。",
+      "contract_followup": "新接收者发现一项遗漏，完成修订并由不同人员复核交付。",
+      "publish": [
+        {
+          "source": "updates/round-2/materials/permission-gap.md",
+          "target": "materials/permission-gap.md",
+          "expected_previous_sha256": null
+        }
+      ],
+      "required_observation": "新接收者发现缺少权限边界说明，请修订后由不同人员复核并交付。"
+    }
+  ],
+  "artifacts": [
+    {
+      "title": "拒收与授权撤销记录",
+      "path": "deliverables/revoke-reject.md",
+      "producer": "executor"
+    },
+    {
+      "title": "重新安排与约束补齐",
+      "path": "deliverables/reassign.md",
+      "producer": "executor"
+    },
+    {
+      "title": "遗漏修订说明",
+      "path": "deliverables/permission-fix.md",
+      "producer": "executor_peer"
+    },
+    {
+      "title": "独立复核记录",
+      "path": "deliverables/independent-review.md",
+      "producer": "reviewer"
+    },
+    {
+      "title": "最终交付回执说明",
+      "path": "deliverables/delivery.md",
+      "producer": "executor"
+    }
+  ],
+  "review_rubric": [
+    "撤销后的旧客户端不能继续开工或冒领。",
+    "拒收和离线不会产生无人知晓的责任转移。",
+    "团队 Web 界面与实际 CLI/MCP 操作反映同一状态。"
+  ],
+  "required_gates": [
+    "natural_client_initiation",
+    "actual_tool_or_role_execution",
+    "real_artifact",
+    "business_followup_1",
+    "business_followup_2",
+    "independent_review",
+    "delivery",
+    "traceable_receipt"
+  ],
+  "dimensions": [
+    "permission",
+    "exception",
+    "handoff",
+    "channel"
+  ],
+  "artifact_directory": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-05/artifacts",
+  "fixture_materialize_to": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-05/fixture",
+  "work_graph_materialize_to": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-05/work-graph.json",
+  "evidence_report": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-05/report.json",
+  "minimum_real_clients": 2,
+  "minimum_developer_persons": 2,
+  "team_web_required": true,
+  "native_client_required": true,
+  "independent_reviewer_required": true,
+  "runtime_seed_policy": "Never seed sessions, claims, events, checkpoints, completed work or receipts. Do not mutate business state via SQL for acceptance.",
+  "api_db_evidence_policy": "read_only"
+}

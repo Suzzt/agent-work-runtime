@@ -1,0 +1,363 @@
+{
+  "contract_id": "awr-workstream-parallel-handoff-biz-v1",
+  "version": "1.0.0",
+  "work": "AWR-WS-051",
+  "scope_revision": 2,
+  "ledger_shape": "workstream_parallel_handoff_biz_acceptance",
+  "evidence_root": ".local/awr-workstream-implementation-20260921/business/scope-r2",
+  "required_named_clients": [
+    "codex_cli",
+    "claude_code"
+  ],
+  "required_surfaces": [
+    "codex_cli",
+    "claude_code",
+    "team_web"
+  ],
+  "required_gates": [
+    "natural_client_initiation",
+    "actual_tool_or_role_execution",
+    "real_artifact",
+    "business_followup_1",
+    "business_followup_2",
+    "independent_review",
+    "delivery",
+    "traceable_receipt"
+  ],
+  "hard_gates": [
+    "three_way_parallel",
+    "cross_line_dependency_rework",
+    "cross_person_handoff_recovery",
+    "same_person_agent_switch_subtask_parallel",
+    "auth_revoke_and_reject",
+    "time_forecast_stage_acceptance"
+  ],
+  "status_authority": {
+    "pass_requires": "live_multi_person_multi_client_with_team_web_and_independent_reviewer",
+    "forbidden": [
+      "same_agent_signs_execution_and_review",
+      "backend_sql_mutate_for_acceptance",
+      "seed_sessions_claims_or_receipts",
+      "leak_internal_scenario_ids_in_prompts",
+      "reuse_prior_business_results_across_scenarios",
+      "auto_pass_missing_live_client_gates"
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "WS-BIZ-01",
+      "title": "前端、后端、测试同迭代并行交付",
+      "business_title": "同迭代三线并行交付",
+      "hard_gate": "three_way_parallel",
+      "fixture": "tests/fixtures/workstreams/parallel-handoff-biz/ws-biz-01",
+      "namespace": "awr-ws-r2-ws-biz-01",
+      "artifact_directory": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-01/artifacts",
+      "named_clients": [
+        "codex_cli",
+        "claude_code"
+      ],
+      "required_surfaces": [
+        "codex_cli",
+        "claude_code",
+        "team_web"
+      ],
+      "persons": {
+        "executor": "person.morgan-lee",
+        "peer": "person.casey-wu",
+        "reviewer": "person.drew-kim"
+      },
+      "initial_request": "在同一迭代实现一个可用功能，前后端和测试各自负责并同时推进。请先认领各自任务区间，约定联调节点后开工。",
+      "followups": [
+        "试用反馈：注册完成后跳转过早，请只改前端引导与对应联调脚本，后端契约先不动。",
+        "跨模块：列表页在无数据时仍请求旧过滤参数。请前后端对齐空态约定，测试补一条回归。"
+      ],
+      "expected_artifacts": [
+        "三线并行执行说明",
+        "流程局部调整说明",
+        "跨模块空态修订",
+        "独立复核记录",
+        "最终交付回执说明"
+      ],
+      "required_gates": [
+        "natural_client_initiation",
+        "actual_tool_or_role_execution",
+        "real_artifact",
+        "business_followup_1",
+        "business_followup_2",
+        "independent_review",
+        "delivery",
+        "traceable_receipt"
+      ],
+      "summary": "同一迭代内前端、后端与测试三线并行推进可用功能；试用后调整流程，再处理跨模块问题并独立复核。",
+      "dimensions": [
+        "daily",
+        "parallel",
+        "scope",
+        "accounting",
+        "team"
+      ]
+    },
+    {
+      "id": "WS-BIZ-02",
+      "title": "接口交付采用、新依赖发现与局部返工",
+      "business_title": "跨线依赖发现与局部返工",
+      "hard_gate": "cross_line_dependency_rework",
+      "fixture": "tests/fixtures/workstreams/parallel-handoff-biz/ws-biz-02",
+      "namespace": "awr-ws-r2-ws-biz-02",
+      "artifact_directory": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-02/artifacts",
+      "named_clients": [
+        "codex_cli",
+        "claude_code"
+      ],
+      "required_surfaces": [
+        "codex_cli",
+        "claude_code",
+        "team_web"
+      ],
+      "persons": {
+        "executor": "person.avery-chen",
+        "peer": "person.blake-ng",
+        "reviewer": "person.skyler-park"
+      },
+      "initial_request": "两组依据已确认接口开发，在联调时发现遗漏的前置能力。请先停下说明阻塞，不要硬编码绕过。",
+      "followups": [
+        "请整理新依赖的业务原因与影响范围，提交重规划；确认后再继续上下游。",
+        "上游已修订版本。请下游重新采用该验收版本并回归，确认无关功能仍可交付。"
+      ],
+      "expected_artifacts": [
+        "缺依赖发现与阻塞说明",
+        "影响范围重规划",
+        "下游采用与回归说明",
+        "独立复核记录",
+        "最终交付回执说明"
+      ],
+      "required_gates": [
+        "natural_client_initiation",
+        "actual_tool_or_role_execution",
+        "real_artifact",
+        "business_followup_1",
+        "business_followup_2",
+        "independent_review",
+        "delivery",
+        "traceable_receipt"
+      ],
+      "summary": "两组依据已确认接口开发，联调发现遗漏前置能力；批准有影响范围的重规划后下游重新采用并回归。",
+      "dimensions": [
+        "dependency",
+        "revision",
+        "rework",
+        "selective_invalidation"
+      ]
+    },
+    {
+      "id": "WS-BIZ-03",
+      "title": "长程工作跨人跨 Agent 接力及异常恢复",
+      "business_title": "跨人跨 Agent 接力恢复",
+      "hard_gate": "cross_person_handoff_recovery",
+      "fixture": "tests/fixtures/workstreams/parallel-handoff-biz/ws-biz-03",
+      "namespace": "awr-ws-r2-ws-biz-03",
+      "artifact_directory": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-03/artifacts",
+      "named_clients": [
+        "codex_cli",
+        "claude_code"
+      ],
+      "required_surfaces": [
+        "codex_cli",
+        "claude_code",
+        "team_web"
+      ],
+      "persons": {
+        "executor": "person.jordan-hao",
+        "peer": "person.quinn-xu",
+        "reviewer": "person.reese-tan"
+      },
+      "initial_request": "一位成员做到中途需要由另一位成员接手，原执行的最终结果暂不确定。请走正式交接，不要静默转移责任。",
+      "followups": [
+        "接收方发现缺少运行环境说明与未关闭的外部效果清单，请原方补齐交接包。",
+        "原执行已核对。请用另一客户端继续实现；验收要求补一条失败重试说明后再提审。"
+      ],
+      "expected_artifacts": [
+        "交接发起与接收记录",
+        "交接包补齐说明",
+        "核对后续实现与修订",
+        "独立复核记录",
+        "最终交付回执说明"
+      ],
+      "required_gates": [
+        "natural_client_initiation",
+        "actual_tool_or_role_execution",
+        "real_artifact",
+        "business_followup_1",
+        "business_followup_2",
+        "independent_review",
+        "delivery",
+        "traceable_receipt"
+      ],
+      "summary": "成员做到中途由另一成员接手；接收方指出缺上下文后原方补齐；核对原执行后换客户端继续并独立复核。",
+      "dimensions": [
+        "interruption",
+        "recovery",
+        "ownership",
+        "external_effect"
+      ]
+    },
+    {
+      "id": "WS-BIZ-04",
+      "title": "同人更换 Agent、并行子任务与独立验收",
+      "business_title": "同人换 Agent 与子任务并行",
+      "hard_gate": "same_person_agent_switch_subtask_parallel",
+      "fixture": "tests/fixtures/workstreams/parallel-handoff-biz/ws-biz-04",
+      "namespace": "awr-ws-r2-ws-biz-04",
+      "artifact_directory": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-04/artifacts",
+      "named_clients": [
+        "codex_cli",
+        "claude_code"
+      ],
+      "required_surfaces": [
+        "codex_cli",
+        "claude_code",
+        "team_web"
+      ],
+      "persons": {
+        "executor": "person.taylor-zhou",
+        "peer": "person.taylor-zhou",
+        "reviewer": "person.harper-lin"
+      },
+      "initial_request": "同一负责人使用两个 Agent 完成一项功能，过程中更换执行客户端并拆出可独立工作的子任务。请保持同一人员责任。",
+      "followups": [
+        "试用反馈：通知子模块文案过长，请只改该子任务；报表子任务成果保留。",
+        "独立复核认为两个子任务结果未在入口汇合。请组织整合修订后再提审；不要用另一个自有 Agent 冒充独立复核。"
+      ],
+      "expected_artifacts": [
+        "双 Agent 并行子任务说明",
+        "子模块局部调整说明",
+        "整合修订说明",
+        "独立复核记录",
+        "最终交付回执说明"
+      ],
+      "required_gates": [
+        "natural_client_initiation",
+        "actual_tool_or_role_execution",
+        "real_artifact",
+        "business_followup_1",
+        "business_followup_2",
+        "independent_review",
+        "delivery",
+        "traceable_receipt"
+      ],
+      "summary": "同一负责人使用两个 Agent 完成功能，中途更换执行客户端并拆出可独立子任务；试用与独立复核后交付。",
+      "dimensions": [
+        "personal",
+        "children",
+        "host",
+        "review",
+        "boundary"
+      ]
+    },
+    {
+      "id": "WS-BIZ-05",
+      "title": "成员授权变化、拒收与重新安排后的交付",
+      "business_title": "授权撤销拒收与重安排",
+      "hard_gate": "auth_revoke_and_reject",
+      "fixture": "tests/fixtures/workstreams/parallel-handoff-biz/ws-biz-05",
+      "namespace": "awr-ws-r2-ws-biz-05",
+      "artifact_directory": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-05/artifacts",
+      "named_clients": [
+        "codex_cli",
+        "claude_code"
+      ],
+      "required_surfaces": [
+        "codex_cli",
+        "claude_code",
+        "team_web"
+      ],
+      "persons": {
+        "executor": "person.cameron-yu",
+        "peer": "person.finley-rao",
+        "reviewer": "person.rowan-shi"
+      },
+      "initial_request": "团队调整成员分工，一位接收人无法接手且原 Agent 的授权需要撤销。请在协作台完成拒收与撤销，不要让旧客户端继续开工。",
+      "followups": [
+        "拒收已生效。请重新安排接收者，补齐业务约束与可用成果说明。",
+        "新接收者发现缺少权限边界说明，请修订后由不同人员复核并交付。"
+      ],
+      "expected_artifacts": [
+        "拒收与授权撤销记录",
+        "重新安排与约束补齐",
+        "遗漏修订说明",
+        "独立复核记录",
+        "最终交付回执说明"
+      ],
+      "required_gates": [
+        "natural_client_initiation",
+        "actual_tool_or_role_execution",
+        "real_artifact",
+        "business_followup_1",
+        "business_followup_2",
+        "independent_review",
+        "delivery",
+        "traceable_receipt"
+      ],
+      "summary": "团队调整分工，接收人拒收且原 Agent 授权撤销；负责人重安排后新接收者修订并由不同人员复核交付。",
+      "dimensions": [
+        "permission",
+        "exception",
+        "handoff",
+        "channel"
+      ]
+    },
+    {
+      "id": "WS-BIZ-06",
+      "title": "按预计验收窗口检查方向并滚动修订",
+      "business_title": "时间预测与阶段验收",
+      "hard_gate": "time_forecast_stage_acceptance",
+      "fixture": "tests/fixtures/workstreams/parallel-handoff-biz/ws-biz-06",
+      "namespace": "awr-ws-r2-ws-biz-06",
+      "artifact_directory": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-06/artifacts",
+      "named_clients": [
+        "codex_cli",
+        "claude_code"
+      ],
+      "required_surfaces": [
+        "codex_cli",
+        "claude_code",
+        "team_web"
+      ],
+      "persons": {
+        "executor": "person.nicky-fang",
+        "peer": "person.peyton-cho",
+        "reviewer": "person.sydney-ma"
+      },
+      "initial_request": "负责人希望先验收一版核心功能，再决定剩余功能的实施方向。请先留下预测，再按检查点推进。",
+      "followups": [
+        "检查点一试用后要收窄范围。请记录预测与实际偏差，并登记新的依赖。",
+        "检查点二确认方向可行。请修订估计与范围，按真实成果完成最终独立验收，不要用预测时间充当完成依据。"
+      ],
+      "expected_artifacts": [
+        "核心功能预测与计划",
+        "检查点一偏差记录",
+        "检查点二修订与范围",
+        "独立复核记录",
+        "最终交付回执说明"
+      ],
+      "required_gates": [
+        "natural_client_initiation",
+        "actual_tool_or_role_execution",
+        "real_artifact",
+        "business_followup_1",
+        "business_followup_2",
+        "independent_review",
+        "delivery",
+        "traceable_receipt"
+      ],
+      "summary": "先验收一版核心功能再决定方向；在两个检查点记录预测与偏差，修订估计和范围后独立验收。",
+      "dimensions": [
+        "forecast",
+        "time",
+        "checkpoint",
+        "replanning",
+        "topology"
+      ]
+    }
+  ]
+}
