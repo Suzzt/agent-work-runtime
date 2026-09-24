@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "kind": "workstream-review-completion",
+  "workstream": "AWR-WS-018",
+  "commands": [
+    "evidence.submit",
+    "review.open",
+    "review.accept",
+    "review.return",
+    "work.rework",
+    "work.complete"
+  ],
+  "queries": [
+    "evidence.inspect",
+    "review.inspect",
+    "completion.inspect"
+  ],
+  "independence": {
+    "unit": "person",
+    "same_person_second_agent": "not_team_independent",
+    "personal_self_review_policy": "trusted_execution_and_author_self_review",
+    "team_label": "team_independent",
+    "personal_label": "personal_self_review"
+  },
+  "completion_receipt": {
+    "fields": [
+      "receipt_id",
+      "selected_completion_id",
+      "contract_hash",
+      "independence_kind",
+      "team_independent_acceptance",
+      "evidence_id",
+      "execution_id",
+      "approved_by_person_id"
+    ],
+    "never_includes": [
+      "provider_private_session"
+    ]
+  },
+  "distinctions": [
+    "execution_success",
+    "author_self_report",
+    "human_approval",
+    "task_complete"
+  ]
+}

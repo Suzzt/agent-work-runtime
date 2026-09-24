@@ -400,11 +400,26 @@ pub(crate) async fn inspect(
     let epoch_matches = r.get::<_, Option<String>>(9).as_deref() == Some(&auth.epoch);
     let current_fence = r.get::<_, Option<i64>>(17) == Some(r.get::<_, i64>(3));
     let active = r.get::<_, String>(6) == "active" && r.get::<_, String>(13) == "active";
-    Ok(
-        json!({"claim_id":id,"session_id":r.get::<_,String>(1),"fence":r.get::<_,i64>(3).to_string(),
-        "lease_version":r.get::<_,i64>(4).to_string(),"expires_at":r.get::<_,String>(5),"state":r.get::<_,String>(6),
-        "owned_by_client":r.get::<_,String>(2)==auth.actor_id && r.get::<_,String>(12)==auth.client_id,
-        "epoch_matches_current":epoch_matches,"current_fence":current_fence,
-        "lease_live":active && r.get::<_,bool>(10) && epoch_matches && current_fence,"execution_authorized":false}),
-    )
+    // Inspection never grants start permission. Only the original successful
+    // execution.start response may set execution_authorized=true (one-time).
+    let eligibility = crate::delegation_auth::execution_side_effect_permitted(auth)
+        && active
+        && r.get::<_, bool>(10)
+        && epoch_matches
+        && current_fence;
+    Ok(json!({
+        "claim_id": id,
+        "session_id": r.get::<_, String>(1),
+        "fence": r.get::<_, i64>(3).to_string(),
+        "lease_version": r.get::<_, i64>(4).to_string(),
+        "expires_at": r.get::<_, String>(5),
+        "state": r.get::<_, String>(6),
+        "owned_by_client": r.get::<_, String>(2) == auth.actor_id
+            && r.get::<_, String>(12) == auth.client_id,
+        "epoch_matches_current": epoch_matches,
+        "current_fence": current_fence,
+        "lease_live": active && r.get::<_, bool>(10) && epoch_matches && current_fence,
+        "execution_authorized": false,
+        "execution_eligibility_advisory": eligibility,
+    }))
 }

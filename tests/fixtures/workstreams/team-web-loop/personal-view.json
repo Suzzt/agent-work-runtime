@@ -1,0 +1,42 @@
+{
+  "schema": "awr-team-web-loop-fixture/v1",
+  "view": "personal",
+  "locale_keys": [
+    "en",
+    "zh-CN"
+  ],
+  "projects": [
+    {
+      "key": "demo",
+      "title": "Personal sandbox",
+      "role": "worker"
+    }
+  ],
+  "works": [
+    {
+      "key": "TW-101",
+      "title": "Ship cookie web entry",
+      "owner_person": "you",
+      "agent": null,
+      "outcome": null,
+      "status": "ready",
+      "blocker": null,
+      "next_step": "Accept responsibility and choose an authorized agent",
+      "depends_on": [],
+      "hidden_deps": [],
+      "capabilities": {
+        "run": true,
+        "pause": false
+      }
+    }
+  ],
+  "members": [
+    {
+      "person_id": "you",
+      "role": "worker",
+      "agents": [
+        "coding-agent"
+      ]
+    }
+  ]
+}

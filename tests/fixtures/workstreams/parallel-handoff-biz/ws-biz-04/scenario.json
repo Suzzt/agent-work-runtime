@@ -1,0 +1,144 @@
+{
+  "scenario_id": "WS-BIZ-04",
+  "fixture_version": "1.0.0",
+  "scope_revision": 2,
+  "namespace": "awr-ws-r2-ws-biz-04",
+  "business_title": "同人换 Agent 与子任务并行",
+  "purpose": "同人更换 Agent、并行子任务与独立验收",
+  "hard_gate": "same_person_agent_switch_subtask_parallel",
+  "summary": "同一负责人使用两个 Agent 完成功能，中途更换执行客户端并拆出可独立子任务；试用与独立复核后交付。",
+  "project_directory": "project",
+  "work_graph": "work-graph.json",
+  "identities": "identities.json",
+  "delegations": "delegations.json",
+  "entry_work": "S4-A",
+  "participants": {
+    "executor": {
+      "person_ref": "executor",
+      "purpose": "主执行开发者，经命名客户端推进"
+    },
+    "executor_peer": {
+      "person_ref": "peer",
+      "purpose": "同伴开发者或同人第二 Agent"
+    },
+    "reviewer": {
+      "person_ref": "reviewer",
+      "purpose": "与执行者独立的复核 person"
+    },
+    "web_operator": {
+      "person_ref": "web_operator",
+      "purpose": "真实 Team Web 操作者"
+    }
+  },
+  "person_bindings": {
+    "executor": "person.taylor-zhou",
+    "peer": "person.taylor-zhou",
+    "reviewer": "person.harper-lin",
+    "web_operator": "person.harper-lin",
+    "observer": "person.sam-ortiz"
+  },
+  "named_clients": [
+    "codex_cli",
+    "claude_code"
+  ],
+  "required_surfaces": [
+    "codex_cli",
+    "claude_code",
+    "team_web"
+  ],
+  "reviewer_distinct_from": [
+    "executor"
+  ],
+  "same_person_dual_agent": true,
+  "initial_request": "同一负责人使用两个 Agent 完成一项功能，过程中更换执行客户端并拆出可独立工作的子任务。请保持同一人员责任。",
+  "natural_initiation_contract": "同一负责人使用两个 Agent 完成一项功能，过程中更换执行客户端并拆出可独立工作的子任务。请保持同一人员责任。",
+  "prelude": null,
+  "followups": [
+    {
+      "number": 1,
+      "request": "试用反馈：通知子模块文案过长，请只改该子任务；报表子任务成果保留。",
+      "contract_followup": "试用反馈要求调整其中一个子模块，其他子任务保留成果并继续。",
+      "publish": [
+        {
+          "source": "updates/round-1/materials/notify-copy.md",
+          "target": "materials/notify-copy.md",
+          "expected_previous_sha256": null
+        }
+      ],
+      "required_observation": "试用反馈：通知子模块文案过长，请只改该子任务；报表子任务成果保留。"
+    },
+    {
+      "number": 2,
+      "request": "独立复核认为两个子任务结果未在入口汇合。请组织整合修订后再提审；不要用另一个自有 Agent 冒充独立复核。",
+      "contract_followup": "独立复核者提出整合问题，由负责人组织修订后再次提交。",
+      "publish": [
+        {
+          "source": "updates/round-2/materials/integration-gap.md",
+          "target": "materials/integration-gap.md",
+          "expected_previous_sha256": null
+        }
+      ],
+      "required_observation": "独立复核认为两个子任务结果未在入口汇合。请组织整合修订后再提审；不要用另一个自有 Agent 冒充独立复核。"
+    }
+  ],
+  "artifacts": [
+    {
+      "title": "双 Agent 并行子任务说明",
+      "path": "deliverables/dual-agent-children.md",
+      "producer": "executor"
+    },
+    {
+      "title": "子模块局部调整说明",
+      "path": "deliverables/child-tweak.md",
+      "producer": "executor"
+    },
+    {
+      "title": "整合修订说明",
+      "path": "deliverables/integration-fix.md",
+      "producer": "executor"
+    },
+    {
+      "title": "独立复核记录",
+      "path": "deliverables/independent-review.md",
+      "producer": "reviewer"
+    },
+    {
+      "title": "最终交付回执说明",
+      "path": "deliverables/delivery.md",
+      "producer": "executor"
+    }
+  ],
+  "review_rubric": [
+    "换 Agent 保持同一人员责任；可并行子任务具有独立任务身份与认领。",
+    "同一人的另一个 Agent 不被当成独立人员复核。",
+    "含 Web 试用反馈；独立复核 person 与负责人不同。"
+  ],
+  "required_gates": [
+    "natural_client_initiation",
+    "actual_tool_or_role_execution",
+    "real_artifact",
+    "business_followup_1",
+    "business_followup_2",
+    "independent_review",
+    "delivery",
+    "traceable_receipt"
+  ],
+  "dimensions": [
+    "personal",
+    "children",
+    "host",
+    "review",
+    "boundary"
+  ],
+  "artifact_directory": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-04/artifacts",
+  "fixture_materialize_to": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-04/fixture",
+  "work_graph_materialize_to": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-04/work-graph.json",
+  "evidence_report": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-04/report.json",
+  "minimum_real_clients": 2,
+  "minimum_developer_persons": 1,
+  "team_web_required": true,
+  "native_client_required": true,
+  "independent_reviewer_required": true,
+  "runtime_seed_policy": "Never seed sessions, claims, events, checkpoints, completed work or receipts. Do not mutate business state via SQL for acceptance.",
+  "api_db_evidence_policy": "read_only"
+}

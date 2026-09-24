@@ -1,0 +1,76 @@
+{
+  "namespace": "awr-ws-r2-ws-biz-02",
+  "hard_gate": "cross_line_dependency_rework",
+  "nodes": [
+    {
+      "key": "D2-UP",
+      "role": "executor",
+      "person_id": "person.avery-chen",
+      "client_adapter": "codex_cli",
+      "depends_on": []
+    },
+    {
+      "key": "D2-DOWN",
+      "role": "executor_peer",
+      "person_id": "person.blake-ng",
+      "client_adapter": "claude_code",
+      "depends_on": []
+    },
+    {
+      "key": "D2-BLOCK",
+      "role": "executor",
+      "person_id": "person.avery-chen",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "D2-UP",
+        "D2-DOWN"
+      ]
+    },
+    {
+      "key": "D2-REPLAN",
+      "role": "web_operator",
+      "person_id": "person.skyler-park",
+      "client_adapter": "team_web",
+      "depends_on": [
+        "D2-BLOCK"
+      ]
+    },
+    {
+      "key": "D2-ADOPT",
+      "role": "executor_peer",
+      "person_id": "person.blake-ng",
+      "client_adapter": "claude_code",
+      "depends_on": [
+        "D2-REPLAN"
+      ]
+    },
+    {
+      "key": "D2-REVIEW",
+      "role": "reviewer",
+      "person_id": "person.skyler-park",
+      "client_adapter": "team_web",
+      "depends_on": [
+        "D2-ADOPT"
+      ]
+    },
+    {
+      "key": "D2-DELIVER",
+      "role": "executor",
+      "person_id": "person.avery-chen",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "D2-REVIEW"
+      ]
+    }
+  ],
+  "reviewer_distinct_from": [
+    "executor",
+    "executor_peer"
+  ],
+  "required_surfaces": [
+    "codex_cli",
+    "claude_code",
+    "team_web"
+  ],
+  "handoff_requirement": "执行、同伴与复核的责任边界清晰；禁止同一 agent 会话同时签署执行与独立复核；须含真实 Web 操作。"
+}

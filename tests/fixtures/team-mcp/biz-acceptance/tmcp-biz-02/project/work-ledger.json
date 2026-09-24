@@ -1,0 +1,113 @@
+{
+  "namespace": "team-mcp-v1/biz-parallel-replan",
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "并线补齐共享契约 交付"
+    }
+  ],
+  "work_items": [
+    {
+      "id": "PR-CLIENT",
+      "title": "客户端对接骨架",
+      "status": "ready",
+      "depends_on": [],
+      "owner": null,
+      "intended_person": "person.blair-nguyen",
+      "intended_role": "executor",
+      "acceptance": [
+        "客户端对接骨架 完成并可复核"
+      ],
+      "next_action": "由 Blair Nguyen 推进"
+    },
+    {
+      "id": "PR-SERVER",
+      "title": "服务端对接骨架",
+      "status": "ready",
+      "depends_on": [],
+      "owner": null,
+      "intended_person": "person.alex-chen",
+      "intended_role": "executor_peer",
+      "acceptance": [
+        "服务端对接骨架 完成并可复核"
+      ],
+      "next_action": "由 Alex Chen 推进"
+    },
+    {
+      "id": "PR-REPLAN",
+      "title": "批准再规划补共享依赖",
+      "status": "planned",
+      "depends_on": [
+        "PR-CLIENT",
+        "PR-SERVER"
+      ],
+      "owner": null,
+      "intended_person": "person.blair-nguyen",
+      "intended_role": "executor",
+      "acceptance": [
+        "批准再规划补共享依赖 完成并可复核"
+      ],
+      "next_action": "由 Blair Nguyen 推进"
+    },
+    {
+      "id": "PR-CONV",
+      "title": "落实共享约定",
+      "status": "planned",
+      "depends_on": [
+        "PR-REPLAN"
+      ],
+      "owner": null,
+      "intended_person": "person.alex-chen",
+      "intended_role": "executor_peer",
+      "acceptance": [
+        "落实共享约定 完成并可复核"
+      ],
+      "next_action": "由 Alex Chen 推进"
+    },
+    {
+      "id": "PR-ALIGN",
+      "title": "集成后字段二次调整",
+      "status": "planned",
+      "depends_on": [
+        "PR-CONV"
+      ],
+      "owner": null,
+      "intended_person": "person.blair-nguyen",
+      "intended_role": "executor",
+      "acceptance": [
+        "集成后字段二次调整 完成并可复核"
+      ],
+      "next_action": "由 Blair Nguyen 推进"
+    },
+    {
+      "id": "PR-REVIEW",
+      "title": "独立复核交付",
+      "status": "planned",
+      "depends_on": [
+        "PR-ALIGN"
+      ],
+      "owner": null,
+      "intended_person": "person.riley-park",
+      "intended_role": "reviewer",
+      "acceptance": [
+        "独立复核交付 完成并可复核"
+      ],
+      "next_action": "由 Riley Park 推进"
+    },
+    {
+      "id": "PR-DELIVER",
+      "title": "关联 PR 并完成交付",
+      "status": "planned",
+      "depends_on": [
+        "PR-REVIEW"
+      ],
+      "owner": null,
+      "intended_person": "person.blair-nguyen",
+      "intended_role": "executor",
+      "acceptance": [
+        "关联 PR 并完成交付 完成并可复核"
+      ],
+      "next_action": "由 Blair Nguyen 推进"
+    }
+  ]
+}

@@ -191,12 +191,14 @@ dependencies = [
  "awr-core",
  "awr-source",
  "awr-store",
+ "awr-team",
  "cap-fs-ext",
  "cap-std",
  "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "thiserror",
 ]
 
 [[package]]
@@ -204,6 +206,7 @@ name = "awr-server"
 version = "0.4.0"
 dependencies = [
  "awr-core",
+ "awr-runtime",
  "awr-team",
  "awr-team-pg",
  "axum",
@@ -224,6 +227,7 @@ version = "0.4.0"
 dependencies = [
  "awr-core",
  "awr-store",
+ "awr-team",
  "cap-fs-ext",
  "cap-std",
  "pulldown-cmark",
@@ -264,6 +268,7 @@ name = "awr-team-pg"
 version = "0.4.0"
 dependencies = [
  "awr-core",
+ "awr-source",
  "awr-team",
  "deadpool-postgres",
  "libc",

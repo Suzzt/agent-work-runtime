@@ -113,6 +113,25 @@ impl ExecutionStore {
             }
             return replay_execution(&result);
         }
+        // Fixed lock order (WS-023): discover work_id unlocked, lock task, then claim.
+        let peek = tx
+            .query_opt(
+                "SELECT scope_id, work_id FROM awr_team.claims
+                 WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+                &[&tenant_id, &project_id, &claim_id],
+            )
+            .await?
+            .ok_or(PgError::LeaseExpired)?;
+        let scope_id: String = peek.get(0);
+        let work_id: String = peek.get(1);
+        crate::lock_order::lock_works_sorted(
+            &tx,
+            tenant_id,
+            project_id,
+            &scope_id,
+            &[work_id.clone()],
+        )
+        .await?;
         let claim = tx
             .query_opt(
                 "SELECT session_id, work_id, scope_id, actor_id, fence, state
@@ -979,12 +998,9 @@ impl ExecutionStore {
         let current_fence: i64 = row.get(1);
         // Admission must bind the CURRENT fence and a still-valid claim:
         // an execution prepared before a handoff keeps its old fence value
-        // and must not start with it (CR #41 P1-2).
+        // and must not start with it (CR #41 P1-2 / WS-021).
         let live_fence: i64 = row.get(5);
-        let claim_state: Option<String> = row.get(6);
-        if current_fence != fence || live_fence != fence {
-            return Err(PgError::StaleFence);
-        }
+        let _claim_state: Option<String> = row.get(6);
         let claim_valid: bool = tx
             .query_one(
                 "SELECT count(*) FROM awr_team.claims
@@ -995,10 +1011,7 @@ impl ExecutionStore {
             .await?
             .get::<_, i64>(0)
             > 0;
-        let _ = claim_state;
-        if !claim_valid {
-            return Err(PgError::StaleFence);
-        }
+        admit_live_fence(fence, current_fence, live_fence, claim_valid)?;
         // Idempotent same-state calls return BEFORE any update or event;
         // 'accepted'/'running' are in their own allowed sets, so this check
         // must come first (CR #58 P2-7).
@@ -1038,6 +1051,34 @@ impl ExecutionStore {
 
 pub fn exactly_once_supported(fencing_class: &str) -> bool {
     matches!(fencing_class, "hard_fence" | "queryable_idempotent")
+}
+
+/// Unify lease-generation / fence admission (WS-021).
+/// After handoff, expiry or recovery the live fence advances; a delivery that
+/// still carries the old fence must be refused even if the row still exists.
+pub fn admit_live_fence(
+    delivery_fence: i64,
+    execution_fence: i64,
+    live_work_fence: i64,
+    claim_active_unexpired: bool,
+) -> PgResult<()> {
+    if delivery_fence <= 0 || execution_fence <= 0 || live_work_fence <= 0 {
+        return Err(PgError::StaleFence);
+    }
+    if delivery_fence != execution_fence || delivery_fence != live_work_fence {
+        return Err(PgError::StaleFence);
+    }
+    if !claim_active_unexpired {
+        return Err(PgError::StaleFence);
+    }
+    Ok(())
+}
+
+/// Unknown effects retain resource protection until an explicit reconcile
+/// releases them. Terminal success/failure without unknown must not leave
+/// `unknown` reservations behind for the same execution.
+pub fn unknown_effect_retains_resources(execution_state: &str, reservation_state: &str) -> bool {
+    execution_state == "unknown" && matches!(reservation_state, "reserved" | "unknown")
 }
 
 fn validate_fencing_class(class: &str) -> PgResult<()> {
@@ -1220,4 +1261,28 @@ fn replay_execution(result: &Value) -> PgResult<ExecutionRecord> {
         fencing_class: required("fencing_class")?,
         replayed: true,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stale_fence_after_handoff_or_expiry_is_refused() {
+        assert!(admit_live_fence(3, 3, 3, true).is_ok());
+        assert!(matches!(
+            admit_live_fence(1, 1, 2, true),
+            Err(PgError::StaleFence)
+        ));
+        assert!(matches!(
+            admit_live_fence(1, 1, 1, false),
+            Err(PgError::StaleFence)
+        ));
+    }
+
+    #[test]
+    fn unknown_state_keeps_resource_protection() {
+        assert!(unknown_effect_retains_resources("unknown", "unknown"));
+        assert!(!unknown_effect_retains_resources("failed", "released"));
+    }
 }

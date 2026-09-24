@@ -73,7 +73,7 @@ async fn setup_inner(
     let (guard, admin, db) = common::fresh_team_schema().await;
     admin.batch_execute("INSERT INTO awr_team.tenants(id,name,status) VALUES('reader-tenant','Readers','active'),('other-tenant','Other','active');
         INSERT INTO awr_team.actors(tenant_id,id,kind,display_name,status) VALUES
-          ('reader-tenant','agent','agent','Worker','active'),('reader-tenant','reviewer','human','Reviewer','active');
+          ('reader-tenant','agent','human','Worker','active'),('reader-tenant','reviewer','human','Reviewer','active');
         INSERT INTO awr_team.projects(tenant_id,id,key,mode,coordinator_epoch,status) VALUES
           ('reader-tenant','reader-project','p','team','epoch-a','active'),('other-tenant','reader-project','p','team','epoch-b','active');
         INSERT INTO awr_team.project_memberships(tenant_id,project_id,actor_id,role) VALUES

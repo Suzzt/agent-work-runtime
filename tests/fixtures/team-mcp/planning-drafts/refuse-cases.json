@@ -1,0 +1,77 @@
+{
+  "policy_id": "awr-team-planning-v1",
+  "cases": [
+    {
+      "id": "reader_suggestion_deny",
+      "role": "reader",
+      "action": "planning.propose",
+      "expect": "deny"
+    },
+    {
+      "id": "developer_suggestion_allow",
+      "role": "developer",
+      "action": "planning.propose",
+      "expect": "allow"
+    },
+    {
+      "id": "developer_edit_deny",
+      "role": "developer",
+      "action": "planning.edit_draft",
+      "expect": "deny"
+    },
+    {
+      "id": "maintainer_edit_allow",
+      "role": "maintainer",
+      "action": "planning.edit_draft",
+      "expect": "allow"
+    },
+    {
+      "id": "cycle_refuse",
+      "kind": "validate",
+      "expect": "deny",
+      "reason": "dependency cycle"
+    },
+    {
+      "id": "dangling_refuse",
+      "kind": "validate",
+      "expect": "deny",
+      "reason": "dangling dependency"
+    },
+    {
+      "id": "cross_project_goal_refuse",
+      "kind": "validate",
+      "expect": "deny",
+      "reason": "cross-project goal"
+    },
+    {
+      "id": "oob_spec_path_refuse",
+      "kind": "validate",
+      "expect": "deny",
+      "reason": "out-of-bound spec path"
+    },
+    {
+      "id": "expired_baseline_refuse",
+      "kind": "validate",
+      "expect": "deny",
+      "reason": "expired baseline"
+    },
+    {
+      "id": "stale_approval_after_edit",
+      "kind": "approve_publish",
+      "expect": "deny",
+      "reason": "edited drafts cannot reuse old approvals"
+    },
+    {
+      "id": "self_approve_cannot_downgrade_delivery_review",
+      "kind": "policy",
+      "expect": "deny",
+      "reason": "independent delivery-review policy must not be downgraded"
+    },
+    {
+      "id": "hard_delete_history_refuse",
+      "kind": "history",
+      "expect": "deny",
+      "reason": "hard-delete of planning history is forbidden"
+    }
+  ]
+}

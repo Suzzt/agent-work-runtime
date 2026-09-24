@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "work": "AWR-WS-024",
+  "adapters": [
+    {
+      "adapter_id": "manual_report",
+      "control_mode": "manual_report",
+      "auto_startable": false,
+      "capabilities": ["status_read", "result_forensics"]
+    },
+    {
+      "adapter_id": "codex_cli",
+      "control_mode": "named_controlled",
+      "auto_startable": false,
+      "capabilities": [
+        "status_read",
+        "result_forensics"
+      ]
+    },
+    {
+      "adapter_id": "claude_code",
+      "control_mode": "named_controlled",
+      "auto_startable": false,
+      "capabilities": ["status_read", "result_forensics"]
+    }
+  ],
+  "coordination_not_process_control": [
+    "awr_admission_is_not_process_start",
+    "awr_cancel_request_is_not_process_kill",
+    "awr_session_end_is_not_process_kill"
+  ],
+  "subtask_parallelism": {
+    "concurrency_cap_example": 2,
+    "parent_rollup_copies_artifacts": false,
+    "parent_exit_autocompletes_children": false,
+    "reconnect_before_retry": true
+  }
+}

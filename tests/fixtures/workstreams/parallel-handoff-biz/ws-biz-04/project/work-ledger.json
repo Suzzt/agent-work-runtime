@@ -1,0 +1,120 @@
+{
+  "namespace": "awr-ws-r2-ws-biz-04",
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "同人换 Agent 与子任务并行 交付"
+    }
+  ],
+  "work_items": [
+    {
+      "id": "S4-A",
+      "title": "Agent A 推进通知子任务",
+      "status": "ready",
+      "depends_on": [],
+      "owner": null,
+      "intended_person": "person.taylor-zhou",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "Agent A 推进通知子任务 完成并可复核"
+      ],
+      "next_action": "由 Taylor Zhou 经 codex_cli 推进"
+    },
+    {
+      "id": "S4-B",
+      "title": "Agent B 并行推进报表子任务",
+      "status": "planned",
+      "depends_on": [],
+      "owner": null,
+      "intended_person": "person.taylor-zhou",
+      "intended_role": "executor_peer",
+      "intended_client": "claude_code",
+      "acceptance": [
+        "Agent B 并行推进报表子任务 完成并可复核"
+      ],
+      "next_action": "由 Taylor Zhou 经 claude_code 推进"
+    },
+    {
+      "id": "S4-WEB",
+      "title": "Web 记录试用反馈",
+      "status": "planned",
+      "depends_on": [
+        "S4-A",
+        "S4-B"
+      ],
+      "owner": null,
+      "intended_person": "person.harper-lin",
+      "intended_role": "web_operator",
+      "intended_client": "team_web",
+      "acceptance": [
+        "Web 记录试用反馈 完成并可复核"
+      ],
+      "next_action": "由 Harper Lin 经 team_web 推进"
+    },
+    {
+      "id": "S4-TWEAK",
+      "title": "仅调整通知子模块",
+      "status": "planned",
+      "depends_on": [
+        "S4-WEB"
+      ],
+      "owner": null,
+      "intended_person": "person.taylor-zhou",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "仅调整通知子模块 完成并可复核"
+      ],
+      "next_action": "由 Taylor Zhou 经 codex_cli 推进"
+    },
+    {
+      "id": "S4-JOIN",
+      "title": "换客户端后整合入口",
+      "status": "planned",
+      "depends_on": [
+        "S4-TWEAK"
+      ],
+      "owner": null,
+      "intended_person": "person.taylor-zhou",
+      "intended_role": "executor_peer",
+      "intended_client": "claude_code",
+      "acceptance": [
+        "换客户端后整合入口 完成并可复核"
+      ],
+      "next_action": "由 Taylor Zhou 经 claude_code 推进"
+    },
+    {
+      "id": "S4-REVIEW",
+      "title": "独立人员复核",
+      "status": "planned",
+      "depends_on": [
+        "S4-JOIN"
+      ],
+      "owner": null,
+      "intended_person": "person.harper-lin",
+      "intended_role": "reviewer",
+      "intended_client": "team_web",
+      "acceptance": [
+        "独立人员复核 完成并可复核"
+      ],
+      "next_action": "由 Harper Lin 经 team_web 推进"
+    },
+    {
+      "id": "S4-DELIVER",
+      "title": "关联 PR 并完成交付",
+      "status": "planned",
+      "depends_on": [
+        "S4-REVIEW"
+      ],
+      "owner": null,
+      "intended_person": "person.taylor-zhou",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "关联 PR 并完成交付 完成并可复核"
+      ],
+      "next_action": "由 Taylor Zhou 经 codex_cli 推进"
+    }
+  ]
+}
