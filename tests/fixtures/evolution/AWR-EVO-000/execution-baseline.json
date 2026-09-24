@@ -1,0 +1,1092 @@
+{
+  "schema": "awr-evolution-execution-baseline/v1",
+  "work": "AWR-EVO-000",
+  "title": "核对执行基线、现有任务与唯一工作权威",
+  "recorded_at": "2026-09-23T06:54:13+08:00",
+  "timezone": "Asia/Taipei",
+  "recorder": {
+    "agent_id": "grok-bot-evo-000",
+    "session_id": "01M35N0C8F0TFFMM9KPZ1P7JZV",
+    "claim_id": "01M35N0C8HNW4DN00P3ZBB8QTG",
+    "branch": "codex/awr-evo-000-execution-baseline",
+    "worktree": "/workspace/awr-evo000-wt"
+  },
+  "construction_facts": {
+    "head_sha": "41d2b97446b70c1b589289980853283b9f0a3674",
+    "tree_sha": "2664e63847196371d315e7dacf3d4c021322d7dd",
+    "branch": "codex/awr-evo-000-execution-baseline",
+    "working_tree": "clean",
+    "dirty_paths": [],
+    "base_branch": "codex/awr-dec-060-mvp-offline-explain-gate",
+    "base_pr": 153,
+    "base_sha_expected": "41d2b97446b70c1b589289980853283b9f0a3674",
+    "base_sha_matches_head": true,
+    "note": "Actual HEAD/tree inventoried for this gate (DEC-060 tip / stacked base). The commit that adds these baseline files is recorded in evidence.json as pr head_sha; old historical SHAs elsewhere are not current construction facts.",
+    "inventory_base_head_sha": "41d2b97446b70c1b589289980853283b9f0a3674",
+    "inventory_base_tree_sha": "2664e63847196371d315e7dacf3d4c021322d7dd",
+    "working_tree_at_inventory": "clean"
+  },
+  "program_identity": {
+    "name": "agent-work-runtime / AWR",
+    "workspace_package_version": "0.4.0",
+    "rust_edition": "2024",
+    "rust_version_manifest": "1.93",
+    "rust_toolchain_channel": "1.93.1",
+    "box_rustc_version": "rustc 1.93.0 (254b59607 2026-01-19)",
+    "repository_declared": "https://github.com/originoneai/agent-work-runtime",
+    "delivery_remote_used_for_stacked_pr": "awr (https://github.com/originoneai/awr.git)",
+    "crates": [
+      "awr-core",
+      "awr-workspace",
+      "awr-store",
+      "awr-source",
+      "awr-context",
+      "awr-runtime",
+      "awr-cli",
+      "awr-mcp",
+      "awr-team",
+      "awr-team-pg",
+      "awr-server"
+    ],
+    "summary": "Persistent project state and focused context for coding agents (CLI + MCP). Personal mode uses source-first Markdown/YAML with SQLite projections; Team mode uses PostgreSQL coordination without falling back to personal SQLite authority.",
+    "install_channels_documented": [
+      "npm @originoneai/agent-work-runtime@0.4.0",
+      "pip agent-work-runtime==0.4.0"
+    ],
+    "published_binary_sha_on_this_box": "unknown",
+    "awr_cli_on_path": false,
+    "awr_cli_found_elsewhere": [
+      "/workspace/awr-ws043-wt/target/debug/awr"
+    ],
+    "source_file_fingerprints": {
+      "AGENTS.md": "sha256:51f1bdb864e599fa426221f255c2181b691ee9737cf0482c0698947fcc0c6c44",
+      "CONTRIBUTING.md": "sha256:3a8a0faff3b2aac71729388493293ce70eb088aecf8e17bbf8a625ea61c47384",
+      "Cargo.toml": "sha256:ac7b154e56daa78e923e2964344712cc6fe542cfa062180aa552d79b7d3b582b",
+      "Cargo.lock": "sha256:c93e98a86a1042a8f9651bd668ecc9afaae4c97f91644779cc8ef217b67710d0",
+      "rust-toolchain.toml": "sha256:162713004a236937311e636866219dc019297684304d082e2fc31eb23c91ebcf",
+      "README.md": "sha256:bb988aa232db9d1b5fbc519a885aa97eb4b2963f3629b8de5ff3624703fd68c6",
+      "docs/TAKEOVER.md": "sha256:0d7860e094a3f71e7dda574b0a89c98d5249203f3a076cbae4d21a5353d827b7",
+      "docs/reference/team-access.md": "sha256:0ac579e88183abd4325b476814c8563e0f89a84317e2fc175469f1269f40a41f",
+      "docs/reference/team-v1-evidence-matrix.json": "sha256:b0ea8c76f30688b3284a53ee34b452b4f0fd78a81d00c4d0c26ac9b6a237f5b2",
+      "docs/reference/team-v1-historical-agent-evidence-v1.json": "sha256:45e97fc92ed40a79eabb263105f3bbc207c359b747156ff0ef6a8a044ddb5b78",
+      "docs/reference/team-v1-known-limits.md": "sha256:3deff443fcbba9ff8ac8893267b036ac0436d00712386ba40b8911fb85768c17",
+      "docs/reference/assessment.md": "sha256:a8c3c3e25e25ae636cf3db212acdd8a3ff2241635c1f83bdd1195b6541b54207",
+      "docs/reference/workstreams.md": "sha256:607d620a2651fa23bf1053eb021f0437b6f1f70d8f23912b217155e3d44bbbfe",
+      "docs/reference/mcp-service.md": "sha256:24234d59cc082d2eabdf7a2ef310953e972e2ec7d8da61402749645099f63f24"
+    }
+  },
+  "project_identity": {
+    "project_id": "01M1YJBR5PW6QXYGABADJVAJPC",
+    "work_item_id": "01M2TV98VKHR851DNB7PYHJNG6",
+    "external_key": "AWR-EVO-000",
+    "milestone": "EVO0",
+    "storage_at_work_show": "private_memory",
+    "project_revision_at_session_start": 5213,
+    "project_revision_at_work_show": 5212,
+    "source_state_fingerprint_at_work_show": "sha256:321f08cebb8481ec4c93f0dab6b4760e26d62bae61713c0b4db282a22391efb8",
+    "authority_ledger": "ledger/work-ledger.yaml",
+    "authority_policy": "This special keeps original project identity and ledger/work-ledger.yaml; do not init a new project, delete .awr, or replace program bindings.",
+    "mac_project_root_locator_hint": "file:///Users/mac/Documents/originone/agent-work-running/"
+  },
+  "source_fingerprints": {
+    "at_work_show": {
+      "ledger_work_ledger_yaml": "sha256:215ec4d4e4963d5d3025c5def5bd86ec6e0a444b8a9f71a4d008d80e23493ce6",
+      "source_id": "01M1YJBR60M3XP7YCYGK0A4VGC",
+      "source_revision": 782,
+      "source_state_fingerprint": "sha256:321f08cebb8481ec4c93f0dab6b4760e26d62bae61713c0b4db282a22391efb8",
+      "source_warnings_count": 2,
+      "freshness_basis": "source_refresh"
+    },
+    "mac_authoritative_paths": {
+      "docs/RULES.md": {
+        "presence_on_box": "absent",
+        "status": "unknown",
+        "reason": "gitignored Mac-authoritative path; not mounted on box"
+      },
+      ".awr/project.toml": {
+        "presence_on_box": "absent",
+        "status": "unknown",
+        "reason": "gitignored Mac-authoritative runtime binding; not mounted on box"
+      },
+      "ledger/work-ledger.yaml": {
+        "presence_on_box": "absent",
+        "status": "known_locator_only",
+        "locator_from_work_show": "file:///Users/mac/Documents/originone/agent-work-running/ledger/work-ledger.yaml",
+        "source_id": "01M1YJBR60M3XP7YCYGK0A4VGC",
+        "source_revision_at_work_show": 782,
+        "source_fingerprint_at_work_show": "sha256:215ec4d4e4963d5d3025c5def5bd86ec6e0a444b8a9f71a4d008d80e23493ce6",
+        "live_bytes_on_box": "unknown",
+        "note": "EVO-000 continues using original project identity and this ledger; no new project init."
+      },
+      "docs/design/2026-09-19-awr-evolution-foundation/": {
+        "presence_on_box": "absent",
+        "status": "unknown",
+        "partial_copy": ".local/awr-evo-000/design/AWR-EVO-000.md"
+      },
+      "docs/acceptance/awr-evolution-foundation-v1.md": {
+        "presence_on_box": "absent",
+        "status": "unknown"
+      },
+      "handoffs/2026-09-19-awr-evolution-foundation.md": {
+        "presence_on_box": "absent",
+        "status": "unknown"
+      }
+    },
+    "box_public_tree_check": "python3 scripts/check_public_tree.py → Public tree OK (run at baseline recording)"
+  },
+  "access_modes": {
+    "personal_local": {
+      "id": "personal_local",
+      "fact_owner": "Authoritative project sources (esp. ledger/work-ledger.yaml and mapped Markdown/YAML) plus personal SQLite projection under .awr/; Git index is not the completion authority.",
+      "transport": "awr CLI / personal awr-mcp",
+      "must_not": [
+        "Treat GitHub merge as completion",
+        "Silently replace sources with SQLite projections"
+      ],
+      "unique_owner_confirmed_by": "docs/reference/mcp-service.md, docs/TAKEOVER.md, AGENTS.md, .gitignore private path policy"
+    },
+    "team_pg": {
+      "id": "team_pg",
+      "fact_owner": "Team PostgreSQL store for coordination/runtime facts and activated source contract snapshots; authenticated Team entry. Missing/offline remote must not fall back to personal SQLite authority.",
+      "transport": "Team HTTP/MCP / awr-server / awr team (capabilities local; many ops still Unsupported on public command path per team-access.md)",
+      "must_not": [
+        "Fall back to personal SQLite when Team remote missing",
+        "Use personal MCP as Team command dispatch"
+      ],
+      "unique_owner_confirmed_by": "docs/reference/team-access.md, docs/reference/team-postgres.md, docs/reference/team-workstream-service.md"
+    },
+    "note": "Two access modes each have a unique fact owner. EVO-000 does not merge them or invent a third project identity."
+  },
+  "preserved_denominators": {
+    "team_v1_evidence_matrix_counts": {
+      "required": 69,
+      "protocol_implemented": 67,
+      "real_agent_accepted": 42,
+      "automated_partial": 69,
+      "automated_evidence_pending": 27
+    },
+    "team_v1_historical_agent_evidence": {
+      "schema_or_title": 1,
+      "note": "Historical real_agent_accepted records preserved; EVO-000 does not rewrite V1/Team/biz acceptance denominators or records.",
+      "file": "docs/reference/team-v1-historical-agent-evidence-v1.json",
+      "fingerprint": "sha256:45e97fc92ed40a79eabb263105f3bbc207c359b747156ff0ef6a8a044ddb5b78"
+    },
+    "explicit_non_rewrite": true
+  },
+  "active_items": {
+    "box_claim_session_copies": [
+      {
+        "work_external_key": "AWR-DEC-010",
+        "title": null,
+        "agent_id": "grok-bot-dec-010",
+        "session_id": "01M35GY3S2PMHQADTG3NPWCG2T",
+        "claim_id": "01M35GY3S4623Y6W0VH76RFTGA",
+        "claim_status_from_session_start_copy": "active",
+        "session_status_from_session_start_copy": "active",
+        "work_item_id": "01M2YQ3B5MSK19G71SKT7VGF8X",
+        "project_id": "01M1YJBR5PW6QXYGABADJVAJPC",
+        "branch": "codex/awr-dec-010-reuse-assessment-contract",
+        "base_branch": "main",
+        "base_sha": "8fa6679981c823842282a0a4b5b79b9c7165b2a4",
+        "base_pr": null,
+        "box_claim_path": "/workspace/awr-dec010-wt/.local/awr-dec-010/claim.json",
+        "mac_live_claim_status": "unknown",
+        "note": "Copied claim/session files on box; Mac AWR live registry not queried from this host."
+      },
+      {
+        "work_external_key": "AWR-DEC-011",
+        "title": null,
+        "agent_id": "grok-bot-dec-011",
+        "session_id": "01M35HATWC7C3CENAXP1ZFR0FG",
+        "claim_id": "01M35HATWEG3G3GH1TF5CZ62R2",
+        "claim_status_from_session_start_copy": "active",
+        "session_status_from_session_start_copy": "active",
+        "work_item_id": "01M2YQ3B5M9PB6AJ16PW043BT3",
+        "project_id": "01M1YJBR5PW6QXYGABADJVAJPC",
+        "branch": "codex/awr-dec-011-bounded-fact-snapshot",
+        "base_branch": "codex/awr-dec-010-reuse-assessment-contract",
+        "base_sha": "8a7afec51110b70a1d47e523e1b31742bacb7b10",
+        "base_pr": null,
+        "box_claim_path": "/workspace/awr-dec011-wt/.local/awr-dec-011/claim.json",
+        "mac_live_claim_status": "unknown",
+        "note": "Copied claim/session files on box; Mac AWR live registry not queried from this host."
+      },
+      {
+        "work_external_key": "AWR-DEC-012",
+        "title": "实现类型化评估信封与未知/冲突语义",
+        "agent_id": "grok-bot-dec-012",
+        "session_id": "01M35HQRZCMZPFR0H8140WQ89F",
+        "claim_id": "01M35HQRZFYVTX8K86APE928PQ",
+        "claim_status_from_session_start_copy": "active",
+        "session_status_from_session_start_copy": "active",
+        "work_item_id": "01M2YQ3B5MWHZDHXE243CZNF7N",
+        "project_id": "01M1YJBR5PW6QXYGABADJVAJPC",
+        "branch": "codex/awr-dec-012-typed-assessment-envelope",
+        "base_branch": "codex/awr-dec-011-bounded-fact-snapshot",
+        "base_sha": "030b653f621fbd74c85526a163e32e0c04329fad",
+        "base_pr": 147,
+        "box_claim_path": "/workspace/awr-dec012-wt/.local/awr-dec-012/claim.json",
+        "mac_live_claim_status": "unknown",
+        "note": "Copied claim/session files on box; Mac AWR live registry not queried from this host."
+      },
+      {
+        "work_external_key": "AWR-DEC-013",
+        "title": "预注册反例语料、比较口径和成本边界",
+        "agent_id": "grok-bot-dec-013",
+        "session_id": "01M35J5WXG4M9X4XB93SSD0GV9",
+        "claim_id": "01M35J5WXKX0EFDJDHR39X0KEY",
+        "claim_status_from_session_start_copy": "active",
+        "session_status_from_session_start_copy": "active",
+        "work_item_id": "01M2YQ3B5M39RFASTKNHFHYBY5",
+        "project_id": "01M1YJBR5PW6QXYGABADJVAJPC",
+        "branch": "codex/awr-dec-013-counterexample-corpus",
+        "base_branch": "codex/awr-dec-012-typed-assessment-envelope",
+        "base_sha": "60b84badb974d84f0198f75986f8540ff4da3bf9",
+        "base_pr": 148,
+        "box_claim_path": "/workspace/awr-dec013-wt/.local/awr-dec-013/claim.json",
+        "mac_live_claim_status": "unknown",
+        "note": "Copied claim/session files on box; Mac AWR live registry not queried from this host."
+      },
+      {
+        "work_external_key": "AWR-DEC-020",
+        "title": "组合现有管理与工作准备判定的解释链",
+        "agent_id": "grok-bot-dec-020",
+        "session_id": "01M35JTN3TV42AM0AV9QSDTVDK",
+        "claim_id": "01M35JTN3YGN4B3ZSJ7HYNX6RZ",
+        "claim_status_from_session_start_copy": "active",
+        "session_status_from_session_start_copy": "active",
+        "work_item_id": "01M2YQ3B5M1QH5N9R9TK3V14C3",
+        "project_id": "01M1YJBR5PW6QXYGABADJVAJPC",
+        "branch": "codex/awr-dec-020-explanation-chain",
+        "base_branch": "codex/awr-dec-013-counterexample-corpus",
+        "base_sha": "ffe7d54a18d3342daab32d385da1569f384c2a43",
+        "base_pr": 149,
+        "box_claim_path": "/workspace/awr-dec020-wt/.local/awr-dec-020/claim.json",
+        "mac_live_claim_status": "unknown",
+        "note": "Copied claim/session files on box; Mac AWR live registry not queried from this host."
+      },
+      {
+        "work_external_key": "AWR-DEC-021",
+        "title": "接入可选CLI/MCP解释输出并保持旧消费者",
+        "agent_id": "grok-bot-dec-021",
+        "session_id": "01M35K5QC43HG2JXBEGR3QH0YX",
+        "claim_id": "01M35K5QC8DCREKSYE1XAX1RW7",
+        "claim_status_from_session_start_copy": "active",
+        "session_status_from_session_start_copy": "active",
+        "work_item_id": "01M2YQ3B5MACR651K3XB0A7F7W",
+        "project_id": "01M1YJBR5PW6QXYGABADJVAJPC",
+        "branch": "codex/awr-dec-021-optional-cli-mcp-explanations",
+        "base_branch": "codex/awr-dec-020-explanation-chain",
+        "base_sha": "f9f89b5ada2c6218c46407ad8fecbb6f0911ef5d",
+        "base_pr": 150,
+        "box_claim_path": "/workspace/awr-dec021-wt/.local/awr-dec-021/claim.json",
+        "mac_live_claim_status": "unknown",
+        "note": "Copied claim/session files on box; Mac AWR live registry not queried from this host."
+      },
+      {
+        "work_external_key": "AWR-DEC-022",
+        "title": "完成离线回放、影子比较与一键禁用",
+        "agent_id": "grok-bot-dec-022",
+        "session_id": "01M35KW0VZV75BJFSMEG456EVM",
+        "claim_id": "01M35KW0W4TV5M8QH3G9FC7QK7",
+        "claim_status_from_session_start_copy": "active",
+        "session_status_from_session_start_copy": "active",
+        "work_item_id": "01M2YQ3B5MB6K3EP5YQN2WGA3Z",
+        "project_id": "01M1YJBR5PW6QXYGABADJVAJPC",
+        "branch": "codex/awr-dec-022-offline-replay-shadow-killswitch",
+        "base_branch": "codex/awr-dec-021-optional-cli-mcp-explanations",
+        "base_sha": "2b5a36a4e17886545bc6f11aeeb1cb7ae39f5c81",
+        "base_pr": 151,
+        "box_claim_path": "/workspace/awr-dec022-wt/.local/awr-dec-022/claim.json",
+        "mac_live_claim_status": "unknown",
+        "note": "Copied claim/session files on box; Mac AWR live registry not queried from this host."
+      },
+      {
+        "work_external_key": "AWR-DEC-060",
+        "title": "独立验收首批无模型解释闭环",
+        "agent_id": "grok-bot-dec-060",
+        "session_id": "01M35MN16759QFM7PNHX3VDBQV",
+        "claim_id": "01M35MN16DW5KA87PJNP7TV6XA",
+        "claim_status_from_session_start_copy": "active",
+        "session_status_from_session_start_copy": "active",
+        "work_item_id": "01M2YQ3B5MB0QAYBF5T105VR2T",
+        "project_id": "01M1YJBR5PW6QXYGABADJVAJPC",
+        "branch": "codex/awr-dec-060-mvp-offline-explain-gate",
+        "base_branch": "codex/awr-dec-022-offline-replay-shadow-killswitch",
+        "base_sha": "189e4a2af57587c667ea1925d6745264e3138714",
+        "base_pr": 152,
+        "box_claim_path": "/workspace/awr-dec060-wt/.local/awr-dec-060/claim.json",
+        "mac_live_claim_status": "unknown",
+        "note": "Copied claim/session files on box; Mac AWR live registry not queried from this host."
+      },
+      {
+        "work_external_key": "AWR-EVO-000",
+        "title": "核对执行基线、现有任务与唯一工作权威",
+        "agent_id": "grok-bot-evo-000",
+        "session_id": "01M35N0C8F0TFFMM9KPZ1P7JZV",
+        "claim_id": "01M35N0C8HNW4DN00P3ZBB8QTG",
+        "claim_status_from_session_start_copy": "active",
+        "session_status_from_session_start_copy": "active",
+        "work_item_id": "01M2TV98VKHR851DNB7PYHJNG6",
+        "project_id": "01M1YJBR5PW6QXYGABADJVAJPC",
+        "branch": "codex/awr-evo-000-execution-baseline",
+        "base_branch": "codex/awr-dec-060-mvp-offline-explain-gate",
+        "base_sha": "41d2b97446b70c1b589289980853283b9f0a3674",
+        "base_pr": 153,
+        "box_claim_path": "/workspace/awr-evo000-wt/.local/awr-evo-000/claim.json",
+        "mac_live_claim_status": "unknown",
+        "note": "Copied claim/session files on box; Mac AWR live registry not queried from this host."
+      },
+      {
+        "work_external_key": "AWR-WS-042",
+        "title": null,
+        "agent_id": "grok-bot-ws-042",
+        "session_id": "01M35DQ9W1B7KAYYZF0973TWMH",
+        "claim_id": "01M35DQ9WDXDFVPRQT6Y69R6J6",
+        "claim_status_from_session_start_copy": "active",
+        "session_status_from_session_start_copy": "active",
+        "work_item_id": "01M3184TZ41N3G78NZ6JYQT0EF",
+        "project_id": "01M1YJBR5PW6QXYGABADJVAJPC",
+        "branch": "codex/awr-ws-042-mainline-nav",
+        "base_branch": "codex/awr-ws-043-eta-checkpoints",
+        "base_sha": "9c4fc2ac22350c56d0d72c17708536dec00096e6",
+        "base_pr": null,
+        "box_claim_path": "/workspace/awr-ws042-wt/.local/awr-ws-042/claim.json",
+        "mac_live_claim_status": "unknown",
+        "note": "Copied claim/session files on box; Mac AWR live registry not queried from this host."
+      },
+      {
+        "work_external_key": "AWR-WS-044",
+        "title": null,
+        "agent_id": "grok-bot-ws-044",
+        "session_id": "01M35ETJ80CRFA3S6KDCTRD90C",
+        "claim_id": "01M35ETJ8CF587VC08A4PYH581",
+        "claim_status_from_session_start_copy": "active",
+        "session_status_from_session_start_copy": "active",
+        "work_item_id": "01M346FHC2BP3C4X32AZW1S0Q5",
+        "project_id": "01M1YJBR5PW6QXYGABADJVAJPC",
+        "branch": "codex/awr-ws-044-team-web-loop",
+        "base_branch": "codex/awr-ws-042-mainline-nav",
+        "base_sha": "cbfbdafe668324465800d599f08b48654a467d38",
+        "base_pr": null,
+        "box_claim_path": "/workspace/awr-ws044-wt/.local/awr-ws-044/claim.json",
+        "mac_live_claim_status": "unknown",
+        "note": "Copied claim/session files on box; Mac AWR live registry not queried from this host."
+      },
+      {
+        "work_external_key": "AWR-WS-050",
+        "title": null,
+        "agent_id": "grok-bot-ws-050",
+        "session_id": "01M35FSSWDG7YF9DXKA4M2VHE6",
+        "claim_id": "01M35FSSWT3QMQCM8HZHWETM7G",
+        "claim_status_from_session_start_copy": "active",
+        "session_status_from_session_start_copy": "active",
+        "work_item_id": "01M3184TZ4EVYCC8011GFMTVQD",
+        "project_id": "01M1YJBR5PW6QXYGABADJVAJPC",
+        "branch": "codex/awr-ws-050-migration-takeover",
+        "base_branch": "codex/awr-ws-044-team-web-loop",
+        "base_sha": "e4b09b1b5cd837e312d0c26dc8b4d187a412901e",
+        "base_pr": null,
+        "box_claim_path": "/workspace/awr-ws050-wt/.local/awr-ws-050/claim.json",
+        "mac_live_claim_status": "unknown",
+        "note": "Copied claim/session files on box; Mac AWR live registry not queried from this host."
+      },
+      {
+        "work_external_key": "AWR-WS-051",
+        "title": null,
+        "agent_id": "grok-bot-ws-051",
+        "session_id": "01M35GFY8MV27VQA34STVYJEHA",
+        "claim_id": "01M35GFY910VW76XZT480Y2G0W",
+        "claim_status_from_session_start_copy": "active",
+        "session_status_from_session_start_copy": "active",
+        "work_item_id": "01M3184TZ4E1CX3RNBTA4GCYCS",
+        "project_id": "01M1YJBR5PW6QXYGABADJVAJPC",
+        "branch": "codex/awr-ws-051-parallel-handoff-biz",
+        "base_branch": "codex/awr-ws-050-migration-takeover",
+        "base_sha": "079caffc727343a7a1ba0816d4f6431f4bcd6f7e",
+        "base_pr": null,
+        "box_claim_path": "/workspace/awr-ws051-wt/.local/awr-ws-051/claim.json",
+        "mac_live_claim_status": "unknown",
+        "note": "Copied claim/session files on box; Mac AWR live registry not queried from this host."
+      }
+    ],
+    "git_worktrees_on_shared_box": [
+      {
+        "path": "/workspace/agent-work-runtime",
+        "head": "235b03786d6b1f7318b7e07518806d9a31fb1e7a",
+        "branch": "codex/awr-ws-021-execution-resources"
+      },
+      {
+        "path": "/workspace/awr-cr-116-wt",
+        "head": "9b28922c91ad8e3a228f961814995cd04d19b9df",
+        "branch": "codex/awr-tmcp-012-operator-access"
+      },
+      {
+        "path": "/workspace/awr-cr-117-wt",
+        "head": "4ef9a4ef7629b5278bfc71a94451908d375301f2",
+        "branch": "codex/awr-tmcp-021-planning-drafts"
+      },
+      {
+        "path": "/workspace/awr-cr-118-wt",
+        "head": "92444c30277a7aac13e0dec95aaa6e960e50f281",
+        "branch": "codex/awr-ws-020-readsets-concurrency"
+      },
+      {
+        "path": "/workspace/awr-cr-120-wt",
+        "head": "1ddbd2c131fb9c257abd2a44c0977353da5e6184",
+        "branch": "codex/awr-ws-022-source-concurrency"
+      },
+      {
+        "path": "/workspace/awr-cr-121-wt",
+        "head": "fd1d280fbc269a30b749e9b63526412a7a88412b",
+        "branch": "codex/awr-ws-023-global-barriers"
+      },
+      {
+        "path": "/workspace/awr-cr-122-wt",
+        "head": "e205f6172d3dc0ff3b83493e1d0b1c5ce8ac890e",
+        "branch": "codex/awr-ws-015-responsibility-identity"
+      },
+      {
+        "path": "/workspace/awr-cr-123-wt",
+        "head": "9154832b7531eadf72d63b5f8d46c244426cd00f",
+        "branch": "codex/awr-ws-016-authorized-agents-claim"
+      },
+      {
+        "path": "/workspace/awr-cr-124-wt",
+        "head": "79d957abca2440c2d8cc8d25d5043a3d6f53dbc6",
+        "branch": "codex/awr-ws-017-team-handoff"
+      },
+      {
+        "path": "/workspace/awr-dec010-wt",
+        "head": "8a7afec51110b70a1d47e523e1b31742bacb7b10",
+        "branch": "codex/awr-dec-010-reuse-assessment-contract"
+      },
+      {
+        "path": "/workspace/awr-dec011-wt",
+        "head": "030b653f621fbd74c85526a163e32e0c04329fad",
+        "branch": "codex/awr-dec-011-bounded-fact-snapshot"
+      },
+      {
+        "path": "/workspace/awr-dec012-wt",
+        "head": "60b84badb974d84f0198f75986f8540ff4da3bf9",
+        "branch": "codex/awr-dec-012-typed-assessment-envelope"
+      },
+      {
+        "path": "/workspace/awr-dec013-wt",
+        "head": "ffe7d54a18d3342daab32d385da1569f384c2a43",
+        "branch": "codex/awr-dec-013-counterexample-corpus"
+      },
+      {
+        "path": "/workspace/awr-dec020-wt",
+        "head": "f9f89b5ada2c6218c46407ad8fecbb6f0911ef5d",
+        "branch": "codex/awr-dec-020-explanation-chain"
+      },
+      {
+        "path": "/workspace/awr-dec021-wt",
+        "head": "2b5a36a4e17886545bc6f11aeeb1cb7ae39f5c81",
+        "branch": "codex/awr-dec-021-optional-cli-mcp-explanations"
+      },
+      {
+        "path": "/workspace/awr-dec022-wt",
+        "head": "189e4a2af57587c667ea1925d6745264e3138714",
+        "branch": "codex/awr-dec-022-offline-replay-shadow-killswitch"
+      },
+      {
+        "path": "/workspace/awr-dec060-wt",
+        "head": "41d2b97446b70c1b589289980853283b9f0a3674",
+        "branch": "codex/awr-dec-060-mvp-offline-explain-gate"
+      },
+      {
+        "path": "/workspace/awr-evo000-wt",
+        "head": "41d2b97446b70c1b589289980853283b9f0a3674",
+        "branch": "codex/awr-evo-000-execution-baseline"
+      },
+      {
+        "path": "/workspace/awr-tmcp011-wt",
+        "head": "d10c8993d3f08b001395f097b628c1f00b2dae86",
+        "branch": "codex/awr-tmcp-011-action-authorize"
+      },
+      {
+        "path": "/workspace/awr-tmcp020-wt",
+        "head": "4c29a69d772015fb84dc355f24998018c17c1f50",
+        "branch": "codex/awr-tmcp-020-source-publish-prep"
+      },
+      {
+        "path": "/workspace/awr-tmcp022-wt",
+        "head": "b9007f8e4e192a98b2d18aa7bc0ff717159f08f5",
+        "branch": "codex/awr-tmcp-022-source-writeback-activate"
+      },
+      {
+        "path": "/workspace/awr-tmcp023-wt",
+        "head": "bcfcae4fa13f92c3dde90f1855ed94f3a8071997",
+        "branch": "codex/awr-tmcp-023-mcp-planning-ops"
+      },
+      {
+        "path": "/workspace/awr-tmcp030-wt",
+        "head": "9b1f6cb3e1a1f95c10f80757054663e71db1fe07",
+        "branch": "codex/awr-tmcp-030-delegation-exec-auth"
+      },
+      {
+        "path": "/workspace/awr-tmcp031-wt",
+        "head": "8bc7420c61dc3adff234a41171a7ec3bd1f85126",
+        "branch": "codex/awr-tmcp-031-pr-delivery-review"
+      },
+      {
+        "path": "/workspace/awr-tmcp040-wt",
+        "head": "9fccb52e5911da40b8b36120cd2bbd3af2a9f7f7",
+        "branch": "codex/awr-tmcp-040-ops-audit"
+      },
+      {
+        "path": "/workspace/awr-tmcp041-wt",
+        "head": "240e925b5ea91b921c62eaf2e7b429485b324394",
+        "branch": "codex/awr-tmcp-041-deploy-pack"
+      },
+      {
+        "path": "/workspace/awr-tmcp050-wt",
+        "head": "a217c83acdfd471fea43ff224283ef4033ae6734",
+        "branch": "codex/awr-tmcp-050-protocol-matrix"
+      },
+      {
+        "path": "/workspace/awr-tmcp051-wt",
+        "head": "2e9eb8365cde2830d9d14317325c5eb8f0aad37d",
+        "branch": "codex/awr-tmcp-051-biz-acceptance"
+      },
+      {
+        "path": "/workspace/awr-ws014-wt",
+        "head": "e4021a011a48a9b837a51fc282836e57c05d7c27",
+        "branch": "codex/awr-ws-014-auth-boundaries"
+      },
+      {
+        "path": "/workspace/awr-ws015-wt",
+        "head": "8424dcb9f60bc58c4b4d06c4b79170dc04974a5c",
+        "branch": "detached"
+      },
+      {
+        "path": "/workspace/awr-ws016-wt",
+        "head": "d328b46f7903f0f28252ad5df83412feedf12dbb",
+        "branch": "detached"
+      },
+      {
+        "path": "/workspace/awr-ws017-wt",
+        "head": "e2512cf04c47b4012e232629d2f7ef51c8a11877",
+        "branch": "detached"
+      },
+      {
+        "path": "/workspace/awr-ws018-wt",
+        "head": "ad210e504bb8d72c314126b1da76fcb55378b745",
+        "branch": "codex/awr-ws-018-review-rework-complete"
+      },
+      {
+        "path": "/workspace/awr-ws024-wt",
+        "head": "4e2cc275403b265c5cd91efd9a71b15c6b9b8cec",
+        "branch": "codex/awr-ws-024-named-agent-host"
+      },
+      {
+        "path": "/workspace/awr-ws030-wt",
+        "head": "3043f423ce1b387350cee7b5136823c2974140d0",
+        "branch": "codex/awr-ws-030-versioned-delivery-deps"
+      },
+      {
+        "path": "/workspace/awr-ws031-wt",
+        "head": "c4780782e47e592b9c552ee39bb4a487d71fc613",
+        "branch": "codex/awr-ws-031-cross-stream-graph"
+      },
+      {
+        "path": "/workspace/awr-ws032-wt",
+        "head": "b97e884494d9fa4970080cc0abf62c0529569fda",
+        "branch": "codex/awr-ws-032-selective-invalidation"
+      },
+      {
+        "path": "/workspace/awr-ws040-wt",
+        "head": "68f65a450842dcd7cbab20a00b60b7004480895f",
+        "branch": "codex/awr-ws-040-scope-accounting"
+      },
+      {
+        "path": "/workspace/awr-ws041-wt",
+        "head": "6f575e9ee6a2d550bf90382fa836f2fa425eb288",
+        "branch": "codex/awr-ws-041-usage-time"
+      },
+      {
+        "path": "/workspace/awr-ws042-wt",
+        "head": "cbfbdafe668324465800d599f08b48654a467d38",
+        "branch": "codex/awr-ws-042-mainline-nav"
+      },
+      {
+        "path": "/workspace/awr-ws043-wt",
+        "head": "feffec12d84539266e0847cd96e98237ba259337",
+        "branch": "codex/awr-ws-043-eta-checkpoints"
+      },
+      {
+        "path": "/workspace/awr-ws044-wt",
+        "head": "df9eebd97098a5c930468a1d7493507a38f68fb9",
+        "branch": "codex/awr-ws-044-team-web-loop"
+      },
+      {
+        "path": "/workspace/awr-ws050-wt",
+        "head": "079caffc727343a7a1ba0816d4f6431f4bcd6f7e",
+        "branch": "codex/awr-ws-050-migration-takeover"
+      },
+      {
+        "path": "/workspace/awr-ws051-wt",
+        "head": "cbf9e5fe371ef45c4390b35452a4d39a3877fb9b",
+        "branch": "codex/awr-ws-051-parallel-handoff-biz"
+      }
+    ],
+    "open_pull_requests_awr_repo": [
+      {
+        "number": 153,
+        "title": "feat(assessment): first-batch offline explain independent acceptance gate (DEC-060)",
+        "base": "codex/awr-dec-022-offline-replay-shadow-killswitch",
+        "head": "codex/awr-dec-060-mvp-offline-explain-gate",
+        "html_url": "https://github.com/originoneai/awr/pull/153",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 152,
+        "title": "feat(assessment): offline replay, shadow compare, and advice kill-switch (DEC-022)",
+        "base": "codex/awr-dec-021-optional-cli-mcp-explanations",
+        "head": "codex/awr-dec-022-offline-replay-shadow-killswitch",
+        "html_url": "https://github.com/originoneai/awr/pull/152",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 151,
+        "title": "feat(assessment): optional CLI/MCP explanations without breaking legacy consumers (DEC-021)",
+        "base": "codex/awr-dec-020-explanation-chain",
+        "head": "codex/awr-dec-021-optional-cli-mcp-explanations",
+        "html_url": "https://github.com/originoneai/awr/pull/151",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 150,
+        "title": "feat(assessment): compose prepare explanation chain (DEC-020)",
+        "base": "codex/awr-dec-013-counterexample-corpus",
+        "head": "codex/awr-dec-020-explanation-chain",
+        "html_url": "https://github.com/originoneai/awr/pull/150",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 149,
+        "title": "feat(assessment): pre-register counterexample corpus and compare budgets (DEC-013)",
+        "base": "codex/awr-dec-012-typed-assessment-envelope",
+        "head": "codex/awr-dec-013-counterexample-corpus",
+        "html_url": "https://github.com/originoneai/awr/pull/149",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 148,
+        "title": "feat(assessment): typed AssessmentEnvelope + unknown/conflict (DEC-012)",
+        "base": "codex/awr-dec-011-bounded-fact-snapshot",
+        "head": "codex/awr-dec-012-typed-assessment-envelope",
+        "html_url": "https://github.com/originoneai/awr/pull/148",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 147,
+        "title": "feat(assessment): bounded FactSnapshot and source-quality labels (DEC-011)",
+        "base": "codex/awr-dec-010-reuse-assessment-contract",
+        "head": "codex/awr-dec-011-bounded-fact-snapshot",
+        "html_url": "https://github.com/originoneai/awr/pull/147",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 146,
+        "title": "AWR-DEC-010: freeze reuse mapping and first-batch assessment contract",
+        "base": "main",
+        "head": "codex/awr-dec-010-reuse-assessment-contract",
+        "html_url": "https://github.com/originoneai/awr/pull/146",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 145,
+        "title": "feat(workstream): WS-051 parallel/handoff BIZ harness (live gates blocked)",
+        "base": "codex/awr-ws-050-migration-takeover",
+        "head": "codex/awr-ws-051-parallel-handoff-biz",
+        "html_url": "https://github.com/originoneai/awr/pull/145",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 144,
+        "title": "feat(runtime): fixture-first migration drill and mainline takeover (WS-050)",
+        "base": "codex/awr-ws-044-team-web-loop",
+        "head": "codex/awr-ws-050-migration-takeover",
+        "html_url": "https://github.com/originoneai/awr/pull/144",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 143,
+        "title": "feat(surfaces): Team Web collaboration loop (WS-044)",
+        "base": "codex/awr-ws-042-mainline-nav",
+        "head": "codex/awr-ws-044-team-web-loop",
+        "html_url": "https://github.com/originoneai/awr/pull/143",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 142,
+        "title": "feat(surfaces): CLI/MCP/Inspector mainline navigation (WS-042)",
+        "base": "codex/awr-ws-043-eta-checkpoints",
+        "head": "codex/awr-ws-042-mainline-nav",
+        "html_url": "https://github.com/originoneai/awr/pull/142",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 141,
+        "title": "feat(runtime): calibrated acceptance ETA and stage checkpoints (WS-043)",
+        "base": "codex/awr-ws-041-usage-time",
+        "head": "codex/awr-ws-043-eta-checkpoints",
+        "html_url": "https://github.com/originoneai/awr/pull/141",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 140,
+        "title": "feat(runtime): real usage receipts and measured time accounting (WS-041)",
+        "base": "codex/awr-ws-040-scope-accounting",
+        "head": "codex/awr-ws-041-usage-time",
+        "html_url": "https://github.com/originoneai/awr/pull/140",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 139,
+        "title": "feat(runtime): scope and delivery accounting over frozen contracts (WS-040)",
+        "base": "codex/awr-tmcp-051-biz-acceptance",
+        "head": "codex/awr-ws-040-scope-accounting",
+        "html_url": "https://github.com/originoneai/awr/pull/139",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 138,
+        "title": "feat(team): Team MCP BIZ acceptance fixtures + harness (TMCP-051)",
+        "base": "codex/awr-tmcp-041-deploy-pack",
+        "head": "codex/awr-tmcp-051-biz-acceptance",
+        "html_url": "https://github.com/originoneai/awr/pull/138",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 137,
+        "title": "feat(team): Team MCP deploy pack + named-client guides (TMCP-041)",
+        "base": "codex/awr-ws-024-named-agent-host",
+        "head": "codex/awr-tmcp-041-deploy-pack",
+        "html_url": "https://github.com/originoneai/awr/pull/137",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 136,
+        "title": "feat(runtime): named agent host adapters + controlled subtask parallelism (WS-024)",
+        "base": "codex/awr-tmcp-050-protocol-matrix",
+        "head": "codex/awr-ws-024-named-agent-host",
+        "html_url": "https://github.com/originoneai/awr/pull/136",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 135,
+        "title": "feat(team): protocol matrix counterexamples (AWR-TMCP-050)",
+        "base": "codex/awr-tmcp-040-ops-audit",
+        "head": "codex/awr-tmcp-050-protocol-matrix",
+        "html_url": "https://github.com/originoneai/awr/pull/135",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 134,
+        "title": "feat(team): permission/planning/delivery ops audit (AWR-TMCP-040)",
+        "base": "codex/awr-tmcp-031-pr-delivery-review",
+        "head": "codex/awr-tmcp-040-ops-audit",
+        "html_url": "https://github.com/originoneai/awr/pull/134",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 133,
+        "title": "feat(team): PR delivery ∩ authorized review & completion (TMCP-031)",
+        "base": "codex/awr-tmcp-030-delegation-exec-auth",
+        "head": "codex/awr-tmcp-031-pr-delivery-review",
+        "html_url": "https://github.com/originoneai/awr/pull/133",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 132,
+        "title": "feat(team): intersect WS-016 delegation with TMCP exec permissions (TMCP-030)",
+        "base": "codex/awr-tmcp-023-mcp-planning-ops",
+        "head": "codex/awr-tmcp-030-delegation-exec-auth",
+        "html_url": "https://github.com/originoneai/awr/pull/132",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 131,
+        "title": "Show Inspector sessions and events from existing CLI commands",
+        "base": "main",
+        "head": "feat/inspector-session-event",
+        "html_url": "https://github.com/originoneai/awr/pull/131",
+        "user": "ixzc",
+        "draft": false
+      },
+      {
+        "number": 130,
+        "title": "feat(team): MCP planning ops and controlled context reads (TMCP-023)",
+        "base": "codex/awr-tmcp-022-source-writeback-activate",
+        "head": "codex/awr-tmcp-023-mcp-planning-ops",
+        "html_url": "https://github.com/originoneai/awr/pull/130",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 129,
+        "title": "feat(team): write approved planning changes back and activate (TMCP-022)",
+        "base": "codex/awr-ws-032-selective-invalidation",
+        "head": "codex/awr-tmcp-022-source-writeback-activate",
+        "html_url": "https://github.com/originoneai/awr/pull/129",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 128,
+        "title": "feat(team): selective invalidation and boundary revalidation (WS-032)",
+        "base": "codex/awr-ws-031-cross-stream-graph",
+        "head": "codex/awr-ws-032-selective-invalidation",
+        "html_url": "https://github.com/originoneai/awr/pull/128",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 127,
+        "title": "feat(team): cross-stream dependency graph and atomic cycle checks (WS-031)",
+        "base": "codex/awr-ws-030-versioned-delivery-deps",
+        "head": "codex/awr-ws-031-cross-stream-graph",
+        "html_url": "https://github.com/originoneai/awr/pull/127",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 126,
+        "title": "feat(core): versioned delivery deps and adoption credentials (WS-030)",
+        "base": "codex/awr-ws-018-review-rework-complete",
+        "head": "codex/awr-ws-030-versioned-delivery-deps",
+        "html_url": "https://github.com/originoneai/awr/pull/126",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 125,
+        "title": "feat(team): mainline review, rework and completion receipts (WS-018)",
+        "base": "codex/awr-ws-017-team-handoff",
+        "head": "codex/awr-ws-018-review-rework-complete",
+        "html_url": "https://github.com/originoneai/awr/pull/125",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 124,
+        "title": "feat(team): confirmed Team long-term handoff with duty separation (WS-017)",
+        "base": "codex/awr-ws-016-authorized-agents-claim",
+        "head": "codex/awr-ws-017-team-handoff",
+        "html_url": "https://github.com/originoneai/awr/pull/124",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 123,
+        "title": "feat(core): authorized agents and explainable claim eligibility (WS-016)",
+        "base": "codex/awr-ws-015-responsibility-identity",
+        "head": "codex/awr-ws-016-authorized-agents-claim",
+        "html_url": "https://github.com/originoneai/awr/pull/123",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 122,
+        "title": "feat(core): person responsibility, execution identity, and task assignment (WS-015)",
+        "base": "codex/awr-ws-014-auth-boundaries",
+        "head": "codex/awr-ws-015-responsibility-identity",
+        "html_url": "https://github.com/originoneai/awr/pull/122",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 121,
+        "title": "feat(team): verify global barriers, lock order, restore compatibility (WS-023)",
+        "base": "codex/awr-ws-022-source-concurrency",
+        "head": "codex/awr-ws-023-global-barriers",
+        "html_url": "https://github.com/originoneai/awr/pull/121",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 120,
+        "title": "feat(source): protect single-file and sharded concurrent writes (WS-022)",
+        "base": "codex/awr-ws-021-execution-resources",
+        "head": "codex/awr-ws-022-source-concurrency",
+        "html_url": "https://github.com/originoneai/awr/pull/120",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 119,
+        "title": "feat(team): unify execution resources, lease generations, unknown-effect protection (WS-021)",
+        "base": "codex/awr-ws-020-readsets-concurrency",
+        "head": "codex/awr-ws-021-execution-resources",
+        "html_url": "https://github.com/originoneai/awr/pull/119",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 118,
+        "title": "feat(team): operation read-sets and task-level concurrent writes (WS-020)",
+        "base": "codex/awr-tmcp-021-planning-drafts",
+        "head": "codex/awr-ws-020-readsets-concurrency",
+        "html_url": "https://github.com/originoneai/awr/pull/118",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 117,
+        "title": "feat(team): planning suggestions and controlled draft changes (TMCP-021)",
+        "base": "codex/awr-tmcp-012-operator-access",
+        "head": "codex/awr-tmcp-021-planning-drafts",
+        "html_url": "https://github.com/originoneai/awr/pull/117",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 116,
+        "title": "feat(team): MCP project-admin member and credential management (TMCP-012)",
+        "base": "codex/awr-tmcp-011-action-authorize",
+        "head": "codex/awr-tmcp-012-operator-access",
+        "html_url": "https://github.com/originoneai/awr/pull/116",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 115,
+        "title": "feat(team): wire AWR-TMCP-011 per-action authorization at domain entries",
+        "base": "main",
+        "head": "codex/awr-tmcp-011-action-authorize",
+        "html_url": "https://github.com/originoneai/awr/pull/115",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 114,
+        "title": "feat(team): AWR-TMCP-020 authoritative ledger → Team publish preparation",
+        "base": "main",
+        "head": "codex/awr-tmcp-020-source-publish-prep",
+        "html_url": "https://github.com/originoneai/awr/pull/114",
+        "user": "FreeOnePlus",
+        "draft": false
+      },
+      {
+        "number": 113,
+        "title": "AWR-WS-014: auth gate, recovery, history migration, enabled backup",
+        "base": "main",
+        "head": "codex/awr-ws-014-auth-boundaries",
+        "html_url": "https://github.com/originoneai/awr/pull/113",
+        "user": "FreeOnePlus",
+        "draft": false
+      }
+    ],
+    "related_named_tasks": {
+      "AWR-UX-001": {
+        "mentioned_in": [
+          "AWR-EVO-000 design",
+          "AWR-EVO-000 work summary context via design steps"
+        ],
+        "owner_on_box": "unknown",
+        "status_on_box": "unknown",
+        "mac_live_status": "unknown",
+        "action": "do_not_modify_owner_or_status",
+        "evidence": "No Mac ledger bytes on box; no local claim/session copy for AWR-UX-001 found under /workspace/*/.local"
+      },
+      "TEAM-P17": {
+        "mentioned_in": [
+          "AWR-EVO-000 work.summary at work-show time"
+        ],
+        "summary_excerpt": "评审后HEAD已推进，TEAM-P17等既有工作仍活动。",
+        "owner_on_box": "unknown",
+        "status_on_box": "unknown",
+        "mac_live_status": "unknown",
+        "activity_hint_at_work_show": "described_as_still_active",
+        "action": "do_not_modify_owner_or_status",
+        "evidence": "Mention only in work-show summary; no TEAM-P17 claim copy on box"
+      },
+      "QA-003": {
+        "mentioned_in": [
+          "AWR-EVO-000 design steps"
+        ],
+        "owner_on_box": "unknown",
+        "status_on_box": "unknown",
+        "mac_live_status": "unknown",
+        "action": "do_not_modify_owner_or_status",
+        "evidence": "No Mac ledger bytes on box; no local claim/session copy for QA-003 found under /workspace/*/.local"
+      }
+    }
+  },
+  "unknown_executions": {
+    "mac_awr_execution_registry": "unknown",
+    "mac_awr_cli_available_on_box": false,
+    "box_observed": {
+      "active_session_start_copies": 13,
+      "active_claim_copies": 13,
+      "worktrees": 44,
+      "open_prs_on_awr_repo": 41,
+      "note": "Box copies and GitHub open PRs are observable; whether Mac runtime still holds executions/claims is unknown without Mac awr query."
+    },
+    "effect_unknown_writers": [
+      {
+        "path": "ledger/work-ledger.yaml",
+        "risk": "Mac-authoritative; concurrent Mac edits unknown from box",
+        "evo_policy": "no_conflicting_write"
+      },
+      {
+        "path": ".awr/",
+        "risk": "runtime binding absent on box; must not init/replace",
+        "evo_policy": "no_init_no_delete_no_replace_binding"
+      }
+    ]
+  },
+  "path_occupancy": {
+    ".local/awr-evolution-20260919/": {
+      "intended_writer": "AWR-EVO-000 / grok-bot-evo-000",
+      "other_writers_observed": [],
+      "conflict": false
+    },
+    "tests/fixtures/evolution/AWR-EVO-000/": {
+      "intended_writer": "AWR-EVO-000 / grok-bot-evo-000",
+      "other_writers_observed": [],
+      "conflict": false,
+      "note": "Checked-in mirror because ledger/ is Mac-authoritative/private"
+    },
+    "ledger/evidence/AWR-EVO-000/": {
+      "intended_writer": "Mac ledger evidence (authoritative when present)",
+      "presence_on_box": "absent",
+      "conflict": false,
+      "policy": "Do not fabricate Mac ledger writes from box; mirror under tests/fixtures/evolution/AWR-EVO-000/ and .local"
+    },
+    "codex/awr-evo-000-execution-baseline": {
+      "intended_writer": "AWR-EVO-000",
+      "shared_tip_with": "codex/awr-dec-060-mvp-offline-explain-gate @ 41d2b974… (read-only base; no DEC-060 file mutation)",
+      "conflict": false
+    }
+  },
+  "dec_040_started": false,
+  "dec_041_started": false,
+  "missing_facts_policy": "Prefer truthful unknown over invention."
+}
