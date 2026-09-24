@@ -1951,9 +1951,12 @@
       });
     }
 
+    const navLoadBtn = $('navLoadBtn');
+    if (navLoadBtn) {
+      navLoadBtn.addEventListener('click', () => loadMainline().catch((e) => errorBlock(e, 'awr nav')));
+    }
+
     $('btnRefresh').addEventListener('click', async () => {
-  const navLoadBtn = $('navLoadBtn');
-  if (navLoadBtn) navLoadBtn.addEventListener('click', () => loadMainline().catch((e) => errorBlock(e, 'awr nav')));
       const b = $('btnRefresh');
       b.classList.add('spin');
       await loadAll();
