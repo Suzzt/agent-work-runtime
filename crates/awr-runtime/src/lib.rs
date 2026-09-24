@@ -44,6 +44,7 @@ mod selective_invalidation;
 mod work_graph;
 mod workstream_accounting;
 mod workstream_eta;
+mod workstream_nav;
 mod workstream_usage;
 pub use selective_invalidation::{
     AdoptedConsumerEdge, BoundaryDecision, BoundaryRevalidation, BoundarySnapshot,
@@ -67,6 +68,10 @@ pub use workstream_eta::{
     AttestedEtaProject, EtaRuntimeError, attach_observation_handoff, estimate_and_persist,
     observation_handoff_for_estimate, query_eta_forecast, query_eta_forecasts_for_target,
     record_acceptance_datum, record_historical_sample, reestimate_and_persist,
+};
+pub use workstream_nav::{
+    MAINLINE_NAV_PROTOCOL, MAINLINE_NAV_SCHEMA_VERSION, MainlineNavExtras, MainlineNavScope,
+    MainlineNavWorkFact, assemble_mainline_nav, mainline_nav,
 };
 pub use workstream_usage::{
     AttestedUsageProject, UsageRuntimeError, ingest_usage_receipt, query_usage_cost_totals,

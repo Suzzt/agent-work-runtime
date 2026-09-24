@@ -227,6 +227,7 @@ const COMMANDS = {
   status: { argv: ['status'], write: false },
   ready: { argv: ['ready'], write: false },
   workShow: { argv: ['work', 'show'], write: false },
+  mainlineNav: { argv: ['nav'], write: false },
   search: { argv: ['search'], write: false },
   intakeInspect: { argv: ['intake', 'inspect'], write: false },
   contextCompile: { argv: ['context', 'compile'], write: false },
@@ -552,6 +553,19 @@ const routes = {
     return runCommand('status', extra);
   },
 
+
+  'GET /api/mainline-nav': async (url) => {
+    const extra = [];
+    const workstream = url.searchParams.get('workstream');
+    const goal = url.searchParams.get('goal');
+    const milestone = url.searchParams.get('milestone');
+    const works = url.searchParams.getAll('work');
+    if (workstream) extra.push('--workstream', workstream);
+    if (goal) extra.push('--goal', goal);
+    if (milestone) extra.push('--milestone', milestone);
+    for (const work of works) extra.push('--work', work);
+    return runCommand('mainlineNav', extra);
+  },
   'GET /api/work-page': async (url) => {
     const queue = url.searchParams.get('queue') || 'all';
     const offset = Number(url.searchParams.get('offset') || '0');

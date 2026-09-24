@@ -1718,9 +1718,123 @@
     }
   }
 
+
+  // Mainline navigation (WS-042, read-only)
+  async function loadMainline() {
+    const params = new URLSearchParams();
+    const workstream = ($('navWorkstream') || {}).value || '';
+    const goal = ($('navGoal') || {}).value || '';
+    const milestone = ($('navMilestone') || {}).value || '';
+    const works = (($('navWorkKeys') || {}).value || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (workstream) params.set('workstream', workstream);
+    if (goal) params.set('goal', goal);
+    if (milestone) params.set('milestone', milestone);
+    for (const work of works) params.append('work', work);
+    const path = '/api/mainline-nav' + (params.toString() ? '?' + params.toString() : '');
+    const response = await callApi(path);
+    state.raw.mainline = response;
+    renderMainline(response);
+    showRaw('rawMainlineBody', response);
+  }
+
+  function renderMainline(response) {
+    const payload = response && response.result ? response.result : response;
+    const acc = (payload && payload.accounting) || {};
+    const accBody = $('navAccBody');
+    const accSub = $('navAccSub');
+    if (accBody) {
+      clear(accBody);
+      if (acc.available) {
+        if (accSub) accSub.textContent = i18n.t('ui.authoritative_accounting');
+        accBody.appendChild(el('p', null, i18n.t('ui.required_count_p0', { p0: acc.required_count })));
+        accBody.appendChild(el('p', null, i18n.t('ui.stages_independent_not_goal_rate')));
+        const stages = ['planned', 'implemented', 'verified', 'merged', 'released'];
+        const ul = el('ul', { class: 'loops' });
+        for (const stage of stages) {
+          const s = acc[stage] || {};
+          ul.appendChild(el('li', null, `${stage}: recorded=${s.recorded ?? 0} not_met=${s.not_met ?? 0} unknown=${s.unknown ?? 0}`));
+        }
+        accBody.appendChild(ul);
+      } else {
+        if (accSub) accSub.textContent = i18n.t('ui.accounting_unavailable');
+        accBody.appendChild(el('p', null, acc.reason || acc.detail || i18n.t('ui.attach_ws040_accounting')));
+      }
+      const blockers = (payload && payload.blockers) || [];
+      accBody.appendChild(el('h3', null, i18n.t('ui.blockers')));
+      if (!blockers.length) {
+        accBody.appendChild(el('p', null, i18n.t('ui.no_blockers_in_scope')));
+      } else {
+        const ul = el('ul', { class: 'loops' });
+        for (const b of blockers) {
+          ul.appendChild(el('li', null, `${b.work}: ${b.blocker}`));
+        }
+        accBody.appendChild(ul);
+      }
+      const cross = (payload && payload.cross_dependencies) || [];
+      accBody.appendChild(el('h3', null, i18n.t('ui.cross_dependencies')));
+      if (!cross.length) {
+        accBody.appendChild(el('p', null, i18n.t('ui.no_cross_workstream_edges')));
+      } else {
+        const ul = el('ul', { class: 'loops' });
+        for (const e of cross) {
+          ul.appendChild(el('li', null, `${e.from} → ${e.to} · ${e.outcome}`));
+        }
+        accBody.appendChild(ul);
+      }
+    }
+    const graphBody = $('navGraphBody');
+    if (graphBody) {
+      clear(graphBody);
+      const graph = (payload && payload.mainline_graph) || {};
+      const nodes = graph.nodes || [];
+      const edges = graph.edges || [];
+      graphBody.appendChild(el('p', { class: 'sub' }, i18n.t('ui.edge_basis_concrete_outcomes')));
+      const nodeList = el('ul', { class: 'loops' });
+      for (const n of nodes) {
+        const li = el('li');
+        li.appendChild(el('strong', null, n.work_key || ''));
+        li.appendChild(document.createTextNode(` [${n.status || ''}] ${n.title || ''}`));
+        if (n.person_responsibility) {
+          li.appendChild(el('div', { class: 'sub' }, i18n.t('ui.person_p0', { p0: n.person_responsibility })));
+        }
+        if (n.agent_execution) {
+          li.appendChild(el('div', { class: 'sub' }, i18n.t('ui.agent_p0', { p0: JSON.stringify(n.agent_execution) })));
+        }
+        if (n.stage_acceptance_window) {
+          li.appendChild(el('div', { class: 'sub' }, i18n.t('ui.acceptance_window_p0', { p0: JSON.stringify(n.stage_acceptance_window) })));
+        }
+        for (const w of n.explainable_waits || []) {
+          li.appendChild(el('div', { class: 'sub' }, `${w.kind}: ${w.summary} → ${w.release_condition}`));
+        }
+        nodeList.appendChild(li);
+      }
+      graphBody.appendChild(nodeList);
+      const edgeList = el('ul', { class: 'loops' });
+      for (const e of edges) {
+        edgeList.appendChild(el('li', null, `${e.from} → ${e.to} · ${e.outcome}`));
+      }
+      graphBody.appendChild(el('h3', null, i18n.t('ui.outcome_edges')));
+      graphBody.appendChild(edgeList);
+    }
+    const guideBody = $('navGuideBody');
+    if (guideBody) {
+      clear(guideBody);
+      const g = (payload && payload.guidance) || {};
+      guideBody.appendChild(el('p', null, `${i18n.t('ui.when')}: ${g.when || ''}`));
+      guideBody.appendChild(el('p', null, `${i18n.t('ui.basis')}: ${g.basis || ''}`));
+      guideBody.appendChild(el('p', null, `${i18n.t('ui.next_action')}: ${g.next_action || ''}`));
+      guideBody.appendChild(el('p', null, `${i18n.t('ui.recheck')}: ${g.recheck || ''}`));
+      guideBody.appendChild(el('p', { class: 'sub' }, i18n.t('ui.ws044_writes_deferred')));
+    }
+  }
+
+
   // Navigation
 
-  const VIEWS = ['overview', 'work', 'context', 'sources'];
+  const VIEWS = ['overview', 'work', 'context', 'mainline', 'sources'];
 
   function go(view) {
     if (VIEWS.indexOf(view) < 0) view = 'overview';
@@ -1731,6 +1845,9 @@
     }
     history.replaceState(null, '', '#' + view);
     window.scrollTo({ top: 0 });
+    if (view === 'mainline' && !state.raw.mainline) {
+      loadMainline().catch((e) => errorBlock(e, 'awr nav'));
+    }
   }
 
   // Getting-started tour
@@ -1829,6 +1946,8 @@
     }
 
     $('btnRefresh').addEventListener('click', async () => {
+  const navLoadBtn = $('navLoadBtn');
+  if (navLoadBtn) navLoadBtn.addEventListener('click', () => loadMainline().catch((e) => errorBlock(e, 'awr nav')));
       const b = $('btnRefresh');
       b.classList.add('spin');
       await loadAll();
