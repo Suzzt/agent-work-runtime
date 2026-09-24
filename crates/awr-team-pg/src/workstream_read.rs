@@ -1,6 +1,6 @@
 //! Authenticated, scope-limited Team read operations. The transport binds the
 //! tenant/project from operator configuration; request bodies contain selectors.
-use crate::workstream_auth::{ReaderAuthority, authenticate};
+use crate::workstream_auth::{ReaderAuthority, authenticate, authorize_query};
 use crate::{PgError, PgPool, PgResult};
 use awr_core::{
     Id, WorkstreamAction, WorkstreamSelection, WorkstreamSessionBinding, WorkstreamWorkBinding,
@@ -23,6 +23,17 @@ const QUERIES: &[&str] = &[
     "command.inspect",
     "claim.inspect",
     "execution.inspect",
+    "handoff.inspect",
+    "evidence.inspect",
+    "review.inspect",
+    "completion.inspect",
+    "delivery.inspect",
+    "source.content",
+    "artifact.content",
+    "planning.outcome",
+    "audit.history",
+    "audit.export",
+    "audit.count",
 ];
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -40,6 +51,27 @@ pub struct WorkstreamQuery {
     pub request_id: Option<String>,
     pub claim_id: Option<String>,
     pub execution_id: Option<String>,
+    pub handoff_id: Option<String>,
+    pub evidence_id: Option<String>,
+    pub review_round_id: Option<String>,
+    /// Controlled source path relative to the active snapshot (TMCP-023).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    /// Controlled artifact id (TMCP-023).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_id: Option<String>,
+    /// Optional expected digest for content reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_sha256: Option<String>,
+    /// Ops-audit filters (TMCP-040).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member_actor_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub include_denies: Option<bool>,
 }
 
 impl WorkstreamQuery {
@@ -60,6 +92,12 @@ impl WorkstreamQuery {
             &self.request_id,
             &self.claim_id,
             &self.execution_id,
+            &self.evidence_id,
+            &self.review_round_id,
+            &self.artifact_id,
+            &self.change_id,
+            &self.member_actor_id,
+            &self.category,
         ]
         .into_iter()
         .flatten()
@@ -78,16 +116,52 @@ impl WorkstreamQuery {
             self.op.as_str(),
             "workstreams.list" | "work.list" | "work.search" | "events.list"
         );
-        if !paged && (self.cursor.is_some() || self.limit.is_some())
+        let audit = matches!(
+            self.op.as_str(),
+            "audit.history" | "audit.export" | "audit.count"
+        );
+        if !paged && !audit && (self.cursor.is_some() || self.limit.is_some())
             || self.search.is_some() != (self.op == "work.search")
             || self
                 .search
                 .as_ref()
                 .is_some_and(|s| s.is_empty() || s.len() > 512 || s.chars().any(char::is_control))
-            || self.max_context_bytes.is_some() && self.op != "work.prepare"
-            || self.request_id.is_some() != (self.op == "command.inspect")
+            || self.max_context_bytes.is_some()
+                && !matches!(
+                    self.op.as_str(),
+                    "work.prepare" | "source.content" | "artifact.content"
+                )
+            || (!audit
+                && self.request_id.is_some()
+                    != matches!(self.op.as_str(), "command.inspect" | "planning.outcome"))
+            || (self.change_id.is_some()
+                || self.member_actor_id.is_some()
+                || self.category.is_some()
+                || self.include_denies.is_some())
+                && !audit
             || self.claim_id.is_some() != (self.op == "claim.inspect")
             || self.execution_id.is_some() != (self.op == "execution.inspect")
+            || self.handoff_id.is_some() != (self.op == "handoff.inspect")
+            || self.evidence_id.is_some() != (self.op == "evidence.inspect")
+            || self.review_round_id.is_some() != (self.op == "review.inspect")
+            || self.source_path.is_some() != (self.op == "source.content")
+            || self.artifact_id.is_some() != (self.op == "artifact.content")
+            || self.expected_sha256.as_ref().is_some_and(|s| {
+                s.len() != 64
+                    || !s
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            })
+            || self.source_path.as_ref().is_some_and(|path| {
+                path.is_empty()
+                    || path.len() > 512
+                    || path.starts_with('/')
+                    || path.contains("..")
+                    || path.contains('\\')
+                    || path.contains(':')
+                    || path.contains("://")
+                    || path.chars().any(char::is_control)
+            })
             || matches!(self.op.as_str(), "capabilities" | "workstreams.list")
                 && (self.work_id.is_some()
                     || self.session_id.is_some()
@@ -95,6 +169,8 @@ impl WorkstreamQuery {
             || matches!(self.op.as_str(), "work.list" | "work.search")
                 && (self.work_id.is_some() || self.session_id.is_some())
             || self.op == "session.inspect" && self.session_id.is_none()
+            || self.op == "planning.outcome"
+                && (self.work_id.is_some() || self.session_id.is_some())
             || matches!(
                 self.op.as_str(),
                 "work.prepare"
@@ -102,6 +178,12 @@ impl WorkstreamQuery {
                     | "command.inspect"
                     | "claim.inspect"
                     | "execution.inspect"
+                    | "handoff.inspect"
+                    | "evidence.inspect"
+                    | "review.inspect"
+                    | "completion.inspect"
+                    | "delivery.inspect"
+                    | "artifact.content"
             ) && self.work_id.is_none()
                 && self.session_id.is_none()
         {
@@ -134,9 +216,23 @@ impl WorkstreamReadStore {
         crate::WorkstreamCommandStore::from_pool(self.pool.clone())
     }
 
+    /// Project-admin member/role/credential management (TMCP-012).
+    pub fn project_access(&self) -> crate::ProjectAccessStore {
+        crate::ProjectAccessStore::from_pool(self.pool.clone())
+    }
+
+    /// Authoritative source / planning domain entry (TMCP-021/022/023).
+    pub fn source(&self) -> crate::SourceStore {
+        crate::SourceStore::from_pool(self.pool.clone())
+    }
+
     pub async fn check_schema(&self) -> PgResult<()> {
         let client = self.pool.get().await?;
         crate::check_schema(&client).await
+    }
+
+    pub fn ops_audit(&self) -> crate::OpsAuditStore {
+        crate::OpsAuditStore::from_pool(self.pool.clone())
     }
 
     pub async fn query(
@@ -146,6 +242,28 @@ impl WorkstreamReadStore {
         bearer: &str,
         request: WorkstreamQuery,
     ) -> PgResult<Value> {
+        if matches!(
+            request.op.as_str(),
+            "audit.history" | "audit.export" | "audit.count"
+        ) {
+            request.validate()?;
+            let filter = crate::OpsHistoryFilter {
+                work_id: request.work_id.clone(),
+                change_id: request.change_id.clone(),
+                member_actor_id: request.member_actor_id.clone(),
+                request_id: request.request_id.clone(),
+                category: request.category.clone(),
+                include_denies: request.include_denies.unwrap_or(false),
+                limit: request.limit.map(|n| n as i64),
+            };
+            let store = self.ops_audit();
+            return match request.op.as_str() {
+                "audit.history" => store.history(tenant, project, bearer, &filter).await,
+                "audit.export" => store.export(tenant, project, bearer, &filter).await,
+                "audit.count" => store.count(tenant, project, bearer, &filter).await,
+                _ => unreachable!(),
+            };
+        }
         let mut client = self.pool.get().await?;
         crate::check_schema(&client).await?;
         let tx = client
@@ -153,7 +271,21 @@ impl WorkstreamReadStore {
             .isolation_level(IsolationLevel::RepeatableRead)
             .start()
             .await?;
-        let auth = authenticate(&tx, tenant, project, bearer).await?;
+        let mut auth = authenticate(&tx, tenant, project, bearer).await?;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        crate::delegation_auth::resolve_agent_delegation(
+            &tx,
+            &mut auth,
+            project,
+            request.work_id.as_deref(),
+            None,
+            None,
+            now_ms,
+        )
+        .await?;
         let result = read(&tx, tenant, project, &auth, &request).await?;
         if serde_json::to_vec(&result)
             .map_err(|_| PgError::SourceDivergence)?
@@ -262,23 +394,65 @@ pub(crate) async fn read(
         return Err(PgError::Forbidden);
     }
     q.validate()?;
+    // TMCP-011: every query shares the work.read decision; invisible streams stay filtered above.
+    authorize_query(auth, None, q.work_id.as_deref(), &q.op)?;
     if q.op == "capabilities" {
-        return Ok(
-            json!({"protocol":"awr-team-workstream","protocol_version":1,"queries":QUERIES,
-        "commands":crate::workstream_command::COMMANDS,"scope_id":"main","authentication":"bearer_per_request","authorization":"transactional_workstream_grants",
-        "command_preconditions":"project_revision_v1","command_status_query":"command.inspect",
-        "claim_semantics":"coordination_only","lease_ttl_seconds":{"min":1,"max":3600},
-        "execution_intents":true,"execution_dispatch":false,"execution_start":true,"execution_reports":true,
-        "execution_modes":["caller_managed","reference_write_v1"],"execution_report_authority":"caller_asserted",
-        "reference_runner":{"transport":"operator_local_cli_or_library","effects":"bounded_file_writes",
-            "requires":"system_actor_with_explicit_attestation_grant","fencing_class":"uncontrolled","max_plan_bytes":1048576},
-        "execution_reconciliation":true,"trusted_execution_results":true,
-        "previous_epoch_reconciliation":true,"unattributed_history_adoption":false,
-        "execution_trust_authority":"explicit_operator_grant_and_actor_kind",
-        "dependency_exports":false,"execution_admission":true,
-        "execution_admission_scope":"same_client_current_lease_lexical_project_resources",
-        "artifact_content":false}),
-        );
+        let mut caps = json!({
+            "protocol":"awr-team-workstream","protocol_version":1,"queries":QUERIES,
+            "commands":crate::workstream_command::COMMANDS,
+            "authentication":"bearer_per_request",
+            "command_preconditions":"project_revision_v1","command_status_query":"command.inspect",
+            "claim_semantics":"coordination_only","lease_ttl_seconds":{"min":1,"max":3600},
+            "execution_intents":true,"execution_dispatch":false,"execution_start":true,"execution_reports":true,
+            "execution_modes":["caller_managed","reference_write_v1"],"execution_report_authority":"caller_asserted",
+            "reference_runner":{"transport":"operator_local_cli_or_library","effects":"bounded_file_writes",
+                "requires":"system_actor_with_explicit_attestation_grant","fencing_class":"uncontrolled","max_plan_bytes":1048576},
+            "execution_reconciliation":true,"trusted_execution_results":true,
+            "previous_epoch_reconciliation":true,"unattributed_history_adoption":false,"operator_history_migration":"schema_owner_cli_sessions_inactive_claims_events_v1",
+            "execution_trust_authority":"explicit_operator_grant_and_actor_kind",
+            "dependency_exports":false,"execution_admission":true,
+            "execution_admission_scope":"same_client_current_lease_lexical_project_resources",
+            "artifact_content":true,
+            "source_content":true,
+            "controlled_content_reads":true,
+            "planning": crate::SourceStore::planning_capabilities(),
+            "planning_writeback": crate::SourceStore::planning_writeback_capabilities(),
+            "planning_mcp": {
+                "tools": [
+                    "awr_team_planning_suggest",
+                    "awr_team_planning_draft",
+                    "awr_team_planning_preview",
+                    "awr_team_planning_approve",
+                    "awr_team_planning_publish",
+                    "awr_team_planning_outcome"
+                ],
+                "sql_tools": false,
+                "arbitrary_file_edit": false,
+                "direct_done": false,
+                "idempotent_request_id": true,
+                "outcome_query": "planning.outcome"
+            },
+            "ops_audit": {
+                "protocol": "awr-ops-audit-v1",
+                "queries": ["audit.history", "audit.export", "audit.count"],
+                "project_wide_action": "audit.read_project",
+                "deny_capacity_per_project": crate::DENY_CAPACITY_PER_PROJECT,
+                "chat_text_collected": false,
+                "tool_io_collected": false,
+                "token_billing_collected": false,
+                "non_repudiation": "not_claimed_against_db_owner"
+            }
+        });
+        // WS-014: explicit scope=main / old-client / local-file boundaries.
+        if let Some(obj) = caps.as_object_mut() {
+            obj.extend(
+                crate::workstream_auth::workstream_boundary_capabilities()
+                    .as_object()
+                    .cloned()
+                    .unwrap_or_default(),
+            );
+        }
+        return Ok(caps);
     }
     if q.op == "workstreams.list" {
         let binding = hash(
@@ -302,6 +476,69 @@ pub(crate) async fn read(
             Value::Null
         };
         return Ok(json!({"items":items,"total":visible.len(),"next_cursor":next}));
+    }
+    if q.op == "planning.outcome" {
+        let request_id = q.request_id.as_deref().ok_or(PgError::Forbidden)?;
+        let row = tx
+            .query_opt(
+                "SELECT op, request_hash, result_json, created_at::text
+                 FROM awr_team.planning_command_receipts
+                 WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3",
+                &[&tenant, &project, &request_id],
+            )
+            .await?;
+        let data = match row {
+            Some(r) => json!({
+                "protocol":"awr-team-planning-command-v1",
+                "request_id":request_id,
+                "op":r.get::<_,String>(0),
+                "request_hash":r.get::<_,String>(1),
+                "result":r.get::<_,Value>(2),
+                "created_at":r.get::<_,String>(3),
+                "already_recorded":true,
+                "next_step":"reuse this receipt; do not resubmit with a new request_id"
+            }),
+            None => json!({
+                "protocol":"awr-team-planning-command-v1",
+                "request_id":request_id,
+                "already_recorded":false,
+                "result":null,
+                "next_step":"absent receipt is unknown — wait/retry inspect before submitting a new request_id"
+            }),
+        };
+        return Ok(json!({
+            "protocol_version":1,
+            "scope_id":"main",
+            "selection_basis":"project",
+            "coordinator_epoch":auth.epoch,
+            "project_status":auth.project_status,
+            "source_snapshot_id":auth.snapshot,
+            "project_revision":auth.revision.to_string(),
+            "data":data
+        }));
+    }
+    if q.op == "source.content" {
+        let path = q.source_path.as_deref().ok_or(PgError::Forbidden)?;
+        let data = read_controlled_source_content(
+            tx,
+            tenant,
+            project,
+            auth,
+            path,
+            q.expected_sha256.as_deref(),
+            q.max_context_bytes,
+        )
+        .await?;
+        return Ok(json!({
+            "protocol_version":1,
+            "scope_id":"main",
+            "selection_basis":"project",
+            "coordinator_epoch":auth.epoch,
+            "project_status":auth.project_status,
+            "source_snapshot_id":auth.snapshot,
+            "project_revision":auth.revision.to_string(),
+            "data":data
+        }));
     }
     let mut selection = WorkstreamSelection {
         explicit: q.workstream_id,
@@ -336,6 +573,12 @@ pub(crate) async fn read(
         &auth.access,
         &selection,
         WorkstreamAction::Read,
+    )?;
+    authorize_query(
+        auth,
+        Some(resolved.workstream_id),
+        resolved.work_item_id.as_deref().or(q.work_id.as_deref()),
+        &q.op,
     )?;
     let stream = resolved.workstream_id.to_string();
     let binding = hash(
@@ -377,6 +620,58 @@ pub(crate) async fn read(
                 q.session_id.as_deref(),
             )
             .await?
+        }
+        "handoff.inspect" => {
+            let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
+            let _ = work_binding(tx, tenant, project, auth, work).await?;
+            let handoff_id = q.handoff_id.as_deref().ok_or(PgError::Forbidden)?;
+            let value =
+                crate::workstream_command::handoffs::inspect_query(tx, tenant, project, handoff_id)
+                    .await?;
+            // Scope: handoff must belong to the selected work.
+            if value["handoff"]["work_item_id"] != work {
+                return Err(PgError::Forbidden);
+            }
+            value
+        }
+        "evidence.inspect" => {
+            let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
+            let _ = work_binding(tx, tenant, project, auth, work).await?;
+            let evidence_id = q.evidence_id.as_deref().ok_or(PgError::Forbidden)?;
+            let value = crate::workstream_command::reviews::inspect_evidence(
+                tx,
+                tenant,
+                project,
+                evidence_id,
+            )
+            .await?;
+            if value["evidence"]["work_id"] != work {
+                return Err(PgError::Forbidden);
+            }
+            value
+        }
+        "review.inspect" => {
+            let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
+            let _ = work_binding(tx, tenant, project, auth, work).await?;
+            let round_id = q.review_round_id.as_deref().ok_or(PgError::Forbidden)?;
+            let value =
+                crate::workstream_command::reviews::inspect_review(tx, tenant, project, round_id)
+                    .await?;
+            if value["review"]["work_id"] != work {
+                return Err(PgError::Forbidden);
+            }
+            value
+        }
+        "completion.inspect" => {
+            let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
+            let _ = work_binding(tx, tenant, project, auth, work).await?;
+            crate::workstream_command::reviews::inspect_completion(tx, tenant, project, work)
+                .await?
+        }
+        "delivery.inspect" => {
+            let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
+            let _ = work_binding(tx, tenant, project, auth, work).await?;
+            crate::workstream_command::reviews::inspect_delivery(tx, tenant, project, work).await?
         }
         "command.inspect" => {
             let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
@@ -462,9 +757,28 @@ pub(crate) async fn read(
                     "work_version":r.get::<_,i64>(1).to_string(),"last_fence":r.get::<_,i64>(2).to_string(),
                     "recovery_blocked":r.get::<_,bool>(3),"selected_completion_id":r.get::<_,Option<String>>(4)}));
             let (_, ownership) = work_binding(tx, tenant, project, auth, work).await?;
-            let mut data = json!({"work_id":work,"contract_hash":contract_hash,"visible_contract":contract,
-                "runtime":runtime,"ownership_version":ownership.to_string(),
-                "dependency_export_unavailable":missing,"context_complete":reasons.is_empty(),"completeness_reasons":reasons,"execution_admission":"not_evaluated"});
+            let (required_specs, readable_refs, spec_reasons) =
+                controlled_prepare_context(tx, tenant, project, auth, &contract).await?;
+            reasons.extend(spec_reasons);
+            let mut data = json!({
+                "work_id":work,
+                "contract_hash":contract_hash,
+                "visible_contract":contract,
+                "published_contract":contract,
+                "required_specs":required_specs,
+                "authorized_readable_refs":readable_refs,
+                "runtime":runtime,
+                "ownership_version":ownership.to_string(),
+                "dependency_export_unavailable":missing,
+                "context_complete":reasons.is_empty(),
+                "completeness_reasons":reasons,
+                "execution_admission":"not_evaluated",
+                "next_step": if reasons.is_empty() {
+                    Value::Null
+                } else {
+                    json!("re-prepare after restoring missing authorized specs/deps, or raise max_context_bytes / use source.content")
+                }
+            });
             // Source snapshots and project audit revisions may advance because
             // of unrelated work. Bind actual selected facts, not those cursors.
             let context_hash = hash(&json!({"domain":"awr-team-workstream-context-v1",
@@ -524,10 +838,395 @@ pub(crate) async fn read(
                 "next_action":r.get::<_,Option<String>>(6),"open_loops":r.get::<_,Option<Value>>(7)})).collect();
             json!({"items":items,"current_contract_hash":current_contract,"automatic_resume":false})
         }
+        "source.content" => {
+            let path = q.source_path.as_deref().ok_or(PgError::Forbidden)?;
+            read_controlled_source_content(
+                tx,
+                tenant,
+                project,
+                auth,
+                path,
+                q.expected_sha256.as_deref(),
+                q.max_context_bytes,
+            )
+            .await?
+        }
+        "artifact.content" => {
+            let work = resolved.work_item_id.as_deref().ok_or(PgError::Forbidden)?;
+            let _ = work_binding(tx, tenant, project, auth, work).await?;
+            let artifact_id = q.artifact_id.as_deref().ok_or(PgError::Forbidden)?;
+            read_controlled_artifact_content(
+                tx,
+                tenant,
+                project,
+                work,
+                artifact_id,
+                q.expected_sha256.as_deref(),
+                q.max_context_bytes,
+            )
+            .await?
+        }
+        "planning.outcome" => {
+            // Receipt lookup uses the same auth gate as SourceStore; here we
+            // only expose the redacted receipt body already stored.
+            let request_id = q.request_id.as_deref().ok_or(PgError::Forbidden)?;
+            let row = tx
+                .query_opt(
+                    "SELECT op, request_hash, result_json, created_at::text
+                     FROM awr_team.planning_command_receipts
+                     WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3",
+                    &[&tenant, &project, &request_id],
+                )
+                .await?;
+            match row {
+                Some(r) => json!({
+                    "protocol":"awr-team-planning-command-v1",
+                    "request_id":request_id,
+                    "op":r.get::<_,String>(0),
+                    "request_hash":r.get::<_,String>(1),
+                    "result":r.get::<_,Value>(2),
+                    "created_at":r.get::<_,String>(3),
+                    "already_recorded":true,
+                    "next_step":"reuse this receipt; do not resubmit with a new request_id"
+                }),
+                None => json!({
+                    "protocol":"awr-team-planning-command-v1",
+                    "request_id":request_id,
+                    "already_recorded":false,
+                    "result":null,
+                    "next_step":"absent receipt is unknown — wait/retry inspect before submitting a new request_id"
+                }),
+            }
+        }
         _ => return Err(PgError::Unsupported("workstream query operation".into())),
     };
     Ok(
         json!({"protocol_version":1,"workstream_id":stream,"authority_version":resolved.authority_version.to_string(),"scope_id":"main","selection_basis":resolved.basis,
         "coordinator_epoch":auth.epoch,"project_status":auth.project_status,"source_snapshot_id":auth.snapshot,"project_revision":auth.revision.to_string(),"data":data}),
     )
+}
+
+fn safe_relative_source_path(path: &str) -> PgResult<()> {
+    if path.is_empty()
+        || path.len() > 512
+        || path.starts_with('/')
+        || path.contains("..")
+        || path.contains('\\')
+        || path.contains(':')
+        || path.contains("://")
+        || path.chars().any(char::is_control)
+    {
+        return Err(PgError::UnsafeSourcePath(path.into()));
+    }
+    Ok(())
+}
+
+async fn active_source_files(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+) -> PgResult<Vec<Value>> {
+    let row = tx
+        .query_opt(
+            "SELECT s.source_ref_json
+             FROM awr_team.projects p
+             JOIN awr_team.source_snapshots s
+               ON s.tenant_id=p.tenant_id AND s.project_id=p.id AND s.id=p.active_snapshot_id
+             WHERE p.tenant_id=$1 AND p.id=$2",
+            &[&tenant, &project],
+        )
+        .await?;
+    let Some(row) = row else {
+        return Ok(Vec::new());
+    };
+    let source_ref: Value = row.get(0);
+    Ok(source_ref
+        .get("files")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default())
+}
+
+async fn controlled_prepare_context(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    _auth: &ReaderAuthority,
+    contract: &WorkContract,
+) -> PgResult<(Vec<Value>, Vec<Value>, Vec<&'static str>)> {
+    let files = active_source_files(tx, tenant, project).await?;
+    let mut by_path = std::collections::BTreeMap::new();
+    for f in &files {
+        if let Some(path) = f.get("path").and_then(|v| v.as_str()) {
+            by_path.insert(path.to_string(), f.clone());
+        }
+    }
+    let mut required_specs = Vec::new();
+    let mut readable_refs = Vec::new();
+    let mut reasons: Vec<&'static str> = Vec::new();
+    for path in &contract.scope_paths {
+        if safe_relative_source_path(path).is_err() {
+            reasons.push("spec_path_rejected");
+            continue;
+        }
+        match by_path.get(path) {
+            Some(file) => {
+                let sha = file.get("sha256").and_then(|v| v.as_str()).unwrap_or("");
+                let bytes = file.get("bytes").and_then(|v| v.as_u64()).unwrap_or(0);
+                let text = file.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                // Re-hash text to prevent digest bypass via mutated JSON.
+                let digest = crate::source::sha256_hex(text.as_bytes());
+                if !sha.is_empty() && digest != sha {
+                    reasons.push("spec_digest_mismatch");
+                    continue;
+                }
+                required_specs.push(json!({
+                    "path": path,
+                    "sha256": digest,
+                    "byte_length": bytes,
+                    "content_included": bytes <= 16384,
+                    "text": if bytes <= 16384 { Value::String(text.to_string()) } else { Value::Null },
+                    "next_step": if bytes > 16384 {
+                        json!("fetch via source.content with max_context_bytes")
+                    } else {
+                        Value::Null
+                    }
+                }));
+                readable_refs.push(json!({
+                    "kind":"source",
+                    "path":path,
+                    "sha256":digest,
+                    "byte_length":bytes
+                }));
+            }
+            None => {
+                reasons.push("required_spec_missing");
+                readable_refs.push(json!({
+                    "kind":"source",
+                    "path":path,
+                    "available":false,
+                    "next_step":"restore the published source path under the active snapshot; historical versions and external URLs are not accepted"
+                }));
+            }
+        }
+    }
+    Ok((required_specs, readable_refs, reasons))
+}
+
+async fn read_controlled_source_content(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    auth: &ReaderAuthority,
+    path: &str,
+    expected_sha256: Option<&str>,
+    max_bytes: Option<usize>,
+) -> PgResult<Value> {
+    safe_relative_source_path(path)?;
+    let files = active_source_files(tx, tenant, project).await?;
+    let file = files
+        .into_iter()
+        .find(|f| f.get("path").and_then(|v| v.as_str()) == Some(path))
+        .ok_or_else(|| {
+            PgError::Protocol(
+                "source path not present in the active authorized snapshot; historical versions, URLs and attachments cannot bypass project/stream auth".into(),
+            )
+        })?;
+    let text = file
+        .get("text")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| PgError::Protocol("source file text unavailable".into()))?;
+    // Require read grant over every workstream whose identity/content is exposed.
+    // Mixed-scope catalog files (e.g. workstreams.json) are refused unless the
+    // caller can read the entire file's stream set — never return a raw shared
+    // snapshot based only on nonempty visible streams.
+    authorize_source_file_streams(auth, path, text)?;
+    let digest = crate::source::sha256_hex(text.as_bytes());
+    let recorded = file.get("sha256").and_then(|v| v.as_str()).unwrap_or("");
+    if !recorded.is_empty() && recorded != digest {
+        return Err(PgError::SnapshotDrift(path.into()));
+    }
+    if let Some(expected) = expected_sha256 {
+        if expected != digest {
+            return Err(PgError::SnapshotDrift(path.into()));
+        }
+    }
+    let max = max_bytes.unwrap_or(65536);
+    if text.len() > max {
+        return Err(PgError::ContextIncomplete);
+    }
+    let _ = (tenant, project);
+    Ok(json!({
+        "kind":"source",
+        "path":path,
+        "sha256":digest,
+        "byte_length":text.len(),
+        "text":text,
+        "snapshot":"active",
+        "history_bypass":false,
+        "url_bypass":false,
+        "next_step":null
+    }))
+}
+
+fn authorize_source_file_streams(auth: &ReaderAuthority, path: &str, text: &str) -> PgResult<()> {
+    use awr_core::Id;
+    use std::collections::BTreeSet;
+
+    let mut required: BTreeSet<Id> = BTreeSet::new();
+    if path == "workstreams.json" || path.ends_with("/workstreams.json") {
+        let bundle: Value = serde_json::from_str(text).map_err(|e| {
+            PgError::Protocol(format!("workstreams.json unreadable for auth binding: {e}"))
+        })?;
+        let streams = bundle
+            .pointer("/catalog/workstreams")
+            .and_then(Value::as_array)
+            .or_else(|| bundle.get("workstreams").and_then(Value::as_array));
+        if let Some(streams) = streams {
+            for stream in streams {
+                if let Some(id_str) = stream.get("id").and_then(Value::as_str) {
+                    let id: Id = id_str.parse().map_err(|_| {
+                        PgError::Protocol("invalid workstream id in catalog".into())
+                    })?;
+                    required.insert(id);
+                }
+            }
+        }
+        if let Some(contracts) = bundle.get("contracts").and_then(Value::as_array) {
+            for c in contracts {
+                if let Some(id_str) = c.get("workstream_id").and_then(Value::as_str) {
+                    let id: Id = id_str.parse().map_err(|_| {
+                        PgError::Protocol("invalid workstream_id in contracts".into())
+                    })?;
+                    required.insert(id);
+                }
+            }
+        }
+    } else {
+        // Spec / other snapshot files: only readable when referenced by a
+        // workstream the caller can already read.
+        for stream in &auth.catalog.workstreams {
+            if stream.acceptance_contracts.iter().any(|p| p == path) {
+                required.insert(stream.id);
+            }
+        }
+        if required.is_empty() {
+            // Unscoped paths in the shared snapshot are not readable via a
+            // partial stream grant.
+            return Err(PgError::Forbidden);
+        }
+    }
+
+    if required.is_empty() {
+        return Err(PgError::Forbidden);
+    }
+    for id in &required {
+        let Some(grant) = auth.access.grants.iter().find(|g| g.workstream_id == *id) else {
+            return Err(PgError::Forbidden);
+        };
+        if !grant.read {
+            return Err(PgError::Forbidden);
+        }
+    }
+    Ok(())
+}
+
+async fn read_controlled_artifact_content(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    work: &str,
+    artifact_id: &str,
+    expected_sha256: Option<&str>,
+    max_bytes: Option<usize>,
+) -> PgResult<Value> {
+    // Bind artifact to evidence for the authorized work — refuse free-floating IDs.
+    let row = tx
+        .query_opt(
+            "SELECT a.sha256, a.state, a.content, a.byte_length, a.media_type
+             FROM awr_team.artifacts a
+             JOIN awr_team.evidence e
+               ON e.tenant_id=a.tenant_id AND e.project_id=a.project_id AND e.artifact_id=a.id
+             WHERE a.tenant_id=$1 AND a.project_id=$2 AND a.id=$3 AND e.work_id=$4",
+            &[&tenant, &project, &artifact_id, &work],
+        )
+        .await?
+        .ok_or(PgError::Forbidden)?;
+    let sha: String = row.get(0);
+    let state: String = row.get(1);
+    let content: Option<Vec<u8>> = row.get(2);
+    let byte_length: i64 = row.get(3);
+    let media: Option<String> = row.get(4);
+    let content = content.ok_or_else(|| {
+        PgError::Protocol(
+            "artifact content not persisted; metadata-only records cannot be read via MCP".into(),
+        )
+    })?;
+    let digest = crate::source::sha256_hex(&content);
+    if state != "finalized" || digest != sha {
+        return Err(PgError::SnapshotDrift(artifact_id.into()));
+    }
+    if let Some(expected) = expected_sha256 {
+        if expected != digest {
+            return Err(PgError::SnapshotDrift(artifact_id.into()));
+        }
+    }
+    let max = max_bytes.unwrap_or(65536);
+    if content.len() > max {
+        return Err(PgError::ContextIncomplete);
+    }
+    let text = String::from_utf8(content.clone()).ok();
+    Ok(json!({
+        "kind":"artifact",
+        "artifact_id":artifact_id,
+        "work_id":work,
+        "sha256":digest,
+        "byte_length":byte_length,
+        "media_type":media,
+        "text":text,
+        "content_base64": if text.is_none() {
+            Value::String(base64_encode(&content))
+        } else {
+            Value::Null
+        },
+        "path_bypass":false,
+        "url_bypass":false,
+        "history_bypass":false,
+        "next_step":null
+    }))
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    // Minimal base64 without extra deps: use a simple alphabet encoder.
+    const ALPH: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    let mut i = 0;
+    while i < bytes.len() {
+        let b0 = bytes[i] as u32;
+        let b1 = if i + 1 < bytes.len() {
+            bytes[i + 1] as u32
+        } else {
+            0
+        };
+        let b2 = if i + 2 < bytes.len() {
+            bytes[i + 2] as u32
+        } else {
+            0
+        };
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+        out.push(ALPH[((triple >> 18) & 63) as usize] as char);
+        out.push(ALPH[((triple >> 12) & 63) as usize] as char);
+        if i + 1 < bytes.len() {
+            out.push(ALPH[((triple >> 6) & 63) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if i + 2 < bytes.len() {
+            out.push(ALPH[(triple & 63) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        i += 3;
+    }
+    out
 }

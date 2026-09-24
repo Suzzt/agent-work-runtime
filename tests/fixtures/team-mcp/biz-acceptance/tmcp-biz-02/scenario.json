@@ -1,0 +1,122 @@
+{
+  "scenario_id": "TMCP-BIZ-02",
+  "fixture_version": "1.0.0",
+  "namespace": "team-mcp-v1/biz-parallel-replan",
+  "business_title": "并线补齐共享契约",
+  "summary": "两名开发并行工作时发现缺失依赖，批准再规划后继续交付；随后统一约定并做集成后二次调整。",
+  "project_directory": "project",
+  "work_graph": "work-graph.json",
+  "identities": "identities.json",
+  "delegations": "delegations.json",
+  "entry_work": "PR-CLIENT",
+  "participants": {
+    "executor": {
+      "person_ref": "executor",
+      "purpose": "主执行开发者，经由命名客户端推进"
+    },
+    "executor_peer": {
+      "person_ref": "peer",
+      "purpose": "第二开发者，使用另一命名客户端"
+    },
+    "reviewer": {
+      "person_ref": "reviewer",
+      "purpose": "与执行者独立的复核 person"
+    }
+  },
+  "person_bindings": {
+    "executor": "person.blair-nguyen",
+    "peer": "person.alex-chen",
+    "reviewer": "person.riley-park"
+  },
+  "named_clients": [
+    "codex_cli",
+    "claude_code"
+  ],
+  "reviewer_distinct_from": [
+    "executor",
+    "executor_peer"
+  ],
+  "initial_request": "请和同伴并行推进客户端与服务端对接：各自认领一块，先把当前可交付的接口联通。如果发现缺共享依赖，先停下来说明，不要硬编码绕过。",
+  "prelude": null,
+  "followups": [
+    {
+      "number": 1,
+      "request": "共享类型和错误码约定还不齐，请整理一份双方都遵守的约定，并更新两边的引用。",
+      "publish": [
+        {
+          "source": "updates/round-1/materials/convention-draft.md",
+          "target": "materials/convention-draft.md",
+          "expected_previous_sha256": null
+        }
+      ],
+      "required_observation": "共享类型和错误码约定还不齐，请整理一份双方都遵守的约定，并更新两边的引用。"
+    },
+    {
+      "number": 2,
+      "request": "集成之后返回体字段名不一致，请做第二次调整，保证联调脚本一次通过。",
+      "publish": [
+        {
+          "source": "updates/round-2/materials/field-mismatch.md",
+          "target": "materials/field-mismatch.md",
+          "expected_previous_sha256": null
+        }
+      ],
+      "required_observation": "集成之后返回体字段名不一致，请做第二次调整，保证联调脚本一次通过。"
+    }
+  ],
+  "artifacts": [
+    {
+      "title": "缺依赖发现与再规划说明",
+      "path": "deliverables/missing-dep-replan.md",
+      "producer": "executor"
+    },
+    {
+      "title": "共享约定文档",
+      "path": "deliverables/shared-conventions.md",
+      "producer": "executor_peer"
+    },
+    {
+      "title": "集成后字段对齐修订",
+      "path": "deliverables/post-integration-adjust.md",
+      "producer": "executor"
+    },
+    {
+      "title": "独立复核记录",
+      "path": "deliverables/independent-review.md",
+      "producer": "reviewer"
+    },
+    {
+      "title": "最终交付回执说明",
+      "path": "deliverables/delivery.md",
+      "producer": "executor"
+    }
+  ],
+  "review_rubric": [
+    "缺依赖被显式记录并经批准再规划，而非静默绕过。",
+    "两名开发者各自有独立工作节点与客户端适配器。",
+    "共享约定与二次字段对齐均可追溯到追问材料。"
+  ],
+  "required_gates": [
+    "natural_client_initiation",
+    "actual_tool_or_role_execution",
+    "real_artifact",
+    "business_followup_1",
+    "business_followup_2",
+    "independent_review",
+    "delivery",
+    "traceable_receipt"
+  ],
+  "dimensions": [
+    "team_mcp",
+    "multi_person",
+    "remote_mcp",
+    "parallel_replan"
+  ],
+  "artifact_directory": ".local/awr-team-mcp-acceptance-v1/tmcp-biz-02",
+  "minimum_real_clients": 2,
+  "minimum_developer_persons": 2,
+  "native_mcp_required": true,
+  "independent_reviewer_required": true,
+  "runtime_seed_policy": "Never seed sessions, claims, events, checkpoints, completed work or receipts. Do not mutate business state via SQL for acceptance.",
+  "api_db_evidence_policy": "read_only"
+}

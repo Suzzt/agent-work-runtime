@@ -1,10 +1,15 @@
-//! Explicit schema-owner provisioning. Never reachable through client HTTP/MCP.
-//! No raw bearer enters a plan, audit event, receipt or database row.
+//! Access provisioning: schema-owner CLI bootstrap plus project-admin MCP (TMCP-012).
+//! Owner paths never reach client HTTP/MCP. Admin MCP uses the app role and
+//! `access.manage_project`. No raw bearer enters a plan, audit event, receipt,
+//! ordinary MCP message or database row — only `secret_hash`.
+use crate::pool::PgPool;
+use crate::workstream_auth::{authenticate, authorize_domain_action};
 use crate::{PgError, PgResult};
-use awr_core::{Id, WorkstreamCatalog};
+use awr_core::{Id, WorkstreamAction, WorkstreamCatalog};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
+use std::sync::Arc;
 use tokio_postgres::{Client, Transaction};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -49,6 +54,8 @@ pub struct AccessPlan {
     pub grants: Vec<AccessGrant>,
     pub credential: Option<AccessCredential>,
     pub revoke_credentials: Vec<String>,
+    #[serde(default)]
+    pub independent_review: bool,
 }
 
 fn invalid() -> PgError {
@@ -93,7 +100,13 @@ impl AccessPlan {
             || self.actor.display_name.chars().any(char::is_control)
             || !matches!(
                 self.role.as_str(),
-                "admin" | "worker" | "reviewer" | "reader"
+                "admin"
+                    | "worker"
+                    | "reviewer"
+                    | "reader"
+                    | "project_admin"
+                    | "developer"
+                    | "maintainer"
             )
             || self.grants.len() > 256
             || self.revoke_credentials.len() > 256
@@ -107,7 +120,7 @@ impl AccessPlan {
             if !seen.insert(g.workstream_id)
                 || !g.read
                 || (g.write && self.role == "reader")
-                || (g.manage && self.role != "admin")
+                || (g.manage && !matches!(self.role.as_str(), "admin" | "project_admin"))
                 || (g.attest_execution && (!g.write || self.actor.kind != "system"))
                 || (g.reconcile_execution && (!g.write || !g.manage || self.actor.kind == "agent"))
             {
@@ -154,7 +167,7 @@ impl OperatorAccess {
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
             .start()
             .await?;
-        bind(&tx, tenant, project, false).await?;
+        require_owner_project(&tx, tenant, project, false).await?;
         let state = snapshot(&tx, tenant, project, actor, caller).await?;
         let result = json!({"state_digest":hash(&state)?,"state":state});
         tx.commit().await?;
@@ -169,7 +182,7 @@ impl OperatorAccess {
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
             .start()
             .await?;
-        bind(&tx, &plan.tenant_id, &plan.project_id, false).await?;
+        require_owner_project(&tx, &plan.tenant_id, &plan.project_id, false).await?;
         let state = snapshot(
             &tx,
             &plan.tenant_id,
@@ -202,7 +215,7 @@ impl OperatorAccess {
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
             .start()
             .await?;
-        bind(&tx, tenant, project, false).await?;
+        require_owner_project(&tx, tenant, project, false).await?;
         let row = tx.query_opt("SELECT result_json FROM awr_team.access_changes WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3",
             &[&tenant,&project,&request]).await?;
         let result = match row {
@@ -230,7 +243,7 @@ impl OperatorAccess {
         )?;
         crate::check_schema(client).await?;
         let tx = client.transaction().await?;
-        let operator = bind(&tx, &plan.tenant_id, &plan.project_id, true).await?;
+        let operator = require_owner_project(&tx, &plan.tenant_id, &plan.project_id, true).await?;
         if let Some(r) = tx.query_opt("SELECT request_hash,result_json FROM awr_team.access_changes WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3",
             &[&plan.tenant_id,&plan.project_id,&request]).await? {
             if r.get::<_,String>(0) != intent_hash { return Err(PgError::IdempotencyConflict); }
@@ -284,12 +297,47 @@ impl OperatorAccess {
         let event = json!({"operator_role":operator,"actor_id":plan.actor.id,"client_id":plan.client_id,"request_id":request});
         tx.execute("INSERT INTO awr_team.events(tenant_id,project_id,id,project_revision,event_index,event_type,actor_id,payload_json)
             VALUES($1,$2,$3,$4,0,'access.changed',$5,$6)",&[&plan.tenant_id,&plan.project_id,&crate::tx::new_id(),&revision,&plan.actor.id,&event]).await?;
+        // TMCP-040: owner access apply also binds ops audit in-TX.
+        {
+            let summary = serde_json::json!({
+                "plan_digest": plan_digest,
+                "actor_id": plan.actor.id,
+                "client_id": plan.client_id,
+                "operator_role": operator,
+            });
+            let digest = crate::ops_audit::digest_of(&summary);
+            let audit = crate::ops_audit::OpsAuditWrite {
+                category: crate::ops_audit::OpsCategory::Access,
+                action: "access.manage_project".into(),
+                result: "committed",
+                person_id: None,
+                actor_id: plan.actor.id.clone(),
+                client_id: plan.client_id.clone(),
+                target_kind: "access_plan".into(),
+                target_id: Some(plan.actor.id.clone()),
+                work_id: None,
+                change_id: None,
+                request_id: Some(request.to_string()),
+                membership_version: None,
+                authority_version: None,
+                policy_version: Some(awr_team::PERMISSION_POLICY_VERSION as i32),
+                source_version: None,
+                digest: Some(digest),
+                summary,
+            };
+            crate::ops_audit::record_in_tx(&tx, &plan.tenant_id, &plan.project_id, &audit).await?;
+        }
         tx.commit().await?;
         Ok(json!({"replayed":false,"receipt":receipt}))
     }
 }
 
-async fn bind(tx: &Transaction<'_>, tenant: &str, project: &str, write: bool) -> PgResult<String> {
+pub(crate) async fn require_owner_project(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    write: bool,
+) -> PgResult<String> {
     let role = tx
         .query_one(
             "SELECT current_user::text,pg_has_role(current_user,n.nspowner,'USAGE')
@@ -338,8 +386,8 @@ async fn snapshot(
         .get(0);
     let a=tx.query_opt("SELECT kind,display_name,status FROM awr_team.actors WHERE tenant_id=$1 AND id=$2 FOR SHARE",&[&tenant,&actor]).await?
         .map(|r|json!({"kind":r.get::<_,String>(0),"display_name":r.get::<_,String>(1),"status":r.get::<_,String>(2)}));
-    let member=tx.query_opt("SELECT role,membership_version FROM awr_team.project_memberships WHERE tenant_id=$1 AND project_id=$2 AND actor_id=$3 FOR SHARE",
-        &[&tenant,&project,&actor]).await?.map(|r|json!({"role":r.get::<_,String>(0),"version":r.get::<_,i64>(1).to_string()}));
+    let member=tx.query_opt("SELECT role,membership_version,independent_review FROM awr_team.project_memberships WHERE tenant_id=$1 AND project_id=$2 AND actor_id=$3 FOR SHARE",
+        &[&tenant,&project,&actor]).await?.map(|r|json!({"role":r.get::<_,String>(0),"version":r.get::<_,i64>(1).to_string(),"independent_review":r.get::<_,bool>(2)}));
     let grants=tx.query("SELECT workstream_id,authority_version,can_read,can_write,can_manage,can_attest_execution,can_reconcile_execution,active,grant_version
         FROM awr_team.workstream_grants WHERE tenant_id=$1 AND project_id=$2 AND actor_id=$3 AND client_id=$4 ORDER BY workstream_id FOR SHARE",
         &[&tenant,&project,&actor,&caller]).await?.iter().map(|r|json!({"workstream_id":r.get::<_,String>(0),"authority_version":r.get::<_,i64>(1).to_string(),
@@ -433,9 +481,14 @@ fn policy(state: &Value) -> Value {
 async fn apply_policy(tx: &Transaction<'_>, p: &AccessPlan) -> PgResult<()> {
     tx.execute("INSERT INTO awr_team.actors(tenant_id,id,kind,display_name,status) VALUES($1,$2,$3,$4,'active') ON CONFLICT DO NOTHING",
         &[&p.tenant_id,&p.actor.id,&p.actor.kind,&p.actor.display_name]).await?;
-    tx.execute("INSERT INTO awr_team.project_memberships(tenant_id,project_id,actor_id,role) VALUES($1,$2,$3,$4)
-        ON CONFLICT(tenant_id,project_id,actor_id) DO UPDATE SET role=EXCLUDED.role,membership_version=awr_team.project_memberships.membership_version+1
-        WHERE awr_team.project_memberships.role<>EXCLUDED.role",&[&p.tenant_id,&p.project_id,&p.actor.id,&p.role]).await?;
+    tx.execute("INSERT INTO awr_team.project_memberships(tenant_id,project_id,actor_id,role,independent_review) VALUES($1,$2,$3,$4,$5)
+        ON CONFLICT(tenant_id,project_id,actor_id) DO UPDATE SET
+            role=EXCLUDED.role,
+            independent_review=EXCLUDED.independent_review,
+            membership_version=awr_team.project_memberships.membership_version+1
+        WHERE awr_team.project_memberships.role IS DISTINCT FROM EXCLUDED.role
+           OR awr_team.project_memberships.independent_review IS DISTINCT FROM EXCLUDED.independent_review",
+        &[&p.tenant_id,&p.project_id,&p.actor.id,&p.role,&p.independent_review]).await?;
     let ids = p
         .grants
         .iter()
@@ -469,5 +522,769 @@ async fn apply_policy(tx: &Transaction<'_>, p: &AccessPlan) -> PgResult<()> {
     // identity or a credential collision through ON CONFLICT DO NOTHING.
     let after = snapshot(tx, &p.tenant_id, &p.project_id, &p.actor.id, &p.client_id).await?;
     validate_current(tx, p, &after).await?;
+    Ok(())
+}
+
+/// Project-bounded member/role/credential plan for authorized project admins (TMCP-012).
+/// Tenant/project are bound from the authenticated MCP/HTTP project, never from the body.
+/// Raw secrets are refused; only `secret_hash` may be registered.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdminAccessPlan {
+    pub protocol_version: u32,
+    pub subject: AccessActor,
+    pub subject_client_id: String,
+    pub role: String,
+    pub grants: Vec<AccessGrant>,
+    pub credential: Option<AccessCredential>,
+    /// Explicit review.decide grant (TMCP-031). Never implied by role template.
+    #[serde(default)]
+    pub independent_review: bool,
+    #[serde(default)]
+    pub remove_membership: bool,
+    /// Tenant-wide credential revoke is owner-only. Project admins must clear
+    /// project grants instead; non-empty values are rejected with Forbidden.
+    #[serde(default)]
+    pub revoke_tenant_credentials: Vec<String>,
+}
+
+impl AdminAccessPlan {
+    fn validate_admin_bounds(&self) -> PgResult<()> {
+        if self.protocol_version != 1
+            || !identity(&self.subject.id)
+            || !identity(&self.subject_client_id)
+            || !matches!(self.subject.kind.as_str(), "human" | "agent" | "system")
+            || self.subject.display_name.trim().is_empty()
+            || self.subject.display_name.len() > 512
+            || self.subject.display_name.chars().any(char::is_control)
+            || !matches!(
+                self.role.as_str(),
+                "admin"
+                    | "worker"
+                    | "reviewer"
+                    | "reader"
+                    | "project_admin"
+                    | "developer"
+                    | "maintainer"
+            )
+            || self.grants.len() > 256
+            || self.revoke_tenant_credentials.len() > 256
+            || serde_json::to_vec(self).map_err(|_| invalid())?.len() > 65536
+        {
+            return Err(invalid());
+        }
+        if !self.revoke_tenant_credentials.is_empty() {
+            // Acceptance: tenant-level credential revoke requires matching
+            // (owner/cross-project) permission; otherwise use project grant revoke.
+            return Err(PgError::Forbidden);
+        }
+        if self.remove_membership && !self.grants.is_empty() {
+            return Err(invalid());
+        }
+        if self.independent_review {
+            let Some(template) = crate::workstream_auth::map_membership_role(&self.role) else {
+                return Err(invalid());
+            };
+            if !awr_team::independent_review_eligible(template) {
+                return Err(PgError::Forbidden);
+            }
+        }
+        let mut seen = BTreeSet::new();
+        for g in &self.grants {
+            version(&g.authority_version)?;
+            // Project admins cannot grant special executor/operator authorities.
+            if !seen.insert(g.workstream_id)
+                || !g.read
+                || g.attest_execution
+                || g.reconcile_execution
+                || (g.write && matches!(self.role.as_str(), "reader"))
+                || (g.manage && !matches!(self.role.as_str(), "admin" | "project_admin"))
+            {
+                return Err(invalid());
+            }
+        }
+        if let Some(c) = &self.credential {
+            if !credential_id(&c.id)
+                || !c.secret_hash.strip_prefix("sha256:").is_some_and(hex)
+                || c.expires_at_unix_ms
+                    .is_some_and(|t| !(1..=253402300799999).contains(&t))
+            {
+                return Err(invalid());
+            }
+        }
+        Ok(())
+    }
+
+    fn as_owner_plan(&self, tenant: &str, project: &str) -> AccessPlan {
+        AccessPlan {
+            protocol_version: 1,
+            tenant_id: tenant.into(),
+            project_id: project.into(),
+            actor: self.subject.clone(),
+            client_id: self.subject_client_id.clone(),
+            role: self.role.clone(),
+            grants: self.grants.clone(),
+            credential: self.credential.clone(),
+            revoke_credentials: vec![],
+            independent_review: self.independent_review,
+        }
+    }
+}
+
+fn public_admin_plan(plan: &AdminAccessPlan) -> Value {
+    let mut v = serde_json::to_value(plan).expect("serializable admin access plan");
+    if let Some(c) = v.get_mut("credential").and_then(Value::as_object_mut) {
+        c.remove("secret_hash");
+    }
+    v
+}
+
+fn is_admin_role(role: &str) -> bool {
+    matches!(role, "admin" | "project_admin")
+}
+
+/// Authenticated client grant ceiling for project-admin access changes (TMCP-012).
+/// Membership `access.manage_project` alone is insufficient: every inspect/preview/
+/// apply/outcome must also be covered by the caller's explicit workstream manage
+/// grants, and requested grant bits must not exceed the caller's own bits.
+fn caller_grant<'a>(
+    auth: &'a crate::workstream_auth::ReaderAuthority,
+    stream: Id,
+) -> Option<&'a awr_core::WorkstreamGrant> {
+    auth.access
+        .grants
+        .iter()
+        .find(|grant| grant.workstream_id == stream)
+}
+
+fn require_project_manage_grant(auth: &crate::workstream_auth::ReaderAuthority) -> PgResult<()> {
+    if !auth.access.grants.iter().any(|grant| grant.manage) {
+        return Err(PgError::Forbidden);
+    }
+    Ok(())
+}
+
+fn require_manage_on_streams(
+    auth: &crate::workstream_auth::ReaderAuthority,
+    streams: &[Id],
+) -> PgResult<()> {
+    if streams.is_empty() {
+        // No concrete streams in the delta still requires explicit manage somewhere.
+        return require_project_manage_grant(auth);
+    }
+    for stream in streams {
+        let caller = caller_grant(auth, *stream).ok_or(PgError::Forbidden)?;
+        if !caller.manage {
+            return Err(PgError::Forbidden);
+        }
+        auth.access
+            .authorize(&auth.catalog, *stream, WorkstreamAction::Manage)
+            .map_err(|_| PgError::Forbidden)?;
+    }
+    Ok(())
+}
+
+/// Authorize the full access delta: every stream being removed or replaced, plus
+/// every desired grant bit. `apply` replaces the selected client's entire project
+/// grant set, so empty `grants` / removals must not slip past a one-stream manage.
+fn enforce_client_grant_ceiling(
+    auth: &crate::workstream_auth::ReaderAuthority,
+    plan: &AdminAccessPlan,
+    current_streams: &[Id],
+) -> PgResult<()> {
+    for desired in &plan.grants {
+        let caller = caller_grant(auth, desired.workstream_id).ok_or(PgError::Forbidden)?;
+        if !caller.manage {
+            return Err(PgError::Forbidden);
+        }
+        // Ceiling: cannot bootstrap bits beyond the authenticated client grant.
+        if (desired.read && !caller.read)
+            || (desired.write && !caller.write)
+            || (desired.manage && !caller.manage)
+        {
+            return Err(PgError::Forbidden);
+        }
+    }
+    let mut affected: BTreeSet<Id> = current_streams.iter().copied().collect();
+    for desired in &plan.grants {
+        affected.insert(desired.workstream_id);
+    }
+    let affected: Vec<Id> = affected.into_iter().collect();
+    require_manage_on_streams(auth, &affected)
+}
+
+async fn actor_active_grant_streams(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    actor: &str,
+) -> PgResult<Vec<Id>> {
+    let rows = tx
+        .query(
+            "SELECT DISTINCT workstream_id FROM awr_team.workstream_grants
+             WHERE tenant_id=$1 AND project_id=$2 AND actor_id=$3 AND active
+             ORDER BY workstream_id",
+            &[&tenant, &project, &actor],
+        )
+        .await?;
+    let mut out = Vec::new();
+    for row in rows {
+        let raw: String = row.get(0);
+        out.push(raw.parse::<Id>().map_err(|_| PgError::Forbidden)?);
+    }
+    Ok(out)
+}
+
+fn enforce_inspect_grant_ceiling(
+    auth: &crate::workstream_auth::ReaderAuthority,
+    subject_streams: &[Id],
+) -> PgResult<()> {
+    if subject_streams.is_empty() {
+        return require_project_manage_grant(auth);
+    }
+    for stream in subject_streams {
+        let caller = caller_grant(auth, *stream).ok_or(PgError::Forbidden)?;
+        if !caller.manage {
+            return Err(PgError::Forbidden);
+        }
+        auth.access
+            .authorize(&auth.catalog, *stream, WorkstreamAction::Manage)
+            .map_err(|_| PgError::Forbidden)?;
+    }
+    Ok(())
+}
+
+/// App-role store for project-admin MCP preview/apply/outcome (not schema-owner).
+pub struct ProjectAccessStore {
+    pool: Arc<PgPool>,
+}
+
+impl ProjectAccessStore {
+    pub fn new(url: impl Into<String>) -> Self {
+        Self {
+            pool: Arc::new(PgPool::new(url)),
+        }
+    }
+    pub fn from_pool(pool: Arc<PgPool>) -> Self {
+        Self { pool }
+    }
+    pub fn from_config(config: tokio_postgres::Config) -> Self {
+        Self {
+            pool: Arc::new(PgPool::from_config(config)),
+        }
+    }
+
+    pub async fn inspect(
+        &self,
+        tenant: &str,
+        project: &str,
+        bearer: &str,
+        subject_actor: &str,
+        subject_client: &str,
+    ) -> PgResult<Value> {
+        if ![subject_actor, subject_client].iter().all(|s| identity(s)) {
+            return Err(invalid());
+        }
+        let mut client = self.pool.get().await?;
+        crate::check_schema(&client).await?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await?;
+        let auth = authenticate(&tx, tenant, project, bearer).await?;
+        authorize_domain_action(&auth, awr_team::Action::AccessManageProject, None, None)?;
+        let state = snapshot(&tx, tenant, project, subject_actor, subject_client).await?;
+        enforce_inspect_grant_ceiling(&auth, &active_grant_streams(&state))?;
+        let impact = impact_report(&tx, tenant, project, subject_actor, subject_client).await?;
+        let result = json!({
+            "state_digest": hash(&state)?,
+            "state": redacted_state(&state),
+            "impact": impact,
+            "credential_delivery": "protected_install_or_claim_channel_only",
+            "raw_secrets_in_response": false
+        });
+        tx.commit().await?;
+        Ok(result)
+    }
+
+    pub async fn preview(
+        &self,
+        tenant: &str,
+        project: &str,
+        bearer: &str,
+        plan: &AdminAccessPlan,
+    ) -> PgResult<Value> {
+        plan.validate_admin_bounds()?;
+        let mut client = self.pool.get().await?;
+        crate::check_schema(&client).await?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await?;
+        let auth = authenticate(&tx, tenant, project, bearer).await?;
+        authorize_domain_action(&auth, awr_team::Action::AccessManageProject, None, None)?;
+        refuse_self_special_elevation(&auth, plan)?;
+        let owner = plan.as_owner_plan(tenant, project);
+        let state = snapshot(
+            &tx,
+            tenant,
+            project,
+            &plan.subject.id,
+            &plan.subject_client_id,
+        )
+        .await?;
+        let current_streams = if plan.remove_membership {
+            actor_active_grant_streams(&tx, tenant, project, &plan.subject.id).await?
+        } else {
+            active_grant_streams(&state)
+        };
+        enforce_client_grant_ceiling(&auth, plan, &current_streams)?;
+        validate_current(&tx, &owner, &state).await?;
+        ensure_last_admin_safe(&tx, tenant, project, plan, &state).await?;
+        let impact = impact_report(
+            &tx,
+            tenant,
+            project,
+            &plan.subject.id,
+            &plan.subject_client_id,
+        )
+        .await?;
+        let plan_digest = hash(&serde_json::to_value(plan).map_err(|_| invalid())?)?;
+        let result = json!({
+            "applied": false,
+            "state_digest": hash(&state)?,
+            "plan_digest": plan_digest,
+            "current": redacted_state(&state),
+            "desired": public_admin_plan(plan),
+            "impact": impact,
+            "grant_semantics": "replace_selected_actor_client_project_grants",
+            "membership_scope": "all_clients_of_actor_in_project",
+            "credential_revocation_scope": "refused_for_project_admin_use_project_grant_revoke",
+            "project_revoke_preserves_other_projects": true,
+            "permission_ceiling": "project_admin_template_without_special_authorities",
+            "raw_secrets_in_response": false
+        });
+        tx.commit().await?;
+        Ok(result)
+    }
+
+    pub async fn outcome(
+        &self,
+        tenant: &str,
+        project: &str,
+        bearer: &str,
+        request: &str,
+    ) -> PgResult<Value> {
+        if !identity(request) {
+            return Err(invalid());
+        }
+        let mut client = self.pool.get().await?;
+        crate::check_schema(&client).await?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await?;
+        let auth = authenticate(&tx, tenant, project, bearer).await?;
+        authorize_domain_action(&auth, awr_team::Action::AccessManageProject, None, None)?;
+        // Outcome/replay inspection still requires an explicit manage grant ceiling.
+        require_project_manage_grant(&auth)?;
+        let row = tx
+            .query_opt(
+                "SELECT result_json FROM awr_team.project_access_changes
+                 WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3",
+                &[&tenant, &project, &request],
+            )
+            .await?;
+        let result = match row {
+            Some(r) => {
+                json!({"outcome":"committed","receipt": redact_receipt(r.get::<_, Value>(0))})
+            }
+            None => json!({"outcome":"unknown"}),
+        };
+        tx.commit().await?;
+        Ok(result)
+    }
+
+    pub async fn apply(
+        &self,
+        tenant: &str,
+        project: &str,
+        bearer: &str,
+        plan: &AdminAccessPlan,
+        request: &str,
+        expected_state: &str,
+        expected_plan: &str,
+    ) -> PgResult<Value> {
+        plan.validate_admin_bounds()?;
+        if !identity(request) || !hex(expected_state) || !hex(expected_plan) {
+            return Err(invalid());
+        }
+        let plan_digest = hash(&serde_json::to_value(plan).map_err(|_| invalid())?)?;
+        let intent_hash = hash(&json!({
+            "protocol":"awr-project-admin-access-v1",
+            "plan":plan,
+            "expected_state":expected_state,
+            "expected_plan":expected_plan
+        }))?;
+        let mut client = self.pool.get().await?;
+        crate::check_schema(&client).await?;
+        let tx = client.transaction().await?;
+        let auth = authenticate(&tx, tenant, project, bearer).await?;
+        if let Err(err) =
+            authorize_domain_action(&auth, awr_team::Action::AccessManageProject, None, None)
+        {
+            tx.rollback().await?;
+            let _ = crate::ops_audit::record_deny(
+                self.pool.as_ref(),
+                tenant,
+                project,
+                &crate::ops_audit::OpsDenyWrite {
+                    category: crate::ops_audit::OpsCategory::Access,
+                    action: "access.manage_project".into(),
+                    actor_id: Some(auth.actor_id.clone()),
+                    client_id: Some(auth.client_id.clone()),
+                    person_id: None,
+                    target_kind: Some("member".into()),
+                    target_id: Some(plan.subject.id.clone()),
+                    request_id: Some(request.to_string()),
+                    reason_code: "permission_denied".into(),
+                },
+            )
+            .await;
+            return Err(err);
+        }
+        refuse_self_special_elevation(&auth, plan)?;
+        if let Some(r) = tx
+            .query_opt(
+                "SELECT request_hash,result_json FROM awr_team.project_access_changes
+                 WHERE tenant_id=$1 AND project_id=$2 AND request_id=$3",
+                &[&tenant, &project, &request],
+            )
+            .await?
+        {
+            if r.get::<_, String>(0) != intent_hash {
+                return Err(PgError::IdempotencyConflict);
+            }
+            let receipt = redact_receipt(r.get(1));
+            tx.commit().await?;
+            return Ok(json!({"replayed":true,"receipt":receipt,"raw_secrets_in_response":false}));
+        }
+        // Serialize subject actor changes (membership shared across clients).
+        tx.query_opt(
+            "SELECT id FROM awr_team.actors WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
+            &[&tenant, &plan.subject.id],
+        )
+        .await?;
+        let before = snapshot(
+            &tx,
+            tenant,
+            project,
+            &plan.subject.id,
+            &plan.subject_client_id,
+        )
+        .await?;
+        let current_streams = if plan.remove_membership {
+            actor_active_grant_streams(&tx, tenant, project, &plan.subject.id).await?
+        } else {
+            active_grant_streams(&before)
+        };
+        // Full-delta ceiling must run before digest gates so mismatched digests
+        // cannot mask an unauthorized wipe/replace of unmanaged streams.
+        enforce_client_grant_ceiling(&auth, plan, &current_streams)?;
+        if plan_digest != expected_plan {
+            return Err(PgError::PreconditionsChanged);
+        }
+        if hash(&before)? != expected_state {
+            return Err(PgError::PreconditionsChanged);
+        }
+        let owner = plan.as_owner_plan(tenant, project);
+        validate_current(&tx, &owner, &before).await?;
+        ensure_last_admin_safe(&tx, tenant, project, plan, &before).await?;
+        if plan.remove_membership {
+            apply_remove_membership(&tx, tenant, project, plan).await?;
+        } else {
+            apply_policy(&tx, &owner).await?;
+        }
+        let after = snapshot(
+            &tx,
+            tenant,
+            project,
+            &plan.subject.id,
+            &plan.subject_client_id,
+        )
+        .await?;
+        if !plan.remove_membership {
+            validate_current(&tx, &owner, &after).await?;
+        }
+        let revision: i64 = tx
+            .query_opt(
+                "UPDATE awr_team.projects SET project_revision=project_revision+1
+                 WHERE tenant_id=$1 AND id=$2 AND project_revision<9223372036854775807
+                 RETURNING project_revision",
+                &[&tenant, &project],
+            )
+            .await?
+            .ok_or(PgError::PreconditionsChanged)?
+            .get(0);
+        let impact = impact_report(
+            &tx,
+            tenant,
+            project,
+            &plan.subject.id,
+            &plan.subject_client_id,
+        )
+        .await?;
+        let receipt = json!({
+            "protocol":"awr-project-admin-access-v1",
+            "request_id":request,
+            "request_hash":intent_hash,
+            "admin_actor_id":auth.actor_id,
+            "admin_client_id":auth.client_id,
+            "tenant_id":tenant,
+            "project_id":project,
+            "subject_actor_id":plan.subject.id,
+            "subject_client_id":plan.subject_client_id,
+            "before_digest":expected_state,
+            "after_digest":hash(&after)?,
+            "plan_digest":plan_digest,
+            "project_revision":revision.to_string(),
+            "desired":public_admin_plan(plan),
+            "previous_policy":policy(&before),
+            "current_policy":policy(&after),
+            "impact":impact,
+            "state_basis":"at_commit",
+            "execution_authorized":false,
+            "credential_delivery":"protected_install_or_claim_channel_only",
+            "raw_secrets_in_response":false
+        });
+        tx.execute(
+            "INSERT INTO awr_team.project_access_changes(
+                tenant_id,project_id,request_id,request_hash,admin_actor_id,admin_client_id,result_json)
+             VALUES($1,$2,$3,$4,$5,$6,$7)",
+            &[
+                &tenant,
+                &project,
+                &request,
+                &intent_hash,
+                &auth.actor_id,
+                &auth.client_id,
+                &receipt,
+            ],
+        )
+        .await?;
+        let event = json!({
+            "admin_actor_id":auth.actor_id,
+            "admin_client_id":auth.client_id,
+            "subject_actor_id":plan.subject.id,
+            "subject_client_id":plan.subject_client_id,
+            "request_id":request,
+            "remove_membership":plan.remove_membership
+        });
+        tx.execute(
+            "INSERT INTO awr_team.events(tenant_id,project_id,id,project_revision,event_index,event_type,actor_id,payload_json)
+             VALUES($1,$2,$3,$4,0,'access.changed',$5,$6)",
+            &[
+                &tenant,
+                &project,
+                &crate::tx::new_id(),
+                &revision,
+                &auth.actor_id,
+                &event,
+            ],
+        )
+        .await?;
+        // TMCP-040: bind ops audit in the same TX as access receipt/event.
+        {
+            let summary = serde_json::json!({
+                "plan_digest": plan_digest,
+                "remove_membership": plan.remove_membership,
+                "subject_actor_id": plan.subject.id,
+                "subject_client_id": plan.subject_client_id,
+                "role": plan.role,
+            });
+            let digest = crate::ops_audit::digest_of(&summary);
+            let mut audit = crate::ops_audit::write_from_auth(
+                &auth,
+                crate::ops_audit::OpsCategory::Access,
+                "access.manage_project",
+                "access_plan",
+            );
+            audit.request_id = Some(request.to_string());
+            audit.target_id = Some(plan.subject.id.clone());
+            audit.digest = Some(digest);
+            audit.summary = summary;
+            crate::ops_audit::record_in_tx(&tx, tenant, project, &audit).await?;
+        }
+        // Concurrent membership revoke of the caller must not commit. Intentional
+        // self-demotion / last-admin handoff is allowed when another admin remains.
+        let self_demotion = plan.subject.id == auth.actor_id
+            && (plan.remove_membership || !is_admin_role(&plan.role));
+        if !self_demotion {
+            let live = authenticate(&tx, tenant, project, bearer).await?;
+            authorize_domain_action(&live, awr_team::Action::AccessManageProject, None, None)?;
+            enforce_client_grant_ceiling(&live, plan, &current_streams)?;
+        }
+        tx.commit().await?;
+        Ok(json!({"replayed":false,"receipt":receipt,"raw_secrets_in_response":false}))
+    }
+}
+
+fn active_grant_streams(state: &Value) -> Vec<Id> {
+    state
+        .get("grants")
+        .and_then(|g| g.as_array())
+        .into_iter()
+        .flatten()
+        .filter(|g| g.get("active").and_then(|a| a.as_bool()).unwrap_or(true))
+        .filter_map(|g| {
+            g.get("workstream_id")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<Id>().ok())
+        })
+        .collect()
+}
+
+fn redacted_state(state: &Value) -> Value {
+    // Credentials already omit secret_hash; keep metadata only.
+    state.clone()
+}
+
+fn redact_receipt(mut receipt: Value) -> Value {
+    if let Some(obj) = receipt.as_object_mut() {
+        if let Some(desired) = obj.get_mut("desired").and_then(|v| v.as_object_mut()) {
+            if let Some(c) = desired
+                .get_mut("credential")
+                .and_then(|v| v.as_object_mut())
+            {
+                c.remove("secret_hash");
+            }
+        }
+    }
+    receipt
+}
+
+fn refuse_self_special_elevation(
+    auth: &crate::workstream_auth::ReaderAuthority,
+    plan: &AdminAccessPlan,
+) -> PgResult<()> {
+    // Body cannot forge caller identity; still refuse plans that try to attach
+    // special authorities (already validated) or escalate beyond templates.
+    if plan
+        .grants
+        .iter()
+        .any(|g| g.attest_execution || g.reconcile_execution)
+    {
+        return Err(PgError::Forbidden);
+    }
+    // Non-admins never reach here (authorize_domain_action). An admin demoting
+    // themselves is allowed only when another admin remains (checked separately).
+    let _ = auth;
+    Ok(())
+}
+
+async fn ensure_last_admin_safe(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    plan: &AdminAccessPlan,
+    state: &Value,
+) -> PgResult<()> {
+    let current_role = state
+        .get("membership")
+        .and_then(|m| m.get("role"))
+        .and_then(|r| r.as_str());
+    let currently_admin = current_role.is_some_and(is_admin_role);
+    let will_be_admin = !plan.remove_membership && is_admin_role(&plan.role);
+    if currently_admin && !will_be_admin {
+        let admins: i64 = tx
+            .query_one(
+                "SELECT COUNT(*)::bigint FROM awr_team.project_memberships
+                 WHERE tenant_id=$1 AND project_id=$2
+                   AND role IN ('admin','project_admin')
+                   AND actor_id <> $3",
+                &[&tenant, &project, &plan.subject.id],
+            )
+            .await?
+            .get(0);
+        if admins < 1 {
+            return Err(PgError::Forbidden);
+        }
+    }
+    Ok(())
+}
+
+async fn impact_report(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    actor: &str,
+    client: &str,
+) -> PgResult<Value> {
+    let other_clients: Vec<Value> = tx
+        .query(
+            "SELECT DISTINCT client_id FROM awr_team.workstream_grants
+             WHERE tenant_id=$1 AND project_id=$2 AND actor_id=$3 AND client_id<>$4
+             ORDER BY client_id",
+            &[&tenant, &project, &actor, &client],
+        )
+        .await?
+        .iter()
+        .map(|r| Value::String(r.get(0)))
+        .collect();
+    // Project RLS intentionally hides other projects; preserve-other-projects is a
+    // write-scope guarantee (UPDATE/DELETE only touch the bound project), not a cross-project read.
+    let same_credential_clients: Vec<Value> = tx
+        .query(
+            "SELECT id, client_id,
+                    (extract(epoch FROM revoked_at)*1000)::bigint AS revoked_at_unix_ms
+             FROM awr_team.credentials
+             WHERE tenant_id=$1 AND actor_id=$2
+             ORDER BY id",
+            &[&tenant, &actor],
+        )
+        .await?
+        .iter()
+        .map(|r| {
+            json!({
+                "credential_id": r.get::<_, String>(0),
+                "client_id": r.get::<_, String>(1),
+                "revoked_at_unix_ms": r.get::<_, Option<i64>>(2)
+            })
+        })
+        .collect();
+    Ok(json!({
+        "other_clients_sharing_membership": other_clients,
+        "membership_change_affects_all_clients_of_actor": true,
+        "project_grant_revoke_preserves_other_projects": true,
+        "other_projects_not_readable_under_project_rls": true,
+        "credentials_of_subject_actor": same_credential_clients,
+        "tenant_credential_revoke": "requires_owner_operator_access_not_project_admin_mcp"
+    }))
+}
+
+async fn apply_remove_membership(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    plan: &AdminAccessPlan,
+) -> PgResult<()> {
+    // Remove this project's grants for every client of the actor, then membership.
+    // Grant FK references membership; other projects and tenant credentials are untouched.
+    // Prior grant/membership state remains in the access receipt previous_policy.
+    tx.execute(
+        "DELETE FROM awr_team.workstream_grants
+         WHERE tenant_id=$1 AND project_id=$2 AND actor_id=$3",
+        &[&tenant, &project, &plan.subject.id],
+    )
+    .await?;
+    tx.execute(
+        "DELETE FROM awr_team.project_memberships
+         WHERE tenant_id=$1 AND project_id=$2 AND actor_id=$3",
+        &[&tenant, &project, &plan.subject.id],
+    )
+    .await?;
     Ok(())
 }

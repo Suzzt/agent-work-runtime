@@ -6,7 +6,12 @@ use rmcp::{
     RoleClient, ServiceExt, model::*, service::RunningService, transport::TokioChildProcess,
 };
 use serde_json::{Value, json};
-use std::{fs, path::PathBuf, process::Command, time::Duration};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+    time::Duration,
+};
 use tokio::{process::Command as TokioCommand, time::timeout};
 
 const WORK: &str = "work_items:\n- id: W\n  title: Prepare customer analysis\n  status: ready\n  owner: business-coordinator\n  next_action: Draft the analysis\n  depends_on: [D]\n  acceptance: [Deliver the reviewed analysis]\n  verification:\n    evidence_level: none\n  evidence: []\n- id: D\n  title: Required input\n  status: completed\n";
@@ -60,7 +65,7 @@ impl Fixture {
         .unwrap()
     }
     fn cli(&self, args: &[&str]) -> Value {
-        let awr = PathBuf::from(env!("CARGO_BIN_EXE_awr-mcp")).with_file_name("awr");
+        let awr = sibling_awr_binary(Path::new(env!("CARGO_BIN_EXE_awr-mcp")));
         assert!(
             awr.exists(),
             "sibling awr binary required for CLI/MCP parity: {}",
@@ -101,9 +106,36 @@ async fn call(client: &RunningService<RoleClient, ()>, name: &str, args: Value) 
     .unwrap()
 }
 
+/// Cargo's Windows test binary is `awr-mcp.exe`. Replacing the file name with
+/// `awr` drops `.exe` and the CLI parity check looks for a file that is not there.
+fn sibling_awr_binary(mcp_exe: &Path) -> PathBuf {
+    let awr_name = if mcp_exe.extension().is_some_and(|ext| ext == "exe") {
+        "awr.exe"
+    } else {
+        "awr"
+    };
+    mcp_exe.with_file_name(awr_name)
+}
+
 fn success(result: CallToolResult) -> Value {
     assert_eq!(result.is_error, Some(false), "{result:?}");
     result.structured_content.expect("structured")
+}
+
+#[test]
+fn windows_mcp_exe_resolves_to_awr_exe() {
+    let mcp = Path::new(r"D:\a\awr\awr\target\debug\awr-mcp.exe");
+    let awr = sibling_awr_binary(mcp);
+    assert_eq!(
+        awr.file_name().and_then(|name| name.to_str()),
+        Some("awr.exe")
+    );
+    assert_eq!(
+        sibling_awr_binary(Path::new("/tmp/target/debug/awr-mcp"))
+            .file_name()
+            .and_then(|name| name.to_str()),
+        Some("awr")
+    );
 }
 
 #[tokio::test]
@@ -206,12 +238,7 @@ async fn mcp_explain_off_preserves_views_and_on_matches_cli_hash() {
     );
 
     // Invalid explain on unrelated tool.
-    let bad = call(
-        &client,
-        "awr_work_ready",
-        json!({"explain":true}),
-    )
-    .await;
+    let bad = call(&client, "awr_work_ready", json!({"explain":true})).await;
     assert_eq!(bad.is_error, Some(true));
 
     client.cancel().await.unwrap();
@@ -222,16 +249,15 @@ async fn explain_errors_surface_without_breaking_legacy_prepare() {
     let f = Fixture::new();
     let client = f.client().await;
     // Budget=1 forces incompleteness; explain must not hide the error shape.
-    let off = call(
-        &client,
-        "awr_work_prepare",
-        json!({"work":"W","budget":1}),
-    )
-    .await;
+    let off = call(&client, "awr_work_prepare", json!({"work":"W","budget":1})).await;
     assert_eq!(off.is_error, Some(true));
     let off_value = off.structured_content.unwrap();
     assert_ne!(off_value.get("ok"), Some(&serde_json::json!(true)));
-    assert!(off_value.get(awr_runtime::ASSESSMENT_EXPLAIN_FIELD).is_none());
+    assert!(
+        off_value
+            .get(awr_runtime::ASSESSMENT_EXPLAIN_FIELD)
+            .is_none()
+    );
 
     let on = call(
         &client,

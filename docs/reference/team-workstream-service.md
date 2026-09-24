@@ -6,13 +6,25 @@ PostgreSQL. This is not a release
 announcement or a complete Team execution service. It does not dispatch
 executions, resume agents or adopt cross-workstream deliveries. Use its live
 capabilities response to discover available operations.
-An operator-local [reference runner](team-reference-runner.md) can consume scoped
-admissions for bounded file writes and attest their results.
+Unsupported capabilities are refused. Live authorization is enforced in PostgreSQL
+transactions shared by HTTP and MCP domain entries; clients must not treat UI
+filtering as an ACL. AWR-TMCP-011 maps each command/query onto the frozen
+TMCP-010 business action matrix at that same gate: verified bearer credentials
+supply identity, while request bodies, tool names and reconnects cannot forge
+actor, role or grants. Readers cannot claim or write; developers may maintain
+their own sessions/executions on authorized work but cannot edit/publish plans
+or manage project access. Exact receipt replay reuses the original result;
+changed intent or expired/revoked authority is refused without a business write. Team rows retain historical `scope_id=main` while
+`workstream_id` isolates streams. Legacy unscoped Team entrypoints refuse writes
+against enabled projects. An operator-local
+[reference runner](team-reference-runner.md) can consume scoped admissions for
+bounded file writes and attest their results; those local filesystem effects are
+not a server ACL or confidentiality sandbox.
 
 ## Start an operator-bound service
 
 Build `awr-server` from this source branch. Migrate the intended database to
-schema 14 explicitly as its owner, and apply application-role grants using the
+schema 18 explicitly as its owner, and apply application-role grants using the
 [PostgreSQL setup](team-postgres.md). `serve` checks the schema without migrating
 it. Run the listener using the application connection, not an owner or superuser
 connection.
@@ -42,8 +54,10 @@ The loopback listener accepts its actual host/port and `localhost` at that port.
 Non-loopback listeners require explicit `allowed_hosts` entries. Hosts are exact
 authorities, including a port when clients send one. This server has no built-in
 TLS: remote use requires operator-provided HTTPS termination and a protected
-connection to the backend. All browser `Origin` headers are rejected. There is
-no browser login, CORS or cookie authentication.
+connection to the backend. Classic `/v1/projects/*` and MCP reject all browser `Origin` headers and have
+no cookie login. WS-044 adds an explicit `/v1/web/*` entry gated by
+`allowed_web_origins` with HttpOnly session cookies; see
+[Team Web entry](../integrations/team-web-entry.md).
 
 The project must have an explicitly approved and activated
 [`workstreams.json` source bundle](workstreams.md#team-source-projection-in-the-development-branch).
@@ -105,13 +119,16 @@ Unsupported operations or protocol versions fail explicitly.
 | `workstreams.list` | Authorized workstreams only; `limit`, `cursor` |
 | `work.list` | Selected workstream's work summaries and count; `limit`, `cursor` |
 | `work.search` | Same visibility boundary; required literal substring `search` |
-| `work.prepare` | Required `work_id` or `session_id`; optional `max_context_bytes` |
+| `work.prepare` | Required `work_id` or `session_id`; optional `max_context_bytes`; returns published contract, required_specs and authorized_readable_refs (TMCP-023) |
 | `events.list` | Selected workstream, optionally narrowed by work/session; metadata only |
 | `session.inspect` | Required `session_id`; its current-ownership checkpoint |
 | `work.recovery` | Required work/session; up to two current-ownership recovery candidates |
 | `command.inspect` | Required work/session and `request_id`; this actor/client's committed receipt or unknown outcome |
 | `claim.inspect` | Required work/session and `claim_id`; current lease state, ownership, fence and epoch validity |
 | `execution.inspect` | Required work/session and `execution_id`; current intent state/version, cancellation and contract/epoch validity |
+| `source.content` | Required relative `source_path` on the **active** snapshot; optional `expected_sha256`, `max_context_bytes`. Rejects `..`, absolute paths, URLs and history selectors (TMCP-023). |
+| `artifact.content` | Required `work_id` + `artifact_id` bound to that work's evidence; optional digest/budget (TMCP-023). |
+| `planning.outcome` | Required `request_id`; planning mutation receipt or unknown (TMCP-023). |
 
 Work/session selectors derive the workstream. An explicit `workstream_id` must
 agree with them. Without work/session, a unique authorized workstream can be
@@ -158,12 +175,20 @@ No process is started for an individual connection or work session.
 The transport uses the repository's RMCP SDK for protocol negotiation,
 initialization and tool dispatch. It is stateless, including for older supported
 MCP protocol versions: no `Mcp-Session-Id` carries permissions or selects work.
-It exposes two tools, with arguments identical to the corresponding HTTP JSON:
+It exposes query/command tools plus access and planning tools, with arguments
+identical to the corresponding HTTP JSON:
 
 - `awr_team_query`: the query operations above. Start with
-  `{"protocol_version":1,"op":"capabilities"}`.
-- `awr_team_command`: the eight session/claim/intent commands below, with the same request
+  `{"protocol_version":1,"op":"capabilities"}`. Includes controlled
+  `source.content` / `artifact.content` and `planning.outcome`.
+- `awr_team_command`: durable session/claim/execution/review commands below, with the same request
   identity and preconditions. Tool discovery is not a write grant.
+- `awr_team_access_*`: project-admin member/role/credential management (TMCP-012).
+- `awr_team_planning_suggest` / `_draft` / `_preview` / `_approve` / `_publish` /
+  `_outcome`: authenticated planning ops (TMCP-023) calling the same business
+  entrypoints as HTTP. No SQL tools, arbitrary file edit, or direct `done`.
+  Stable `request_id` receipts; on disconnect call `_outcome` / `planning.outcome`
+  before any new ID.
 
 Initialization, discovery and notifications require current project/workstream
 read access. Each tool call additionally checks authorization inside the same
@@ -179,7 +204,40 @@ HTTP and MCP share command identities and receipts: a command submitted through
 one transport can be inspected or exactly replayed through the other. A timeout,
 disconnection or oversized response leaves the command outcome uncertain until
 `command.inspect` returns its committed receipt. An absent receipt is still
-`unknown`, not proof of non-execution.
+`unknown`, not proof of non-execution. Planning mutations follow the same rule
+via `awr_team_planning_outcome` / `planning.outcome`.
+
+## Planning operations (TMCP-023)
+
+HTTP routes under `/v1/projects/<alias>/planning/*` and the matching MCP tools
+call SourceStore planning entrypoints only:
+
+| HTTP / MCP | TMCP-010 action | Notes |
+| --- | --- | --- |
+| `POST .../planning/suggest` / `awr_team_planning_suggest` | `planning.propose` | Suggestion is not claimable and does not add formal work. |
+| `POST .../planning/draft` / `awr_team_planning_draft` | `planning.edit_draft` | `mode=create|edit`; split/cancel/archive are `changes[].op`. |
+| `POST .../planning/preview` / `awr_team_planning_preview` | read (propose/edit/approve/publish/work.read) | Exact diff + impact; no mutation. |
+| `POST .../planning/approve` / `awr_team_planning_approve` | `planning.approve` | Bound to current `candidate_digest`. |
+| `POST .../planning/publish` / `awr_team_planning_publish` | `planning.publish` | Optional `activate` uses the **registered** sole source only; client paths/URLs are refused. |
+| `POST .../planning/outcome` / `awr_team_planning_outcome` / query `planning.outcome` | work.read or planning.* | Idempotent receipt by original `request_id`. |
+
+Unsupported adapters (for example private management repo writeback), publish
+blocked by in-flight claims, and missing context return sanitized `code` /
+`message` / `next_step` on both HTTP and MCP. Members, planners and admins use
+these surfaces for daily planning — not hand-edited JSON or SQL.
+
+### Controlled context and content reads
+
+`work.prepare` returns the published contract, `required_specs` (authorized
+active-snapshot paths under the contract scope with size/digest checks) and
+`authorized_readable_refs`. Dedicated queries:
+
+- `source.content` — active snapshot path only; rejects `..`, absolute paths,
+  URLs, and historical snapshot selectors.
+- `artifact.content` — artifact bytes bound to evidence for an authorized
+  `work_id`; metadata-only artifacts are refused.
+
+Capabilities advertise `artifact_content` / `source_content` / `planning_mcp`.
 
 ## Durable session commands
 
@@ -217,11 +275,15 @@ prevent stale updates even if a caller refreshes its project revision. Each
 successful command commits state, scoped event, project revision and immutable
 outcome receipt together. Failure rolls back all of them.
 
-This command version retains project-wide revision preconditions and project
-serialization. Concurrent unrelated commands can still require a refresh;
-task-level read sets and independent concurrent writes are a later protocol.
-Never remove the revision requirement or automatically resubmit changed intent
-to suppress these conflicts.
+Ordinary commands validate a work-scoped read set (coordinator epoch, authority,
+ownership, contract, and action tokens such as session/claim/fence/work versions).
+The project revision remains an ordered audit cursor and is still returned on
+receipts, but unrelated audit-cursor advances do not create semantic conflicts.
+Writers still take the project admission lock for SQLite-compatible single-writer
+serialization and a total audit order. Legacy clients may still send
+`expected_project_revision`; the server accepts a well-formed decimal without
+treating it as business CAS. Never automatically resubmit changed intent to
+suppress true conflicts.
 
 Paused/archived workstreams permit checkpoint preservation and session closure
 with a still-valid write grant; they do not permit new sessions. A frozen,
@@ -368,8 +430,10 @@ another external effect. A new request ID cannot restart an already running atte
 A same-workstream required predecessor needs a selected completion receipt for
 its current contract and completed runtime. A source status alone is insufficient.
 Cross-workstream dependencies remain blocked until explicit export/adoption is
-implemented, including when a client can read both workstreams. The admission
-check is a snapshot; ongoing selective invalidation is not yet implemented.
+implemented, including when a client can read both workstreams. Admission rechecks adoption/bindings at prepare, dispatch and complete (WS-032)
+so concurrent revoke cannot race past the boundary; mid-execution invalidation
+keeps real effects and recovery duty. Fixed-delivery consumers are not
+invalidated by unrelated upstream progress.
 
 The resource check covers cooperating AWR clients in this project's lexical path
 namespace. It does not inspect client filesystems, separate physical worktrees,
@@ -495,8 +559,58 @@ operator provisioning CLI and its immutable receipts without granting existing
 clients new rights. The [scoped reference runner](team-reference-runner.md)
 integrates bounded local file writes and saved-fact reporting, but does not adopt
 or backfill existing in-flight execution history. Generic agent dispatch and
-enabled-project backup/restore remain outside the available workflow; enabled-project
-history still requires explicit migration.
+a bounded ownership/work-inventory rebuild-from-manifest slice is available via
+schema-owner `backup-rebuild-*` (fencing-quiet, empty-or-matching ownership only);
+catalogs, contracts, receipts and grants remain outside that subset. Enabled-project
+history still requires explicit migration before backup.
+
+
+## Evidence, review, rework and completion (WS-018)
+
+Mainline-enabled Team projects use authenticated workstream commands for the
+review lifecycle. Legacy `ReviewStore` entrypoints still refuse enabled
+projects; do not route enabled traffic through them.
+
+| Command | Role |
+|---|---|
+| `evidence.submit` | Record evidence bound to the current contract (and optional execution). Agent self-report is `caller_asserted` and never equals trusted execution or human approval. |
+| `review.open` | Open a review round bound to exact `contract_hash`, artifact digest, execution result digest and round index. |
+| `review.accept` / `review.return` | Human reviewer decision. Independence is by responsible **person**, not by a second agent of the same person. Personal self-review is allowed only when `completion_policy` is `trusted_execution_and_author_self_review`, and is labeled `personal_self_review` — never `team_independent`. |
+| `work.rework` | Acknowledge a returned/rejected round. History is retained. |
+| `work.complete` | Atomically validate runtime state, evidence↔execution binding, selected completion receipt and actual approver person. Distinguishes execution success, author self-report, human approval and task completion. |
+
+Queries: `evidence.inspect`, `review.inspect`, `completion.inspect`.
+
+Completion receipts expose `independence_kind` and `team_independent_acceptance` for WS-030 adoption authorization. Provider-private session fields are never included (`provider_private_session` is always null).
+
+## Hard delivery dependencies and adoption credentials (WS-030)
+
+Store APIs (SQLite + Team PG) persist:
+
+| Record | Role |
+|---|---|
+| `hard_delivery_dependencies` | Cross-stream hard edge bound to exact Work + contract + artifact + completion receipt + policy (`fixed_delivery` / `current_contract`). |
+| `export_authorizations` | Auditable grant/deny/revoke of disclosure scope for a concrete delivery version. |
+| `adoption_credentials` | Historical proof that a consumer adopted a verified delivery; fixed-delivery credentials keep the original selected version. |
+| `delivery_credential_receipts` | Idempotent request-key receipts for register/revoke/grant/adopt. |
+
+Author self-reported done (`author_self_report` / `personal_self_review` / non-`team_independent` completion) cannot produce an adoption credential and cannot unlock execution. Cross-project bindings are refused. Team PG tables use FORCE RLS with transaction-local `awr.tenant_id` / `awr.project_id` (schema 26).
+
+Graph coordination (WS-031) keeps the same-project task DAG acyclic across
+workstreams (`A1 → B1 → A2` legal), returns explainable hard cycle paths, applies
+edge mutations atomically under the project lock (no cyclic union / dangling
+refs), requires all necessary deps for readiness, and treats shared outcomes as
+references consistent with adoption credentials above.
+
+Selective invalidation (WS-032) re-evaluates only affected consumers under
+`fixed_delivery` / `current_contract` policies, revalidates prepare/dispatch/
+complete under the project lock (revoke-race safe; mid-execution keeps effects
++ recovery duty), and persists scoped planning changes for newly discovered
+dependencies (block affected actions → authorized confirm of new graph +
+acceptance contract). Team PG schema 27.
+
+Artifact/contract changes invalidate prior open/approved rounds for other
+bundles; reject/return/rework keep historical rounds.
 
 ## Limits and errors
 
@@ -550,5 +664,13 @@ executor authority, operator settlement, receipt preservation, rollback and
 explicit old-epoch review over PostgreSQL, HTTP and MCP. A local runner test also
 installs a new generation barrier and rejects a delayed old-generation write;
 the database boundary in that test is synthetic, not a physical backup/restore.
-Generic agent dispatch, history migration and enabled-project backup/restore
-remain unavailable through this surface.
+Generic agent dispatch remains unavailable through this surface. Bounded
+owner-only history migration, active-claim/execution quarantine recovery,
+explicit CHECK-safe execution attribution with a reviewed `executor_client_id`, and
+enabled-project logical backup/fencing restore and bounded ownership rebuild are
+separate schema-owner CLI flows
+(`awr-server access history-*` / `quarantine-*` / `execution-attribution-*` / `backup-*`), not HTTP/MCP client
+capabilities. `operator_surface_denial` (HTTP + MCP with real PG and provisioned
+client bearers) asserts Unsupported/404 for those surfaces while schema-owner
+CLI recovery-inspect/history-preview still succeed. Physical database basebackup
+stays an external operator responsibility.

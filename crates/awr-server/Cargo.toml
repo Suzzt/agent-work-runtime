@@ -9,6 +9,8 @@ description = "AWR Team coordinator with scoped HTTP/MCP queries and session jou
 
 [dependencies]
 awr-team-pg = { path = "../awr-team-pg" }
+awr-core.workspace = true
+awr-runtime.workspace = true
 awr-team = { path = "../awr-team" }
 clap = { workspace = true }
 serde_json.workspace = true
@@ -21,9 +23,13 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal
 
 [features]
 pg-tests = ["awr-team-pg/pg-tests"]
+# Production Team deploy: enable verified PostgreSQL TLS (sslmode=require).
+tls = ["awr-team-pg/tls"]
 
 [dev-dependencies]
 awr-core.workspace = true
+awr-team = { path = "../awr-team" }
+serde_json.workspace = true
 tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
 reqwest = { version = "0.13", default-features = false, features = ["json"] }
 rmcp = { version = "3.2.0", default-features = false, features = ["client", "transport-streamable-http-client-reqwest"] }

@@ -383,3 +383,207 @@ fn snapshot_times_cannot_precede_evidence_or_adoption() {
         Err(DeliveryError::InvalidTime)
     );
 }
+
+fn completion_proof(req: &DeliveryRequirement) -> CompletionAcceptanceProof {
+    CompletionAcceptanceProof {
+        completion_receipt_id: req.selected.completion_receipt,
+        work_item_id: req.provider.work_item_id.clone(),
+        contract_sha256: req.selected.contract_sha256.clone(),
+        artifact_sha256: req.selected.artifact_sha256.clone(),
+        independence_kind: "team_independent".into(),
+        team_independent_acceptance: true,
+        author_person_id: "author".into(),
+        reviewer_person_id: "independent-reviewer".into(),
+        evidence_id: Id::from(4),
+        evidence_level: EvidenceLevel::LocallyVerified,
+        verified_at_ms: 90,
+    }
+}
+
+#[test]
+fn completion_self_report_never_unlocks_execution() {
+    let (required, _) = fixture();
+    let mut proof = completion_proof(&required);
+    proof.team_independent_acceptance = false;
+    proof.independence_kind = "author_self_report".into();
+    assert_eq!(
+        acceptance_from_completion_proof(&proof),
+        DeliveryAcceptance::AuthorDeclaredDone
+    );
+    proof.independence_kind = "personal_self_review".into();
+    assert_eq!(
+        acceptance_from_completion_proof(&proof),
+        DeliveryAcceptance::AuthorDeclaredDone
+    );
+    proof.independence_kind = "ordinary_confirm".into();
+    assert_eq!(
+        acceptance_from_completion_proof(&proof),
+        DeliveryAcceptance::Untrusted
+    );
+    let mut good = completion_proof(&required);
+    good.author_person_id = "same".into();
+    good.reviewer_person_id = "same".into();
+    assert_eq!(
+        acceptance_from_completion_proof(&good),
+        DeliveryAcceptance::AuthorDeclaredDone
+    );
+}
+
+#[test]
+fn hard_dependency_binds_works_and_refuses_cross_project() {
+    let (required, _) = fixture();
+    let dep = validate_hard_dependency_registration(&RegisterHardDependencyRequest {
+        request_key: "reg-1".into(),
+        dependency_id: "dep-1".into(),
+        provider: required.provider.clone(),
+        consumer: required.consumer.clone(),
+        selected: required.selected.clone(),
+        policy: DeliveryVersionPolicy::FixedDelivery,
+        minimum_level: EvidenceLevel::LocallyVerified,
+        now_ms: 10,
+    })
+    .unwrap();
+    assert_eq!(dep.status, HardDependencyStatus::Active);
+    let mut cross = RegisterHardDependencyRequest {
+        request_key: "reg-2".into(),
+        dependency_id: "dep-2".into(),
+        provider: required.provider.clone(),
+        consumer: required.consumer.clone(),
+        selected: required.selected.clone(),
+        policy: DeliveryVersionPolicy::CurrentContract,
+        minimum_level: EvidenceLevel::LocallyVerified,
+        now_ms: 10,
+    };
+    cross.consumer.project_id = "other".into();
+    assert_eq!(
+        validate_hard_dependency_registration(&cross),
+        Err(DeliveryError::BindingMismatch)
+    );
+}
+
+#[test]
+fn adopt_credential_requires_trusted_receipt_and_export_grant() {
+    let (required, _) = fixture();
+    let dependency = validate_hard_dependency_registration(&RegisterHardDependencyRequest {
+        request_key: "reg-1".into(),
+        dependency_id: "dep-1".into(),
+        provider: required.provider.clone(),
+        consumer: required.consumer.clone(),
+        selected: required.selected.clone(),
+        policy: DeliveryVersionPolicy::FixedDelivery,
+        minimum_level: EvidenceLevel::LocallyVerified,
+        now_ms: 10,
+    })
+    .unwrap();
+    let export = validate_export_grant(&GrantExportAuthorizationRequest {
+        request_key: "ex-1".into(),
+        authorization_id: "ea-1".into(),
+        project_id: required.provider.project_id.clone(),
+        provider_work_item_id: required.provider.work_item_id.clone(),
+        delivery: required.selected.clone(),
+        granted_by: "owner".into(),
+        now_ms: 20,
+    })
+    .unwrap();
+    let mut proof = completion_proof(&required);
+    proof.independence_kind = "author_self_report".into();
+    proof.team_independent_acceptance = false;
+    let err = adopt_delivery_credential(&AdoptDeliveryRequest {
+        request_key: "ad-1".into(),
+        credential_id: "ac-1".into(),
+        dependency: dependency.clone(),
+        completion: proof,
+        export_authorization: export.clone(),
+        availability: DeliveryAvailability::Available,
+        current_selection: Some(required.selected.clone()),
+        now_ms: 100,
+    })
+    .unwrap_err();
+    assert!(matches!(err, DeliveryError::NotSatisfied(_)));
+    assert!(!delivery_unlocks_execution(match err {
+        DeliveryError::NotSatisfied(a) => a,
+        _ => unreachable!(),
+    }));
+
+    let credential = adopt_delivery_credential(&AdoptDeliveryRequest {
+        request_key: "ad-2".into(),
+        credential_id: "ac-2".into(),
+        dependency: dependency.clone(),
+        completion: completion_proof(&required),
+        export_authorization: export,
+        availability: DeliveryAvailability::Available,
+        current_selection: Some(required.selected.clone()),
+        now_ms: 100,
+    })
+    .unwrap();
+    assert_eq!(credential.status, AdoptionCredentialStatus::Active);
+    assert!(delivery_unlocks_execution(DeliveryAssessment {
+        status: credential.assessment_status,
+        reason: credential.assessment_reason,
+    }));
+
+    // Fixed delivery survives current-contract drift in reassessment.
+    let mut facts = DeliveryFacts {
+        provider: required.provider.clone(),
+        consumer: required.consumer.clone(),
+        delivery: Some(required.selected.clone()),
+        current_selection: None,
+        acceptance: DeliveryAcceptance::Verified {
+            evidence_id: Id::from(4),
+            author: "author".into(),
+            reviewer: "independent-reviewer".into(),
+            level: EvidenceLevel::LocallyVerified,
+            verified_at_ms: 90,
+        },
+        availability: DeliveryAvailability::Available,
+        export_authority: DeliveryExportAuthority::Granted,
+        observed_at_ms: 200,
+    };
+    let (assessment, status) = reassess_adoption_credential(&credential, &facts).unwrap();
+    assert_eq!(assessment.status, DeliveryStatus::Satisfied);
+    assert_eq!(status, AdoptionCredentialStatus::Active);
+    facts.availability = DeliveryAvailability::Unavailable;
+    let (assessment, status) = reassess_adoption_credential(&credential, &facts).unwrap();
+    assert_eq!(assessment.reason, DeliveryReason::ArtifactUnavailable);
+    assert_eq!(status, AdoptionCredentialStatus::Stale);
+}
+
+#[test]
+fn export_authorization_history_is_revocable_and_exact() {
+    let (required, _) = fixture();
+    let export = validate_export_grant(&GrantExportAuthorizationRequest {
+        request_key: "ex-1".into(),
+        authorization_id: "ea-1".into(),
+        project_id: required.provider.project_id.clone(),
+        provider_work_item_id: required.provider.work_item_id.clone(),
+        delivery: required.selected.clone(),
+        granted_by: "owner".into(),
+        now_ms: 20,
+    })
+    .unwrap();
+    assert_eq!(
+        export.as_authority(&required.selected),
+        DeliveryExportAuthority::Granted
+    );
+    let mut other = required.selected.clone();
+    other.artifact_sha256 = "e".repeat(64);
+    assert_eq!(
+        export.as_authority(&other),
+        DeliveryExportAuthority::Unknown
+    );
+    let revoked = apply_export_revoke(
+        &export,
+        &RevokeExportAuthorizationRequest {
+            request_key: "rv-1".into(),
+            authorization_id: "ea-1".into(),
+            reason: "scope narrowed".into(),
+            now_ms: 30,
+        },
+    )
+    .unwrap();
+    assert_eq!(revoked.status, ExportAuthorizationStatus::Revoked);
+    assert_eq!(
+        revoked.as_authority(&required.selected),
+        DeliveryExportAuthority::Revoked
+    );
+}
