@@ -2,8 +2,8 @@
   "work": "AWR-DEC-013",
   "pr_url": "https://github.com/originoneai/awr/pull/149",
   "pr_number": 149,
-  "head_sha": "ffe7d54a18d3342daab32d385da1569f384c2a43",
-  "base_sha": "60b84badb974d84f0198f75986f8540ff4da3bf9",
+  "head_sha": "338cbb9cea4ce16ab521d2a4afaaa354180c89b4",
+  "base_sha": "29ccd5e603a12169aa77beec846ed4d4591ac64a",
   "base_branch": "codex/awr-dec-012-typed-assessment-envelope",
   "acceptance_mapping": {
     "1_freeze_matrix_identity_expect_forbid_compare_budgets_stats": {

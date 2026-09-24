@@ -2,8 +2,8 @@
   "work": "AWR-DEC-022",
   "pr_url": "https://github.com/originoneai/awr/pull/152",
   "pr_number": 152,
-  "head_sha": "189e4a2af57587c667ea1925d6745264e3138714",
-  "base_sha": "2b5a36a4e17886545bc6f11aeeb1cb7ae39f5c81",
+  "head_sha": "8758d0375d0d133659d27628794dea40d7a01c93",
+  "base_sha": "5bbf18f2bf7899eb9c2f968c71a971a8d149b0a7",
   "base_branch": "codex/awr-dec-021-optional-cli-mcp-explanations",
   "acceptance_mapping": {
     "1": "offline ReplaySnapshot recomputes fixed inputs only; missing snapshot => not_replayable; no production/tool/model I/O",
