@@ -22,9 +22,9 @@ pub use document::{
 pub use host_save::{
     HostChange, HostSaveReport, HostSaveRequest, host_preview, host_recover, host_save, host_status,
 };
+mod assessment_explain;
 mod execution;
 mod explanation_chain;
-mod assessment_explain;
 mod fact_snapshot;
 mod fs_sync;
 mod management;
@@ -42,6 +42,12 @@ pub use work_graph::{WorkGraphRequest, work_graph};
 mod response_view;
 mod workflow;
 pub use artifact::ArtifactFile;
+pub use assessment_explain::{
+    ASSESSMENT_EXPLAIN_CAPABILITY, ASSESSMENT_EXPLAIN_FIELD, AssessmentExplanationView,
+    AttachExplanationOptions, ExplanationSideEffects, ExplanationWireMetrics,
+    attach_assessment_explanation, has_assessment_explanation, normalize_receipt_for_explanation,
+    wire_bytes,
+};
 use awr_store::Store;
 pub use awr_store::{BranchFilter, EventCursor, EventPage, EventQuery};
 pub use branch::{CreateBranchRequest, create_branch, observe_git_ref, switch_branch};
@@ -54,12 +60,6 @@ pub use explanation_chain::{
     ExplanationAuthority, ExplanationChainInput, ExplanationChainResult, FORBIDDEN_RERUN_CUES,
     ProbeSupport, UnresolvedSideEffect, compose_explanation_chain,
     explanation_chain_from_prepare_json, prior_explanation_still_valid,
-};
-pub use assessment_explain::{
-    ASSESSMENT_EXPLAIN_CAPABILITY, ASSESSMENT_EXPLAIN_FIELD, AssessmentExplanationView,
-    AttachExplanationOptions, ExplanationSideEffects, ExplanationWireMetrics,
-    attach_assessment_explanation, has_assessment_explanation,
-    normalize_receipt_for_explanation, wire_bytes,
 };
 
 pub use fact_snapshot::{
