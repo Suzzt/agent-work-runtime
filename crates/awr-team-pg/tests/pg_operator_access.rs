@@ -377,7 +377,13 @@ async fn schema_fourteen_is_atomic_and_preserves_access_without_granting_operato
     let (_g, admin, db, _) = setup().await;
     admin
         .batch_execute(
-            "DROP TABLE awr_team.access_changes; UPDATE awr_team.schema_state SET version=13",
+            "DROP TABLE IF EXISTS awr_team.execution_attributions;
+             DROP TABLE IF EXISTS awr_team.operator_quarantines;
+             DROP TABLE IF EXISTS awr_team.backup_operations;
+             DROP TABLE IF EXISTS awr_team.history_migrations;
+             DROP TABLE IF EXISTS awr_team.project_access_changes;
+             DROP TABLE IF EXISTS awr_team.access_changes;
+             UPDATE awr_team.schema_state SET version=13",
         )
         .await
         .unwrap();

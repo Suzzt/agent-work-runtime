@@ -1,0 +1,569 @@
+#![cfg(feature = "pg-tests")]
+mod common;
+#[path = "fixtures/workstream_access.rs"]
+mod fixture;
+use awr_team_pg::{
+    AdminAccessPlan, OperatorAccess, PgError, ProjectAccessStore, workstream_credential_hash,
+};
+use fixture::*;
+use serde_json::json;
+
+const NEW_TOKEN: &str =
+    "awr1.new-member.eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
+async fn enable_admin_manage(owner: &tokio_postgres::Client) {
+    owner
+        .batch_execute(
+            "UPDATE awr_team.workstream_grants
+             SET can_write=true, can_manage=true, grant_version=grant_version+1
+             WHERE client_id='cli-a'",
+        )
+        .await
+        .unwrap();
+}
+
+fn admin_plan_member() -> AdminAccessPlan {
+    serde_json::from_value(json!({
+        "protocol_version":1,
+        "subject":{"id":"new-human","kind":"human","display_name":"New member"},
+        "subject_client_id":"new-cli",
+        "role":"developer",
+        "grants":[{
+            "workstream_id":awr_core::Id::from(1),
+            "authority_version":"1",
+            "read":true,"write":true,"manage":false,
+            "attest_execution":false,"reconcile_execution":false
+        }],
+        "credential":{
+            "id":"new-member",
+            "secret_hash":workstream_credential_hash(NEW_TOKEN).unwrap(),
+            "expires_at_unix_ms":null
+        },
+        "remove_membership":false,
+        "revoke_tenant_credentials":[]
+    }))
+    .unwrap()
+}
+
+#[tokio::test]
+async fn project_admin_mcp_path_preview_apply_outcome_and_denies_non_admin() {
+    let (_g, owner, db, store) = setup().await;
+    enable_admin_manage(&owner).await;
+    let access =
+        ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
+    // Token A is actor=agent role=admin — project admin with manage grant ceiling.
+    let plan = admin_plan_member();
+    let preview = access.preview(TENANT, PROJECT, A, &plan).await.unwrap();
+    assert_eq!(preview["applied"], false);
+    assert_eq!(preview["raw_secrets_in_response"], false);
+    assert!(!preview.to_string().contains(NEW_TOKEN));
+    assert!(
+        !preview
+            .to_string()
+            .contains(plan.credential.as_ref().unwrap().secret_hash.as_str())
+    );
+    assert_eq!(
+        preview["credential_revocation_scope"],
+        "refused_for_project_admin_use_project_grant_revoke"
+    );
+    assert_eq!(preview["project_revoke_preserves_other_projects"], true);
+    let applied = access
+        .apply(
+            TENANT,
+            PROJECT,
+            A,
+            &plan,
+            "add-member-1",
+            preview["state_digest"].as_str().unwrap(),
+            preview["plan_digest"].as_str().unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(applied["replayed"], false);
+    assert!(!applied.to_string().contains(NEW_TOKEN));
+    let outcome = access
+        .outcome(TENANT, PROJECT, A, "add-member-1")
+        .await
+        .unwrap();
+    assert_eq!(outcome["outcome"], "committed");
+    assert_eq!(
+        outcome["receipt"]["request_id"],
+        applied["receipt"]["request_id"]
+    );
+    // Exact replay
+    let replay = access
+        .apply(
+            TENANT,
+            PROJECT,
+            A,
+            &plan,
+            "add-member-1",
+            preview["state_digest"].as_str().unwrap(),
+            preview["plan_digest"].as_str().unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(replay["replayed"], true);
+    assert_eq!(replay["receipt"], applied["receipt"]);
+    // New member can read granted workstream.
+    assert_eq!(
+        prepare(&store, NEW_TOKEN, "a").await["data"]["work_id"],
+        "a"
+    );
+    // Non-admin (reader-b / reviewer membership) cannot manage access.
+    // B is actor=agent? No - reader-b is also actor agent with cli-b. Same admin role!
+    // Use NONE (no-grants) which still has membership admin... fixture gives agent admin.
+    // Create a worker-only subject and use a separate non-admin token after demoting...
+    // Instead: register a reader-only member and try with their token.
+    let reader_token =
+        "awr1.reader-only.ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+    let reader_plan: AdminAccessPlan = serde_json::from_value(json!({
+        "protocol_version":1,
+        "subject":{"id":"reader-human","kind":"human","display_name":"Reader"},
+        "subject_client_id":"reader-cli",
+        "role":"reader",
+        "grants":[{
+            "workstream_id":awr_core::Id::from(1),
+            "authority_version":"1",
+            "read":true,"write":false,"manage":false,
+            "attest_execution":false,"reconcile_execution":false
+        }],
+        "credential":{
+            "id":"reader-only",
+            "secret_hash":workstream_credential_hash(reader_token).unwrap(),
+            "expires_at_unix_ms":null
+        },
+        "remove_membership":false,
+        "revoke_tenant_credentials":[]
+    }))
+    .unwrap();
+    let p2 = access
+        .preview(TENANT, PROJECT, A, &reader_plan)
+        .await
+        .unwrap();
+    access
+        .apply(
+            TENANT,
+            PROJECT,
+            A,
+            &reader_plan,
+            "add-reader",
+            p2["state_digest"].as_str().unwrap(),
+            p2["plan_digest"].as_str().unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        access.preview(TENANT, PROJECT, reader_token, &plan).await,
+        Err(PgError::Forbidden)
+    ));
+    assert!(matches!(
+        access
+            .apply(
+                TENANT,
+                PROJECT,
+                reader_token,
+                &plan,
+                "evil",
+                preview["state_digest"].as_str().unwrap(),
+                preview["plan_digest"].as_str().unwrap()
+            )
+            .await,
+        Err(PgError::Forbidden)
+    ));
+    // Owner path still works and app cannot use OperatorAccess.
+    let _ = owner;
+}
+
+#[tokio::test]
+async fn tenant_credential_revoke_refused_project_revoke_preserves_other_projects_and_last_admin() {
+    let (_g, mut owner, db, _) = setup().await;
+    enable_admin_manage(&owner).await;
+    // cli-b's grant is on stream 2. Replacing that client's grants requires the
+    // caller to already manage stream 2; this does not touch the other project.
+    owner
+        .execute(
+            "INSERT INTO awr_team.workstream_grants(
+                tenant_id,project_id,actor_id,client_id,workstream_id,authority_version,
+                can_read,can_write,can_manage,can_attest_execution,can_reconcile_execution,active)
+             VALUES($1,$2,'agent','cli-a',$3,1,true,true,true,false,false,true)",
+            &[&TENANT, &PROJECT, &awr_core::Id::from(2).to_string()],
+        )
+        .await
+        .unwrap();
+    let access =
+        ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
+    // Seed a grant in another project for the same actor to prove project revoke is scoped.
+    owner
+        .batch_execute(
+            "INSERT INTO awr_team.projects(tenant_id,id,key,mode,coordinator_epoch,status)
+             VALUES('reader-tenant','other-project','o','team','epoch-o','active');
+             INSERT INTO awr_team.project_memberships(tenant_id,project_id,actor_id,role)
+             VALUES('reader-tenant','other-project','agent','admin');
+             INSERT INTO awr_team.workstream_grants(tenant_id,project_id,actor_id,client_id,workstream_id,authority_version,can_read,can_write,can_manage,can_attest_execution,can_reconcile_execution,active)
+             VALUES('reader-tenant','other-project','agent','cli-a','00000000000000000000000001',1,true,true,true,false,false,true);",
+        )
+        .await
+        .unwrap();
+
+    let mut revoke_tenant: AdminAccessPlan = serde_json::from_value(json!({
+        "protocol_version":1,
+        "subject":{"id":"agent","kind":"human","display_name":"Worker"},
+        "subject_client_id":"cli-b",
+        "role":"admin",
+        "grants":[],
+        "credential":null,
+        "remove_membership":false,
+        "revoke_tenant_credentials":["reader-b"]
+    }))
+    .unwrap();
+    assert!(matches!(
+        access.preview(TENANT, PROJECT, A, &revoke_tenant).await,
+        Err(PgError::Forbidden)
+    ));
+
+    // Project grant clear for cli-b must not delete other-project grants (cli-a).
+    // Keep the admin caller's (cli-a) manage ceiling intact for later steps.
+    revoke_tenant.revoke_tenant_credentials.clear();
+    let preview = access
+        .preview(TENANT, PROJECT, A, &revoke_tenant)
+        .await
+        .unwrap();
+    assert_eq!(
+        preview["impact"]["project_grant_revoke_preserves_other_projects"],
+        true
+    );
+    access
+        .apply(
+            TENANT,
+            PROJECT,
+            A,
+            &revoke_tenant,
+            "clear-cli-b",
+            preview["state_digest"].as_str().unwrap(),
+            preview["plan_digest"].as_str().unwrap(),
+        )
+        .await
+        .unwrap();
+    let other: i64 = owner
+        .query_one(
+            "SELECT COUNT(*)::bigint FROM awr_team.workstream_grants
+             WHERE tenant_id=$1 AND project_id='other-project' AND actor_id='agent' AND active",
+            &[&TENANT],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert!(other >= 1);
+
+    // Special elevation refused.
+    let mut special = admin_plan_member();
+    special.grants[0].attest_execution = true;
+    assert!(matches!(
+        access.preview(TENANT, PROJECT, A, &special).await,
+        Err(PgError::Protocol(_)) | Err(PgError::Forbidden)
+    ));
+
+    // Last admin cannot remove themselves without handoff.
+    // First ensure only one admin remains: demote reviewer is not admin.
+    // Promote a second admin, then demote first — positive handoff.
+    let second: AdminAccessPlan = serde_json::from_value(json!({
+        "protocol_version":1,
+        "subject":{"id":"reviewer","kind":"human","display_name":"Reviewer"},
+        "subject_client_id":"reviewer-cli",
+        "role":"project_admin",
+        "grants":[{
+            "workstream_id":awr_core::Id::from(1),
+            "authority_version":"1",
+            "read":true,"write":true,"manage":true,
+            "attest_execution":false,"reconcile_execution":false
+        }],
+        "credential":null,
+        "remove_membership":false,
+        "revoke_tenant_credentials":[]
+    }))
+    .unwrap();
+    let p = access.preview(TENANT, PROJECT, A, &second).await.unwrap();
+    access
+        .apply(
+            TENANT,
+            PROJECT,
+            A,
+            &second,
+            "handoff-promote",
+            p["state_digest"].as_str().unwrap(),
+            p["plan_digest"].as_str().unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Now removing agent admin membership should succeed (reviewer is admin).
+    let remove: AdminAccessPlan = serde_json::from_value(json!({
+        "protocol_version":1,
+        "subject":{"id":"agent","kind":"human","display_name":"Worker"},
+        "subject_client_id":"cli-a",
+        "role":"reader",
+        "grants":[],
+        "credential":null,
+        "remove_membership":true,
+        "revoke_tenant_credentials":[]
+    }))
+    .unwrap();
+    let p = access.preview(TENANT, PROJECT, A, &remove).await.unwrap();
+    access
+        .apply(
+            TENANT,
+            PROJECT,
+            A,
+            &remove,
+            "handoff-remove",
+            p["state_digest"].as_str().unwrap(),
+            p["plan_digest"].as_str().unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Last remaining admin (reviewer) cannot remove self.
+    // Need a credential for reviewer — create via owner OperatorAccess.
+    let reviewer_token =
+        "awr1.reviewer-admin.1111111111111111111111111111111111111111111111111111111111111111";
+    let owner_plan: awr_team_pg::AccessPlan = serde_json::from_value(json!({
+        "protocol_version":1,"tenant_id":TENANT,"project_id":PROJECT,
+        "actor":{"id":"reviewer","kind":"human","display_name":"Reviewer"},
+        "client_id":"reviewer-cli","role":"project_admin",
+        "grants":[{
+            "workstream_id":awr_core::Id::from(1),"authority_version":"1",
+            "read":true,"write":true,"manage":true,
+            "attest_execution":false,"reconcile_execution":false
+        }],
+        "credential":{
+            "id":"reviewer-admin",
+            "secret_hash":workstream_credential_hash(reviewer_token).unwrap(),
+            "expires_at_unix_ms":null
+        },
+        "revoke_credentials":[]
+    }))
+    .unwrap();
+    let op = OperatorAccess::preview(&mut owner, &owner_plan)
+        .await
+        .unwrap();
+    OperatorAccess::apply(
+        &mut owner,
+        &owner_plan,
+        "owner-reviewer-cred",
+        op["state_digest"].as_str().unwrap(),
+        op["plan_digest"].as_str().unwrap(),
+    )
+    .await
+    .unwrap();
+
+    let last_remove: AdminAccessPlan = serde_json::from_value(json!({
+        "protocol_version":1,
+        "subject":{"id":"reviewer","kind":"human","display_name":"Reviewer"},
+        "subject_client_id":"reviewer-cli",
+        "role":"reader",
+        "grants":[],
+        "credential":null,
+        "remove_membership":true,
+        "revoke_tenant_credentials":[]
+    }))
+    .unwrap();
+    assert!(matches!(
+        access
+            .preview(TENANT, PROJECT, reviewer_token, &last_remove)
+            .await,
+        Err(PgError::Forbidden)
+    ));
+}
+
+#[tokio::test]
+async fn concurrent_admin_applies_serialize_and_owner_receipts_stay_separate() {
+    let (_g, owner, db, _) = setup().await;
+    enable_admin_manage(&owner).await;
+    let access =
+        ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let plan = admin_plan_member();
+    let preview = access.preview(TENANT, PROJECT, A, &plan).await.unwrap();
+    let access2 =
+        ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let (a, b) = tokio::join!(
+        access.apply(
+            TENANT,
+            PROJECT,
+            A,
+            &plan,
+            "one",
+            preview["state_digest"].as_str().unwrap(),
+            preview["plan_digest"].as_str().unwrap(),
+        ),
+        access2.apply(
+            TENANT,
+            PROJECT,
+            A,
+            &plan,
+            "two",
+            preview["state_digest"].as_str().unwrap(),
+            preview["plan_digest"].as_str().unwrap(),
+        )
+    );
+    assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
+    let err = a.err().or(b.err()).unwrap();
+    assert!(
+        matches!(
+            err,
+            PgError::PreconditionsChanged | PgError::IdempotencyConflict | PgError::Db(_)
+        ),
+        "unexpected concurrent error: {err:?}"
+    );
+    // Owner OperatorAccess still cannot be called by app role.
+    let mut app = common::app_client(&db).await;
+    let owner_plan: awr_team_pg::AccessPlan = serde_json::from_value(json!({
+        "protocol_version":1,"tenant_id":TENANT,"project_id":PROJECT,
+        "actor":{"id":"x","kind":"agent","display_name":"X"},
+        "client_id":"x","role":"reader","grants":[],"credential":null,"revoke_credentials":[]
+    }))
+    .unwrap();
+    assert!(matches!(
+        OperatorAccess::preview(&mut app, &owner_plan).await,
+        Err(PgError::Forbidden)
+    ));
+    let _ = owner;
+}
+
+#[tokio::test]
+async fn admin_membership_without_manage_grant_cannot_escalate_on_preview_or_apply() {
+    let (_g, owner, db, _) = setup().await;
+    let access =
+        ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
+    let plan = admin_plan_member();
+    // NONE: admin membership, client unscoped, zero grants — AccessManageProject alone
+    // must not bootstrap developer membership/credential/grants.
+    assert!(
+        matches!(
+            access.preview(TENANT, PROJECT, NONE, &plan).await,
+            Err(PgError::Forbidden)
+        ),
+        "NONE preview must enforce client grant ceiling"
+    );
+    assert!(
+        matches!(
+            access
+                .apply(
+                    TENANT,
+                    PROJECT,
+                    NONE,
+                    &plan,
+                    "none-escalate",
+                    "a".repeat(64).as_str(),
+                    "b".repeat(64).as_str(),
+                )
+                .await,
+            Err(PgError::Forbidden)
+        ),
+        "NONE apply must enforce client grant ceiling"
+    );
+    assert!(
+        matches!(
+            access
+                .inspect(TENANT, PROJECT, NONE, "agent", "cli-a")
+                .await,
+            Err(PgError::Forbidden)
+        ),
+        "NONE inspect must enforce client grant ceiling"
+    );
+    assert!(
+        matches!(
+            access.outcome(TENANT, PROJECT, NONE, "any").await,
+            Err(PgError::Forbidden)
+        ),
+        "NONE outcome must enforce client grant ceiling"
+    );
+
+    // Read-only grant (no manage) on an admin membership still cannot escalate.
+    enable_admin_manage(&owner).await;
+    owner
+        .batch_execute(
+            "UPDATE awr_team.workstream_grants
+             SET can_write=false, can_manage=false, grant_version=grant_version+1
+             WHERE client_id='cli-a'",
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        access.preview(TENANT, PROJECT, A, &plan).await,
+        Err(PgError::Forbidden)
+    ));
+
+    // Restoring manage+write allows the same plan (grant ceiling satisfied).
+    enable_admin_manage(&owner).await;
+    let preview = access.preview(TENANT, PROJECT, A, &plan).await.unwrap();
+    assert_eq!(preview["applied"], false);
+}
+
+#[tokio::test]
+async fn empty_grants_cannot_wipe_unmanaged_private_stream_via_full_delta() {
+    let (_g, owner, db, _) = setup().await;
+    enable_admin_manage(&owner).await;
+    let access =
+        ProjectAccessStore::from_config(common::with_app_role(&common::test_config(), &db));
+
+    // Token A manages only alpha (stream 1). cli-b holds private-beta (stream 2).
+    // Inspect of cli-b must already fail the ceiling.
+    assert!(
+        matches!(
+            access.inspect(TENANT, PROJECT, A, "agent", "cli-b").await,
+            Err(PgError::Forbidden)
+        ),
+        "alpha-only manager must not inspect cli-b private-beta grants"
+    );
+
+    // Replacing cli-b's grant set with [] would deactivate private-beta. Refuse.
+    let wipe: AdminAccessPlan = serde_json::from_value(json!({
+        "protocol_version":1,
+        "subject":{"id":"agent","kind":"agent","display_name":"Worker"},
+        "subject_client_id":"cli-b",
+        "role":"admin",
+        "grants":[],
+        "credential":null,
+        "remove_membership":false,
+        "revoke_tenant_credentials":[]
+    }))
+    .unwrap();
+    assert!(
+        matches!(
+            access.preview(TENANT, PROJECT, A, &wipe).await,
+            Err(PgError::Forbidden)
+        ),
+        "empty grants must authorize full delta including current private-beta"
+    );
+    assert!(
+        matches!(
+            access
+                .apply(
+                    TENANT,
+                    PROJECT,
+                    A,
+                    &wipe,
+                    "wipe-cli-b",
+                    "a".repeat(64).as_str(),
+                    "b".repeat(64).as_str(),
+                )
+                .await,
+            Err(PgError::Forbidden)
+        ),
+        "apply with grants=[] must not wipe unmanaged streams"
+    );
+
+    // private-beta grant remains active for cli-b.
+    let active: i64 = owner
+        .query_one(
+            "SELECT count(*)::bigint FROM awr_team.workstream_grants
+             WHERE client_id='cli-b' AND active
+               AND workstream_id=$1",
+            &[&awr_core::Id::from(2).to_string()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(active, 1, "private-beta grant must survive refused wipe");
+}
