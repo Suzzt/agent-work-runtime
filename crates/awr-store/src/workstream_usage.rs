@@ -33,6 +33,36 @@ fn map_usage(err: UsageError) -> Error {
     }
 }
 
+fn require_same<T: PartialEq>(stored: T, incoming: &T) -> Result<T> {
+    if &stored == incoming {
+        Ok(stored)
+    } else {
+        Err(map_usage(UsageError::Conflict))
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct CounterSubject {
+    provider_namespace: String,
+    provider: String,
+    model: String,
+    session_id: String,
+    counter_epoch: String,
+    observed_at_ms: u64,
+}
+
+fn counter_subject(snapshot: &UsageCounterSnapshot) -> Result<String> {
+    serde_json::to_string(&CounterSubject {
+        provider_namespace: snapshot.scope.provider_namespace.clone(),
+        provider: snapshot.scope.provider.clone(),
+        model: snapshot.scope.model.clone(),
+        session_id: snapshot.scope.session_id.clone(),
+        counter_epoch: snapshot.scope.counter_epoch.clone(),
+        observed_at_ms: snapshot.observed_at_ms,
+    })
+    .map_err(|e| Error::Storage(e.to_string()))
+}
+
 fn cost_kind(cost: &UsageCost) -> &'static str {
     match cost {
         UsageCost::Actual(_) => "actual",
@@ -209,6 +239,49 @@ fn list_intervals(
     Ok(out)
 }
 
+fn load_counter_by_subject(
+    conn: &rusqlite::Connection,
+    project: &str,
+    subject_id: &str,
+) -> Result<UsageCounterSnapshot> {
+    let subject: CounterSubject = serde_json::from_str(subject_id)
+        .map_err(|e| Error::Storage(format!("corrupt usage counter subject: {e}")))?;
+    let json: String = conn
+        .query_row(
+            "SELECT body_json FROM usage_counter_snapshots
+             WHERE project_id=?1 AND provider_namespace=?2 AND provider=?3 AND model=?4
+               AND session_id=?5 AND counter_epoch=?6 AND observed_at_ms=?7",
+            params![
+                project,
+                subject.provider_namespace,
+                subject.provider,
+                subject.model,
+                subject.session_id,
+                subject.counter_epoch,
+                subject.observed_at_ms as i64
+            ],
+            |r| r.get(0),
+        )
+        .map_err(db_error)?;
+    serde_json::from_str(&json).map_err(|e| Error::Storage(format!("corrupt usage counter: {e}")))
+}
+
+fn effective_receipt(
+    conn: &rusqlite::Connection,
+    project: &str,
+    receipt_id: &str,
+) -> Result<UsageReceipt> {
+    let receipts = list_receipts(conn, project)?;
+    let corrections = list_corrections(conn, project)?;
+    let (corrected, _) =
+        workstream_usage::apply_usage_corrections(project, &receipts, &corrections)
+            .map_err(map_usage)?;
+    corrected
+        .into_iter()
+        .find(|receipt| receipt.receipt_id == receipt_id)
+        .ok_or_else(|| Error::NotFound("usage receipt missing for allocation".into()))
+}
+
 impl Store {
     pub fn ingest_usage_receipt(
         &mut self,
@@ -232,6 +305,7 @@ impl Store {
         {
             let stored = load_receipt_body(&self.conn, &project_s, &existing.subject_id)?
                 .ok_or_else(|| Error::Storage("usage receipt missing for ingest receipt".into()))?;
+            let stored = require_same(stored, receipt)?;
             return Ok((
                 stored,
                 UsageIngestReceipt {
@@ -354,6 +428,7 @@ impl Store {
                     serde_json::from_str(&json)
                         .map_err(|e| Error::Storage(format!("corrupt usage correction: {e}")))
                 })?;
+            let body = require_same(body, correction)?;
             return Ok((
                 body,
                 UsageIngestReceipt {
@@ -361,6 +436,19 @@ impl Store {
                     ..existing
                 },
             ));
+        }
+        let existing_correction: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT correction_id FROM usage_corrections
+                 WHERE project_id=?1 AND target_receipt_id=?2",
+                params![project_s, correction.target_receipt_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(db_error)?;
+        if existing_correction.is_some() {
+            return Err(map_usage(UsageError::CorrectionAudit));
         }
         let receipts = list_receipts(&self.conn, &project_s)?;
         workstream_usage::apply_usage_corrections(&project_s, &receipts, &[correction.clone()])
@@ -419,6 +507,7 @@ impl Store {
                     serde_json::from_str(&json)
                         .map_err(|e| Error::Storage(format!("corrupt usage allocation: {e}")))
                 })?;
+            let body = require_same(body, record)?;
             return Ok((
                 body,
                 UsageIngestReceipt {
@@ -427,8 +516,20 @@ impl Store {
                 },
             ));
         }
-        let receipt = load_receipt_body(&self.conn, &project_s, &record.receipt_id)?
-            .ok_or_else(|| Error::NotFound("usage receipt missing for allocation".into()))?;
+        let prior_allocation: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT allocation_id FROM usage_allocation_records
+                 WHERE project_id=?1 AND receipt_id=?2",
+                params![project_s, record.receipt_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(db_error)?;
+        if prior_allocation.is_some() {
+            return Err(map_usage(UsageError::Conflict));
+        }
+        let receipt = effective_receipt(&self.conn, &project_s, &record.receipt_id)?;
         record.validate_against(&receipt).map_err(map_usage)?;
         let body = serde_json::to_string(record).map_err(|e| Error::Storage(e.to_string()))?;
         self.conn
@@ -470,30 +571,8 @@ impl Store {
         }
         if let Some(existing) = load_ingest(&self.conn, &project_s, request_key, "record_counter")?
         {
-            let body: UsageCounterSnapshot = self
-                .conn
-                .query_row(
-                    "SELECT body_json FROM usage_counter_snapshots
-                     WHERE project_id=?1 AND provider_namespace=?2 AND provider=?3 AND model=?4
-                       AND session_id=?5 AND counter_epoch=?6 AND observed_at_ms=?7",
-                    params![
-                        project_s,
-                        snapshot.scope.provider_namespace,
-                        snapshot.scope.provider,
-                        snapshot.scope.model,
-                        snapshot.scope.session_id,
-                        snapshot.scope.counter_epoch,
-                        snapshot.observed_at_ms as i64
-                    ],
-                    |r| r.get::<_, String>(0),
-                )
-                .optional()
-                .map_err(db_error)?
-                .ok_or_else(|| Error::Storage("usage counter missing for ingest receipt".into()))
-                .and_then(|json| {
-                    serde_json::from_str(&json)
-                        .map_err(|e| Error::Storage(format!("corrupt usage counter: {e}")))
-                })?;
+            let body = load_counter_by_subject(&self.conn, &project_s, &existing.subject_id)?;
+            let body = require_same(body, snapshot)?;
             return Ok((
                 body,
                 UsageIngestReceipt {
@@ -502,9 +581,8 @@ impl Store {
                 },
             ));
         }
-        // Validate standalone by delta against itself is wrong; validate fields via serde roundtrip scope.
+        workstream_usage::validate_usage_counter_snapshot(snapshot).map_err(map_usage)?;
         let body = serde_json::to_string(snapshot).map_err(|e| Error::Storage(e.to_string()))?;
-        // Ensure scope text validity using a no-op compare through public delta API when prior exists.
         let prior: Option<UsageCounterSnapshot> = self
             .conn
             .query_row(
@@ -550,10 +628,7 @@ impl Store {
                 ],
             )
             .map_err(db_error)?;
-        let subject = format!(
-            "{}:{}",
-            snapshot.scope.counter_epoch, snapshot.observed_at_ms
-        );
+        let subject = counter_subject(snapshot)?;
         let ingest = record_ingest(
             &self.conn,
             &project_s,
@@ -587,6 +662,7 @@ impl Store {
                         Error::Storage(format!("corrupt usage execution interval: {e}"))
                     })
                 })?;
+            let body = require_same(body, interval)?;
             return Ok((
                 body,
                 UsageIngestReceipt {

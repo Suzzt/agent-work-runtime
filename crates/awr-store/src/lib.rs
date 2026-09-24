@@ -67,14 +67,16 @@ pub use workstream_usage::UsageIngestReceipt;
 
 const APPLICATION_ID: i64 = 0x41575231;
 /// Schema written by this build. Exposed for offline host compatibility negotiation.
-pub const SCHEMA_VERSION: i64 = 13;
+pub const SCHEMA_VERSION: i64 = 14;
 const CONTENT_REVIEWS_SQL: &str = include_str!("../migrations/007_content_reviews.sql");
 const RESPONSIBILITY_SQL: &str = include_str!("../migrations/008_responsibility.sql");
-const AGENT_AUTHORIZATION_SQL: &str = include_str!("../migrations/009_agent_authorization.sql");
-const TEAM_HANDOFF_SQL: &str = include_str!("../migrations/010_team_handoff.sql");
-const DELIVERY_DEPS_SQL: &str = include_str!("../migrations/011_delivery_deps.sql");
-const USAGE_TIME_SQL: &str = include_str!("../migrations/012_usage_time.sql");
-const ETA_CHECKPOINTS_SQL: &str = include_str!("../migrations/013_eta_checkpoints.sql");
+const OPERATION_READSET_RECEIPTS_SQL: &str =
+    include_str!("../migrations/009_operation_readset_receipts.sql");
+const AGENT_AUTHORIZATION_SQL: &str = include_str!("../migrations/010_agent_authorization.sql");
+const TEAM_HANDOFF_SQL: &str = include_str!("../migrations/011_team_handoff.sql");
+const DELIVERY_DEPS_SQL: &str = include_str!("../migrations/012_delivery_deps.sql");
+const USAGE_TIME_SQL: &str = include_str!("../migrations/013_usage_time.sql");
+const ETA_CHECKPOINTS_SQL: &str = include_str!("../migrations/014_eta_checkpoints.sql");
 const CATALOG_SQL: &str = include_str!("../migrations/001_catalog.sql");
 const DOMAIN_SQL: &str = include_str!("../migrations/002_domain.sql");
 const SEARCH_SQL: &str = include_str!("../migrations/003_search.sql");
@@ -446,25 +448,34 @@ impl Store {
                 tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(8,'responsibility',?1)",[now_millis()?]).map_err(db_error)?;
             }
             if version < 9 {
-                tx.execute_batch(AGENT_AUTHORIZATION_SQL)
+                tx.execute_batch(OPERATION_READSET_RECEIPTS_SQL)
                     .map_err(db_error)?;
-                tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(9,'agent_authorization',?1)",[now_millis()?]).map_err(db_error)?;
+                tx.execute(
+                    "INSERT INTO schema_migrations(version,name,applied_at) VALUES(9,'operation_readset_receipts',?1)",
+                    [now_millis()?],
+                )
+                .map_err(db_error)?;
             }
             if version < 10 {
-                tx.execute_batch(TEAM_HANDOFF_SQL).map_err(db_error)?;
-                tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(10,'team_handoff',?1)",[now_millis()?]).map_err(db_error)?;
+                tx.execute_batch(AGENT_AUTHORIZATION_SQL)
+                    .map_err(db_error)?;
+                tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(10,'agent_authorization',?1)",[now_millis()?]).map_err(db_error)?;
             }
             if version < 11 {
-                tx.execute_batch(DELIVERY_DEPS_SQL).map_err(db_error)?;
-                tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(11,'delivery_deps',?1)",[now_millis()?]).map_err(db_error)?;
+                tx.execute_batch(TEAM_HANDOFF_SQL).map_err(db_error)?;
+                tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(11,'team_handoff',?1)",[now_millis()?]).map_err(db_error)?;
             }
             if version < 12 {
-                tx.execute_batch(USAGE_TIME_SQL).map_err(db_error)?;
-                tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(12,'usage_time',?1)",[now_millis()?]).map_err(db_error)?;
+                tx.execute_batch(DELIVERY_DEPS_SQL).map_err(db_error)?;
+                tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(12,'delivery_deps',?1)",[now_millis()?]).map_err(db_error)?;
             }
             if version < 13 {
+                tx.execute_batch(USAGE_TIME_SQL).map_err(db_error)?;
+                tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(13,'usage_time',?1)",[now_millis()?]).map_err(db_error)?;
+            }
+            if version < 14 {
                 tx.execute_batch(ETA_CHECKPOINTS_SQL).map_err(db_error)?;
-                tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(13,'eta_checkpoints',?1)",[now_millis()?]).map_err(db_error)?;
+                tx.execute("INSERT INTO schema_migrations(version,name,applied_at) VALUES(14,'eta_checkpoints',?1)",[now_millis()?]).map_err(db_error)?;
             }
             tx.pragma_update(None, "user_version", SCHEMA_VERSION)
                 .map_err(db_error)?;

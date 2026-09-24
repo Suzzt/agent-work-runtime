@@ -148,16 +148,33 @@ mod tests {
     }
 
     #[test]
-    fn codex_negotiates_as_usable_for_status() {
+    fn codex_negotiates_as_usable_for_status_without_claiming_start() {
         let reg = built_in_registry();
         let adapter = reg.get("codex_cli").unwrap();
+        assert!(!adapter.matrix().auto_startable);
         let result = adapter.negotiate(&AdapterNegotiationRequest {
             adapter_id: AdapterId::new("codex_cli").unwrap(),
             required: BTreeSet::from([AdapterCapability::StatusRead]),
             optional: BTreeSet::from([AdapterCapability::Start]),
         });
         assert_eq!(result.decision, NegotiationDecision::Usable);
-        assert!(result.granted.contains(&AdapterCapability::Start));
+        assert!(!result.granted.contains(&AdapterCapability::Start));
+        assert!(result.missing_optional.contains(&AdapterCapability::Start));
+        let start = adapter.start(&NativeExecutionHandle {
+            adapter_id: AdapterId::new("codex_cli").unwrap(),
+            execution_id: "e-codex".into(),
+            native_session: "codex:1".into(),
+            operation_key: "op-1".into(),
+        });
+        assert!(matches!(
+            start.unwrap(),
+            AdapterActionOutcome::HumanContinuation {
+                missing: AdapterCapability::Start,
+                ..
+            }
+        ));
+        let status = CodexCliAdapter::new().observed_status("missing");
+        assert!(status.is_none());
     }
 
     #[test]
