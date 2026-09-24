@@ -43,14 +43,23 @@ def main() -> int:
     local_md = LOCAL / "overlap-and-authority.md"
     mirror_md = MIRROR / "overlap-and-authority.md"
 
-    for p in (local_json, mirror_json, local_md, mirror_md, MIRROR / "README.md"):
+    for p in (mirror_json, mirror_md, MIRROR / "README.md"):
         if not p.is_file():
             fail(f"missing required artifact {p}")
 
-    baseline = load(local_json)
     mirror = load(mirror_json)
-    if baseline != mirror:
-        fail("local baseline JSON differs from checked-in mirror")
+    # The checked-in mirror is the gate. A private .local copy is optional, but
+    # if it exists it must match the mirror. CI and clean checkouts have no .local.
+    if local_json.is_file() or local_md.is_file():
+        if not local_json.is_file() or not local_md.is_file():
+            fail("local evolution baseline is partial; json and markdown must both exist")
+        baseline = load(local_json)
+        if baseline != mirror:
+            fail("local baseline JSON differs from checked-in mirror")
+        if local_md.read_text() != mirror_md.read_text():
+            fail("local overlap markdown differs from checked-in mirror")
+    else:
+        baseline = mirror
 
     missing = REQUIRED_BASELINE_KEYS - set(baseline)
     if missing:
@@ -119,7 +128,7 @@ def main() -> int:
     if baseline.get("dec_041_started") is not False:
         fail("dec_041_started must be false")
 
-    md = local_md.read_text()
+    md = mirror_md.read_text()
     for needle in (
         "Unique work authority",
         "Requirement对照",
@@ -130,9 +139,6 @@ def main() -> int:
     ):
         if needle not in md:
             fail(f"overlap doc missing section/marker: {needle}")
-    if local_md.read_text() != mirror_md.read_text():
-        fail("local overlap markdown differs from checked-in mirror")
-
     occ = baseline["path_occupancy"]
     for path, info in occ.items():
         if info.get("conflict") is True:
