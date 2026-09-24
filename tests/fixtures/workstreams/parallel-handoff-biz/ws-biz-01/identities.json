@@ -1,0 +1,40 @@
+{
+  "namespace": "awr-ws-r2-ws-biz-01",
+  "persons": [
+    {
+      "person_id": "person.morgan-lee",
+      "display_name": "Morgan Lee",
+      "role": "developer",
+      "preferred_client": "codex_cli"
+    },
+    {
+      "person_id": "person.casey-wu",
+      "display_name": "Casey Wu",
+      "role": "developer",
+      "preferred_client": "claude_code"
+    },
+    {
+      "person_id": "person.drew-kim",
+      "display_name": "Drew Kim",
+      "role": "reviewer",
+      "preferred_client": "team_web"
+    }
+  ],
+  "named_clients": [
+    "codex_cli",
+    "claude_code"
+  ],
+  "required_surfaces": [
+    "codex_cli",
+    "claude_code",
+    "team_web"
+  ],
+  "independence_rules": {
+    "reviewer_person_must_differ_from_executors": true,
+    "minimum_developer_persons": 2,
+    "minimum_named_clients": 2,
+    "team_web_required": true,
+    "forbidden": "same person or same agent session signing both execution and independent_review",
+    "same_person_dual_agent_allowed": false
+  }
+}

@@ -1,0 +1,23 @@
+[project]
+name = "同人换 Agent 与子任务并行"
+external_key = "awr-ws-r2-ws-biz-04"
+
+[[sources]]
+domain = "goal"
+role = "primary"
+path = "GOALS.md"
+
+[[sources]]
+domain = "plan"
+role = "primary"
+path = "PLAN.md"
+
+[[sources]]
+domain = "rules"
+role = "primary"
+path = "RULES.md"
+
+[[sources]]
+domain = "ledger"
+role = "primary"
+path = "work-ledger.json"

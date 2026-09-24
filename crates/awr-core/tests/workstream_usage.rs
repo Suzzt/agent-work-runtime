@@ -318,3 +318,137 @@ fn union_matches_discrete_oracle_for_small_interval_pairs() {
         }
     }
 }
+#[test]
+fn coverage_stays_out_of_cost_columns_and_unknown_expected_has_no_ratio() {
+    let known = usage_coverage_report(&UsageCoverageObservation {
+        observed_calls: 2,
+        expected_calls: Some(4),
+        observed_time_ms: 10,
+        expected_time_ms: Some(40),
+    })
+    .unwrap();
+    assert_eq!(known.call_coverage, Some((2, 4)));
+    assert_eq!(known.time_coverage, Some((10, 40)));
+    assert!(known.coverage_is_not_a_cost_column);
+    let unknown = usage_coverage_report(&UsageCoverageObservation {
+        observed_calls: 2,
+        expected_calls: None,
+        observed_time_ms: 10,
+        expected_time_ms: None,
+    })
+    .unwrap();
+    assert_eq!(unknown.call_coverage, None);
+    assert_eq!(unknown.time_coverage, None);
+    assert!(
+        usage_coverage_report(&UsageCoverageObservation {
+            observed_calls: 5,
+            expected_calls: Some(4),
+            observed_time_ms: 0,
+            expected_time_ms: None,
+        })
+        .is_err()
+    );
+}
+
+#[test]
+fn corrections_are_auditable_and_conserve_receipt_identity() {
+    let r = receipt();
+    let ok = UsageCorrection {
+        correction_id: "c1".into(),
+        project_id: "project".into(),
+        target_receipt_id: r.receipt_id.clone(),
+        corrected_at_ms: 50,
+        reason: "provider restatement".into(),
+        prior_cost: r.cost.clone(),
+        new_cost: UsageCost::Actual(money(90)),
+        actor: "billing-adapter".into(),
+    };
+    let (corrected, applied) = apply_usage_corrections("project", &[r.clone()], &[ok]).unwrap();
+    assert_eq!(applied, vec!["c1".to_string()]);
+    assert_eq!(corrected[0].cost, UsageCost::Actual(money(90)));
+    let bad_prior = UsageCorrection {
+        correction_id: "c2".into(),
+        project_id: "project".into(),
+        target_receipt_id: r.receipt_id.clone(),
+        corrected_at_ms: 51,
+        reason: "wrong prior".into(),
+        prior_cost: UsageCost::Actual(money(1)),
+        new_cost: UsageCost::Actual(money(2)),
+        actor: "billing-adapter".into(),
+    };
+    assert_eq!(
+        apply_usage_corrections("project", &[r], &[bad_prior]),
+        Err(UsageError::CorrectionAudit)
+    );
+}
+
+#[test]
+fn occurrence_bindings_and_handoff_refuse_eta_label() {
+    let r = receipt();
+    let mut bound = r.clone();
+    bound.attribution.workstream_id = Some(Id::from(9u128));
+    let bindings = usage_occurrence_bindings("project", &[bound.clone(), bound.clone()]).unwrap();
+    assert_eq!(bindings.len(), 1);
+    assert_eq!(bindings[0].execution_id, "execution");
+    assert_eq!(bindings[0].work_id, "work");
+    assert_eq!(bindings[0].occurrence_mainline_id, Some(Id::from(9u128)));
+    let handoff = usage_observation_handoff(
+        "project",
+        &[bound],
+        &[],
+        Some(&[UsageTimeInterval {
+            start_ms: 0,
+            end_ms: 10,
+        }]),
+        &UsageCoverageObservation {
+            observed_calls: 1,
+            expected_calls: Some(2),
+            observed_time_ms: 10,
+            expected_time_ms: Some(20),
+        },
+    )
+    .unwrap();
+    assert!(handoff.is_historical_observation);
+    assert!(handoff.is_not_estimated_remaining_time);
+    assert!(handoff.wall_clock_distinct_from_execution_sum);
+    assert_eq!(handoff.cost_totals.actual_micros["USD"], 101);
+    assert!(refuse_eta_from_cumulative_duration("remaining ETA", 99).is_err());
+    assert!(refuse_eta_from_cumulative_duration("observed_execution_ms", 99).is_ok());
+}
+
+#[test]
+fn execution_interval_dedup_keeps_parallel_wall_distinct_from_sum() {
+    let intervals = [
+        UsageExecutionInterval {
+            execution_id: "a".into(),
+            interval: UsageTimeInterval {
+                start_ms: 0,
+                end_ms: 10,
+            },
+        },
+        UsageExecutionInterval {
+            execution_id: "b".into(),
+            interval: UsageTimeInterval {
+                start_ms: 5,
+                end_ms: 15,
+            },
+        },
+        UsageExecutionInterval {
+            execution_id: "a".into(),
+            interval: UsageTimeInterval {
+                start_ms: 0,
+                end_ms: 10,
+            },
+        },
+    ];
+    let dedup = deduplicate_execution_intervals(&intervals).unwrap();
+    let t = usage_time_totals(Some(&dedup)).unwrap().unwrap();
+    assert_eq!(t.observed_wall_clock_ms, 15);
+    assert_eq!(t.observed_execution_ms, 20);
+    let mut conflict = intervals[0].clone();
+    conflict.interval.end_ms = 11;
+    assert_eq!(
+        deduplicate_execution_intervals(&[intervals[0].clone(), conflict]),
+        Err(UsageError::Conflict)
+    );
+}

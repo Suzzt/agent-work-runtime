@@ -7,9 +7,7 @@
 use crate::assessment_explain::{
     ASSESSMENT_EXPLAIN_FIELD, AttachExplanationOptions, attach_assessment_explanation,
 };
-use crate::assessment_replay::{
-    ReplayReport, ReplaySnapshot, ReplayStatus, replay_assessment,
-};
+use crate::assessment_replay::{ReplayReport, ReplaySnapshot, ReplayStatus, replay_assessment};
 use awr_core::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -57,8 +55,12 @@ impl AdviceDeliveryMode {
         matches!(self, Self::Shadow | Self::Enabled)
     }
 
+    /// DEC-022 never adopts advice into execution or context. Enabled only
+    /// attaches the explanation for display.
     pub fn adopts_for_execution_or_context(self) -> bool {
-        matches!(self, Self::Enabled)
+        match self {
+            Self::Disabled | Self::Shadow | Self::Enabled => false,
+        }
     }
 }
 
@@ -167,8 +169,8 @@ pub fn attach_according_to_advice_mode(
                 if let Some(explain) = obj.get_mut(ASSESSMENT_EXPLAIN_FIELD) {
                     if let Some(eo) = explain.as_object_mut() {
                         eo.insert("shadow".into(), json!(false));
-                        eo.insert("execution_adoption".into(), json!(true));
-                        eo.insert("context_adoption".into(), json!(true));
+                        eo.insert("execution_adoption".into(), json!(false));
+                        eo.insert("context_adoption".into(), json!(false));
                         eo.insert(
                             "advice_delivery_mode".into(),
                             json!(AdviceDeliveryMode::Enabled.as_str()),
@@ -186,9 +188,15 @@ pub fn attach_according_to_advice_mode(
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CompareCosts {
-    pub collect_units: u64,
-    pub judge_units: u64,
-    pub output_bytes: u64,
+    /// Unmeasured. Never filled with a placeholder sample count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collect_units: Option<u64>,
+    /// Unmeasured. Never filled with a placeholder sample count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub judge_units: Option<u64>,
+    /// Serialized envelope size. Absent when the arm did not replay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -239,7 +247,11 @@ fn hard_gate_str(gate: &HardGateOutcome) -> String {
     }
 }
 
-fn summarize_arm(label: &str, snapshot: &ReplaySnapshot, report: &ReplayReport) -> Result<ArmSummary> {
+fn summarize_arm(
+    label: &str,
+    snapshot: &ReplaySnapshot,
+    report: &ReplayReport,
+) -> Result<ArmSummary> {
     let envelope = report.envelope.as_ref().ok_or_else(|| {
         Error::InvalidInput(format!(
             "shadow compare arm '{label}' missing envelope ({:?})",
@@ -278,20 +290,47 @@ fn summarize_arm(label: &str, snapshot: &ReplaySnapshot, report: &ReplayReport) 
         hard_rejects,
         hard_gate: hard_gate_str(&envelope.hard_gate),
         costs: CompareCosts {
-            collect_units: 1,
-            judge_units: 1,
-            output_bytes,
+            collect_units: None,
+            judge_units: None,
+            output_bytes: Some(output_bytes),
         },
     })
+}
+
+fn json_eq<T: Serialize>(left: &T, right: &T) -> bool {
+    match (serde_json::to_vec(left), serde_json::to_vec(right)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
 }
 
 fn inputs_match(baseline: &ReplaySnapshot, candidate: &ReplaySnapshot) -> bool {
     baseline.prepared.work_key == candidate.prepared.work_key
         && baseline.as_of == candidate.as_of
-        && serde_json::to_vec(&baseline.prepared).ok() == serde_json::to_vec(&candidate.prepared).ok()
-        && serde_json::to_vec(&baseline.delivery).ok() == serde_json::to_vec(&candidate.delivery).ok()
-        && serde_json::to_vec(&baseline.completion).ok()
-            == serde_json::to_vec(&candidate.completion).ok()
+        && json_eq(&baseline.prepared, &candidate.prepared)
+        && json_eq(&baseline.delivery, &candidate.delivery)
+        && json_eq(&baseline.completion, &candidate.completion)
+        && json_eq(&baseline.current_authority, &candidate.current_authority)
+        && json_eq(&baseline.prior_identity, &candidate.prior_identity)
+}
+
+fn hard_gate_rank(gate: &str) -> u8 {
+    match gate {
+        "reject" => 2,
+        "unknown" => 1,
+        _ => 0,
+    }
+}
+
+/// A candidate that turns reject/unknown into pass, or drops a hard reject, is not a pass.
+fn candidate_loosens_hard_gate(baseline: &ArmSummary, candidate: &ArmSummary) -> bool {
+    if hard_gate_rank(&candidate.hard_gate) < hard_gate_rank(&baseline.hard_gate) {
+        return true;
+    }
+    baseline
+        .hard_rejects
+        .iter()
+        .any(|item| !candidate.hard_rejects.contains(item))
 }
 
 fn empty_arm(label: &str, snapshot: &ReplaySnapshot, report: &ReplayReport) -> ArmSummary {
@@ -322,15 +361,19 @@ pub fn shadow_compare(
     let baseline_report = replay_assessment(baseline_snapshot)?;
     let candidate_report = replay_assessment(candidate_snapshot)?;
 
-    let rule_explain = format!(
-        "baseline rule {}@{} hash={}; candidate rule {}@{} hash={}",
-        baseline_snapshot.policy.policy_id,
-        baseline_snapshot.policy.policy_version,
-        baseline_snapshot.rule_hash,
-        candidate_snapshot.policy.policy_id,
-        candidate_snapshot.policy.policy_version,
-        candidate_snapshot.rule_hash
-    );
+    let rule_explain = if same_inputs {
+        format!(
+            "baseline rule {}@{} hash={}; candidate rule {}@{} hash={}",
+            baseline_snapshot.policy.policy_id,
+            baseline_snapshot.policy.policy_version,
+            baseline_snapshot.rule_hash,
+            candidate_snapshot.policy.policy_id,
+            candidate_snapshot.policy.policy_version,
+            candidate_snapshot.rule_hash
+        )
+    } else {
+        "inputs_differ; difference is not attributed to rule version".into()
+    };
 
     if baseline_report.status != ReplayStatus::Replayed
         || candidate_report.status != ReplayStatus::Replayed
@@ -410,6 +453,7 @@ pub fn shadow_compare(
         }));
     }
 
+    let passed = same_inputs && !candidate_loosens_hard_gate(&baseline, &candidate);
     Ok(ShadowCompareReport {
         same_inputs,
         baseline,
@@ -419,7 +463,7 @@ pub fn shadow_compare(
         execution_adoption: false,
         context_adoption: false,
         background_daemon: false,
-        passed: same_inputs,
+        passed,
     })
 }
 
@@ -584,6 +628,84 @@ mod tests {
                 "divergent samples must be retained in full"
             );
         }
+        assert!(report.baseline.costs.collect_units.is_none());
+        assert!(report.baseline.costs.judge_units.is_none());
+        assert!(report.candidate.costs.output_bytes.is_some());
+        assert!(report.passed);
     }
 
+    #[test]
+    fn loosening_a_hard_gate_is_not_a_pass() {
+        fn arm(gate: &str, rejects: &[&str]) -> ArmSummary {
+            ArmSummary {
+                label: "arm".into(),
+                policy_id: "p".into(),
+                policy_version: 1,
+                rule_hash: "r".into(),
+                assessment_hash: "h".into(),
+                reason_codes: vec![],
+                advisory_codes: vec![],
+                hard_rejects: rejects.iter().map(|s| (*s).to_string()).collect(),
+                hard_gate: gate.into(),
+                costs: CompareCosts::default(),
+            }
+        }
+        let baseline = arm("reject", &["delivery.ack"]);
+        assert!(candidate_loosens_hard_gate(
+            &baseline,
+            &arm("pass", &["delivery.ack"])
+        ));
+        assert!(candidate_loosens_hard_gate(&baseline, &arm("unknown", &[])));
+        assert!(!candidate_loosens_hard_gate(
+            &baseline,
+            &arm("reject", &["delivery.ack"])
+        ));
+    }
+
+    #[test]
+    fn enabled_does_not_claim_execution_adoption() {
+        assert!(!AdviceDeliveryMode::Enabled.adopts_for_execution_or_context());
+        let receipt = json!({
+            "work": {"external_key": "AWR-DEC-022", "id": "01WORK", "revision": 1},
+            "ready": true,
+            "diagnostics": [],
+            "active_claims": [],
+            "management": {
+                "contract_fingerprint": "contract-a",
+                "decision": {
+                    "version": 1,
+                    "mode": "lightweight",
+                    "reasons": [],
+                    "unknown_observations": [],
+                    "reevaluation_signals": [],
+                    "required_actions": [
+                        "preserve_identity_intent_scope_and_current_state",
+                        "consume_required_context_and_hard_rules",
+                        "retain_completion_basis_and_actual_outcome",
+                        "check_source_versions_permissions_claims_and_request_identity"
+                    ],
+                    "optional_maintenance": [],
+                    "completion_policy": "unchanged_source_policy",
+                    "execution_admission": "not_granted_by_management_classification"
+                },
+                "observation_basis": "host_assertion_not_independently_verified",
+                "record_required": false,
+                "admission_gaps": [],
+                "next_action": "follow_required_actions_and_existing_workflow"
+            }
+        });
+        let out = attach_according_to_advice_mode(
+            receipt,
+            AdviceDeliveryMode::Enabled,
+            crate::assessment_explain::AttachExplanationOptions {
+                enabled: true,
+                as_of: Some(7),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(out["assessment_explanation"]["execution_adoption"], false);
+        assert_eq!(out["assessment_explanation"]["context_adoption"], false);
+        assert_eq!(out["assessment_explanation"]["shadow"], false);
+    }
 }

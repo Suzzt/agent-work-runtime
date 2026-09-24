@@ -15,8 +15,10 @@ explicitly enable workstreams. The shared personal MCP service has an explicit
 authenticated read boundary; unsupported shared operations are rejected for
 enabled workstreams. Team PostgreSQL has authenticated HTTP/MCP queries,
 session journaling, claims, execution admission and authorized recovery, with a
-bounded local reference runner. Versioned cross-stream adoption and full
-workspace/external-resource enforcement remain separate integration work.
+bounded local reference runner. Versioned cross-stream hard dependencies and adoption credentials are available
+in core/store/team-pg (WS-030). File/dir/workspace versus shared external/integration resource bounds are enforced
+at reservation and admission; physical strong isolation still requires a verified
+host sandbox or OS boundary, not AWR metadata alone.
 These paths do not establish complete isolation for every CLI, MCP or Team operation.
 
 The Team source coordinator also accepts an explicit multi-work source bundle
@@ -70,9 +72,13 @@ the original receipt; changed intent conflicts. Unknown effects are inspected
 before another dispatch.
 
 Same-work ownership and overlapping resources remain exclusive. Source writers
-use reviewed patches, source fingerprints and recovery journals. Multi-source
-activation requires a coherent candidate and atomic activation; unsupported
-adapters reject the operation. SQLite remains a single-writer database.
+use reviewed patches, source fingerprints and recovery journals
+(`awr-source` / `awr-runtime` source-concurrency helpers). Stale whole-file
+installs that no longer match the reviewed fingerprint are refused. Supported
+sharded multi-source updates form a coherent candidate and activate under a
+recovery journal; unsupported adapters reject the operation. External edits and
+half-writes remain recoverable without overwriting foreign bytes. SQLite remains
+a single-writer database.
 
 Project freeze, permission revocation and restore remain barriers. A restore
 changes the coordinator epoch. Lease expiry does not prove process termination;
@@ -103,8 +109,12 @@ version of the contract.
 
 The Team source bundle can already represent and validate the acyclic
 `interface → sdk → integration` example across workstream ownership. This is
-source graph validation only. Delivery receipts, adoption, dispatch admission
-and selective invalidation are not yet implemented by that source path.
+source graph validation only. Delivery receipts and adoption credentials are persisted (WS-030). The runtime
+and Team graph APIs enforce acyclic cross-stream task DAGs with explainable hard
+cycle paths, atomic concurrent edge mutations, all-necessary-deps readiness, and
+shared outcome references (WS-031). Selective invalidation and prepare/dispatch/
+complete boundary revalidation are enforced with WS-030 adoption policies and
+scoped planning changes for newly discovered dependencies (WS-032).
 
 ## Accounting and compatibility
 
@@ -112,11 +122,42 @@ Progress uses an explicit versioned required-work set, not the number of tasks
 returned by a goal filter. Planning, implementation, acceptance, merge and
 release are separate facts. Shared work is counted once.
 
+WS-040 exposes this as a runtime façade over the pure core contract accountant:
+`account_approved_scope` freezes the denominator from an attested versioned
+contract, keeps the five delivery stages independent, and labels Goal query
+hits as `is_not_contract_completion_rate`. Unique ownership, shared-outcome
+references and ownership transfers refuse double-counting or silent history
+rewrites; a transfer requires a new contract revision and digest while the
+historical ledger remains readable under the prior identity.
+
 Usage receipts identify the execution, work, owning stream at the time, provider,
 model, pricing basis and observation coverage. Compression and request billing
 must not be charged twice. Unknown usage is not zero. Shared costs require an
 explicit allocation rule; allocations sum to the original charge. Parallel
 wall time is distinct from summed execution time.
+
+WS-041 persists and queries these as real usage + time accounting: deduped
+receipts bind to execution / task / occurrence-time mainline; actual cost,
+API-equivalent estimate, unknown, and coverage stay separate columns;
+cumulative provider counters convert to incremental deltas; corrections and
+cross-stream allocations are append-only and auditable. An allocation conserves
+the corrected cost, and a second allocation of the same receipt is refused.
+Replaying a request key with a different body conflicts instead of keeping the
+first body under a success result. Measured time/usage
+with coverage is handed to WS-043 as historical observation only —
+cumulative-duration fields must never be presented as estimated remaining time.
+
+WS-043 builds calibrated expected acceptance time and stage checkpoints on top
+of that handoff: append-only forecast records (target, generated_at, task-graph
+version, strategy, sample/method versions, intervals, assumptions, unknowns);
+critical-path scheduling under real concurrency and available executors without
+summing parallel durations or waiting on unrelated mainlines; separate
+effective-execution, dependency/human-wait, and calendar-window components with
+evidence-backed queue exclusions; cold-start provisional/unestimable labels and
+calibrated intervals only after frozen sample+holdout gates (coverage/width/
+error/missing-rate reported; LLM narrative is never a precise promise); and
+reestimates on dependency/rework/executor/capacity changes that preserve
+before/after reasons while isolating historical samples from acceptance data.
 
 Legacy projects retain one compatible default scope and existing identities.
 Existing project, work and session identifiers remain opaque strings, including
@@ -155,8 +196,10 @@ before activation. Catalog, contracts, ownership, edges, mode and source pointer
 commit atomically. Rollback preserves the prior projection.
 
 This stage permits enablement only without existing session history or live
-claims/nonterminal executions. Legacy-session migration and reviewed ownership
-movement are not yet implemented for Team. Updates retain scope IDs, keys and
+claims/nonterminal executions. Bounded owner-only session/inactive-claim/event attribution is available via
+the schema-owner history-migration CLI; reviewed ownership movement remains
+unimplemented for Team. Bounded CHECK-safe execution attribution is available via
+the schema-owner execution-attribution CLI. Updates retain scope IDs, keys and
 ownership; authority changes require increased versions, and retained scopes
 must be archived instead of removed. Existing work keys cannot change through
 the new codec. A source update also refuses live claims and nonterminal
@@ -173,15 +216,33 @@ progress. Historical data is never reassigned just to unblock enablement.
 `SourceStore` remains a trusted coordinator API, not a client authorization
 boundary. Source bundles cannot carry grants and activation grants no reader or
 writer permissions. The [Team HTTP service](team-workstream-service.md)
-checks live credentials, actor/membership and grants transactionally. Session
+checks live credentials, actor/membership and grants transactionally through a
+shared command-domain authorization gate (admission write grant, then
+active-stream or attest/reconcile effect checks after idempotent replay). Session
 creation, checkpoints, closure, claims, execution intents/admission, result
 reporting and authorized reconciliation are supported through HTTP and MCP.
-The [reference runner](team-reference-runner.md) performs bounded local file
+Capabilities advertise `scope_id=main` historical semantics, refuse unsupported
+operations, and state that local file access is not a server ACL. The
+[reference runner](team-reference-runner.md) performs bounded local file
 writes with explicit executor authority. Old-epoch reconciliation requires an
-explicit operator review and preserves original attribution. Enabled-project
-backup/restore, migration of unattributed history and real-client acceptance
-remain outstanding; the current legacy import/restore APIs refuse enabled
-projects. The shared personal MCP read boundary described elsewhere does not
+explicit operator review and preserves original attribution. Owner-only read-only recovery inspection is available via
+`awr-server access recovery-inspect` for enabled projects. Explicit unattributed
+history migration (`history-preview` / `history-apply`) can attribute sessions,
+inactive claims and work-bound events from current ownership; it refuses
+executions and active claims and does not forge identity or completion receipts.
+Owner-only enabled-project logical backup manifests, verified fencing restore,
+and a bounded rebuild-from-manifest slice (missing work_items id+external_key plus
+ownership when empty/fencing-quiet) are available via `awr-server access backup-*`
+(physical basebackup remains external; completion receipts are never rewritten;
+divergent ownership overwrite is refused). Owner-only active-claim release/quarantine/attribute-and-release and unattributed
+nonterminal execution quarantine-cancel are available via `awr-server access quarantine-*`
+(never forges `executor_client_id`). Owner-only explicit execution attribution with a
+reviewed `executor_client_id` (CHECK-safe: session+claim present; must match session
+client) is available via `awr-server access execution-attribution-*`. Remaining gaps
+include full logical rebuild (catalogs, contracts, snapshot ownership, receipts,
+grants), attribution of executions lacking session/claim (would require inventing
+CHECK fields), and real-client acceptance. Legacy import/restore APIs continue to refuse
+enabled projects. The shared personal MCP read boundary described elsewhere does not
 provide Team access.
 
 ### Source projection in the development branch
@@ -360,7 +421,90 @@ is never permission to execute: current authorization and action preconditions
 must still be checked. Existing MCP reads retain their explicit reindex
 requirement when source files differ from the stored projection.
 
+
+
+
+
+## Named agent host adapters and subtask parallelism (WS-024)
+
+Execution adapters negotiate capabilities (`start`, `status_read`,
+`stop_confirmation`, `reconnect_resume`, `result_forensics`) separately from AWR
+admission, cancel and session end. L0 manual/`ExternalExecutionReport` remains
+first-class. Built-in named clients: `codex_cli` (auto-startable) and
+`claude_code` (not auto-startable). Unsupported capabilities return a human
+continuation path.
+
+Independent child tasks under a parent keep task identity, own claims and
+resource bounds; dependencies order starts while independent work may run in
+parallel under an explicit concurrency cap and user pause. Parent rollup
+references child outcomes without copying artifacts. Parent session exit does
+not auto-complete or release unknown children. Reconnect/retry queries the
+original execution before any new start.
+
+See [named agent host](../integrations/named-agent-host.md) and
+`tests/fixtures/workstreams/named-agent-host/awr-workstream-isolation-v1.json`.
+
+## Team publish preparation (AWR-TMCP-020)
+
+First-round Team publish preparation maps a server-held YAML workstream ledger
+and its referenced Markdown/JSON acceptance specs into the existing
+`workstreams.json` contract candidate. The mapping lives in `awr-source`
+(`publish_prep`) and the Team coordinator consumes the resulting package through
+the existing ingest → approve → activate path in `awr-team-pg`.
+
+### Supported inputs and hard rejects
+
+- Supported ledger adapter: `yaml-workstream-ledger-v1` (`.yaml` / `.yml` only).
+- Referenced specs: Markdown (`.md` / `.markdown`) and JSON (`.json`) only.
+- Required work fields include stable id, title, workstream key, and a non-empty
+  `acceptance` list. Missing fields hard-reject; unsupported formats hard-reject.
+- Top-level ledger collections such as `roles`, `members`, `grants`, or
+  `permissions` are rejected so publish preparation cannot invent Team role or
+  membership relationships from source text.
+
+### Sole source location
+
+The Team project binds exactly one authoritative source location:
+
+- a server-controlled directory (absolute path), or
+- a private management repository URL (`git://`, `https://`, or `ssh://`) with a
+  pinned revision.
+
+The binding is recorded as `source_binding.json` inside the publish package and
+stored with the candidate snapshot. Developers consume the activated Team
+contract through the service; they do not need author-laptop files or write
+access to the ledger directory. Existing work identities (`work_id` /
+`external_key`) and original source versions are preserved across preview and
+ingest.
+
+### Preview before ingest
+
+`prepare_publish_from_server_directory` (and the ledger-bytes variant) return a
+preview of identity, dependency, acceptance, and source diffs against an
+optional previously activated baseline. First publish passes no baseline and
+lists every work identity as added. Callers must review the preview before
+ingest.
+
+### Ingest / approve / activate boundaries
+
+- First publish uses the existing coordinator semantics: ingest creates a
+  candidate, approve records an independent review of the candidate digest, and
+  activate installs the immutable source + contract + graph digests.
+- Candidate and activated states remain separate. Approving a source candidate
+  does **not** grant project membership or member action permissions.
+- Source status strings, historical human `done`, and old test materials keep
+  source meaning only. Projection install never forges PG completion receipts
+  from those fields. Migrations that already carry Team history continue to use
+  the existing reject and recovery boundaries; history is not discarded for
+  trials.
+
+Fixture coverage lives under `tests/fixtures/team-mcp/publish-prep/`.
+
 The synthetic [context fixture](../../tests/fixtures/workstreams/context.yaml)
 and [manifest](../../tests/fixtures/workstreams/context.toml) exercise the native
 CLI and MCP stdio compilation paths. These are protocol/fixture checks, not
 complete business acceptance or authenticated multi-client isolation.
+
+## Parallel / handoff business acceptance (WS-051)
+
+See [workstream-parallel-handoff-biz.md](workstream-parallel-handoff-biz.md).

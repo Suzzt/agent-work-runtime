@@ -2,8 +2,8 @@
   "work": "AWR-DEC-011",
   "pr_url": "https://github.com/originoneai/awr/pull/147",
   "pr_number": 147,
-  "head_sha": "030b653f621fbd74c85526a163e32e0c04329fad",
-  "base_sha": "8a7afec51110b70a1d47e523e1b31742bacb7b10",
+  "head_sha": "06a7a4ecc87794a86645df596f2bd008ae0e16e8",
+  "base_sha": "ed035731a03ab9285d92eb6e83ba12c7e56196de",
   "base_branch": "codex/awr-dec-010-reuse-assessment-contract",
   "acceptance_mapping": {
     "1_snapshot_identity_scope_version_conflicts": {

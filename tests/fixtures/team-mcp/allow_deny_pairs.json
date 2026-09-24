@@ -1,0 +1,446 @@
+{
+  "policy_id": "awr-team-mcp-permission-v1",
+  "policy_version": 1,
+  "base_resource": {
+    "tenant_id": "tenant-a",
+    "project_id": "project-a",
+    "workstream_id": "ws-main",
+    "work_id": "AWR-TMCP-010"
+  },
+  "exhaustive": true,
+  "cell_count": 52,
+  "pairs": [
+    {
+      "id": "reader__work_read__allow",
+      "template": "reader",
+      "action": "work.read",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "reader__session_maintain_own__deny",
+      "template": "reader",
+      "action": "session.maintain_own",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "reader__claim_manage_own__deny",
+      "template": "reader",
+      "action": "claim.manage_own",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "reader__execution_request_and_report_own__deny",
+      "template": "reader",
+      "action": "execution.request_and_report_own",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "reader__planning_propose__deny",
+      "template": "reader",
+      "action": "planning.propose",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "reader__planning_edit_draft__deny",
+      "template": "reader",
+      "action": "planning.edit_draft",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "reader__planning_approve__deny",
+      "template": "reader",
+      "action": "planning.approve",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "reader__planning_publish__deny",
+      "template": "reader",
+      "action": "planning.publish",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "reader__delivery_submit_and_request_review__deny",
+      "template": "reader",
+      "action": "delivery.submit_and_request_review",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "reader__review_decide__deny",
+      "template": "reader",
+      "action": "review.decide",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "reader__delivery_finalize__deny",
+      "template": "reader",
+      "action": "delivery.finalize",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "reader__access_manage_project__deny",
+      "template": "reader",
+      "action": "access.manage_project",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "reader__audit_read_project__deny",
+      "template": "reader",
+      "action": "audit.read_project",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "developer__work_read__allow",
+      "template": "developer",
+      "action": "work.read",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "developer__session_maintain_own__allow",
+      "template": "developer",
+      "action": "session.maintain_own",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "developer__claim_manage_own__allow",
+      "template": "developer",
+      "action": "claim.manage_own",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "developer__execution_request_and_report_own__allow",
+      "template": "developer",
+      "action": "execution.request_and_report_own",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "developer__planning_propose__allow",
+      "template": "developer",
+      "action": "planning.propose",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "developer__planning_edit_draft__deny",
+      "template": "developer",
+      "action": "planning.edit_draft",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "developer__planning_approve__deny",
+      "template": "developer",
+      "action": "planning.approve",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "developer__planning_publish__deny",
+      "template": "developer",
+      "action": "planning.publish",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "developer__delivery_submit_and_request_review__allow",
+      "template": "developer",
+      "action": "delivery.submit_and_request_review",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "developer__review_decide__deny",
+      "template": "developer",
+      "action": "review.decide",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "developer__delivery_finalize__deny",
+      "template": "developer",
+      "action": "delivery.finalize",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "developer__access_manage_project__deny",
+      "template": "developer",
+      "action": "access.manage_project",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "developer__audit_read_project__deny",
+      "template": "developer",
+      "action": "audit.read_project",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "maintainer__work_read__allow",
+      "template": "maintainer",
+      "action": "work.read",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "maintainer__session_maintain_own__allow",
+      "template": "maintainer",
+      "action": "session.maintain_own",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "maintainer__claim_manage_own__allow",
+      "template": "maintainer",
+      "action": "claim.manage_own",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "maintainer__execution_request_and_report_own__allow",
+      "template": "maintainer",
+      "action": "execution.request_and_report_own",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "maintainer__planning_propose__allow",
+      "template": "maintainer",
+      "action": "planning.propose",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "maintainer__planning_edit_draft__allow",
+      "template": "maintainer",
+      "action": "planning.edit_draft",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "maintainer__planning_approve__allow",
+      "template": "maintainer",
+      "action": "planning.approve",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "maintainer__planning_publish__allow",
+      "template": "maintainer",
+      "action": "planning.publish",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "maintainer__delivery_submit_and_request_review__allow",
+      "template": "maintainer",
+      "action": "delivery.submit_and_request_review",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "maintainer__review_decide__deny",
+      "template": "maintainer",
+      "action": "review.decide",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "maintainer__delivery_finalize__allow",
+      "template": "maintainer",
+      "action": "delivery.finalize",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "maintainer__access_manage_project__deny",
+      "template": "maintainer",
+      "action": "access.manage_project",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "maintainer__audit_read_project__deny",
+      "template": "maintainer",
+      "action": "audit.read_project",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "project_admin__work_read__allow",
+      "template": "project_admin",
+      "action": "work.read",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "project_admin__session_maintain_own__allow",
+      "template": "project_admin",
+      "action": "session.maintain_own",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "project_admin__claim_manage_own__allow",
+      "template": "project_admin",
+      "action": "claim.manage_own",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "project_admin__execution_request_and_report_own__allow",
+      "template": "project_admin",
+      "action": "execution.request_and_report_own",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "project_admin__planning_propose__allow",
+      "template": "project_admin",
+      "action": "planning.propose",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "project_admin__planning_edit_draft__allow",
+      "template": "project_admin",
+      "action": "planning.edit_draft",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "project_admin__planning_approve__allow",
+      "template": "project_admin",
+      "action": "planning.approve",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "project_admin__planning_publish__allow",
+      "template": "project_admin",
+      "action": "planning.publish",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "project_admin__delivery_submit_and_request_review__allow",
+      "template": "project_admin",
+      "action": "delivery.submit_and_request_review",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "project_admin__review_decide__deny",
+      "template": "project_admin",
+      "action": "review.decide",
+      "expect": "deny",
+      "independent_review_grant": false
+    },
+    {
+      "id": "project_admin__delivery_finalize__allow",
+      "template": "project_admin",
+      "action": "delivery.finalize",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "project_admin__access_manage_project__allow",
+      "template": "project_admin",
+      "action": "access.manage_project",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "project_admin__audit_read_project__allow",
+      "template": "project_admin",
+      "action": "audit.read_project",
+      "expect": "allow",
+      "independent_review_grant": false
+    },
+    {
+      "id": "developer__review_decide__grant_allow",
+      "template": "developer",
+      "action": "review.decide",
+      "expect": "allow",
+      "independent_review_grant": true
+    },
+    {
+      "id": "maintainer__review_decide__grant_allow",
+      "template": "maintainer",
+      "action": "review.decide",
+      "expect": "allow",
+      "independent_review_grant": true
+    },
+    {
+      "id": "project_admin__review_decide__grant_allow",
+      "template": "project_admin",
+      "action": "review.decide",
+      "expect": "allow",
+      "independent_review_grant": true
+    },
+    {
+      "id": "admin_cross_project_deny",
+      "template": "project_admin",
+      "action": "work.read",
+      "resource_override": {
+        "project_id": "project-b"
+      },
+      "expect": "deny"
+    },
+    {
+      "id": "admin_special_database_owner_deny",
+      "template": "project_admin",
+      "special_authority": "database_owner",
+      "expect": "deny"
+    },
+    {
+      "id": "expired_authority_deny",
+      "template": "developer",
+      "action": "claim.manage_own",
+      "not_after_unix_ms": 500,
+      "now_unix_ms": 1000,
+      "expect": "deny"
+    },
+    {
+      "id": "role_name_only_deny",
+      "deny_kind": "role_name_only",
+      "action": "access.manage_project",
+      "expect": "deny"
+    },
+    {
+      "id": "tool_visibility_only_deny",
+      "deny_kind": "tool_visibility_only",
+      "action": "planning.publish",
+      "expect": "deny"
+    },
+    {
+      "id": "model_self_report_only_deny",
+      "deny_kind": "model_self_report_only",
+      "action": "access.manage_project",
+      "expect": "deny"
+    },
+    {
+      "id": "unknown_action_deny",
+      "template": "project_admin",
+      "action": "sql.execute",
+      "expect": "deny"
+    }
+  ]
+}

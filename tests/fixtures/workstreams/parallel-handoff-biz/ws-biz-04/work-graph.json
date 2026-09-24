@@ -1,0 +1,75 @@
+{
+  "namespace": "awr-ws-r2-ws-biz-04",
+  "hard_gate": "same_person_agent_switch_subtask_parallel",
+  "nodes": [
+    {
+      "key": "S4-A",
+      "role": "executor",
+      "person_id": "person.taylor-zhou",
+      "client_adapter": "codex_cli",
+      "depends_on": []
+    },
+    {
+      "key": "S4-B",
+      "role": "executor_peer",
+      "person_id": "person.taylor-zhou",
+      "client_adapter": "claude_code",
+      "depends_on": []
+    },
+    {
+      "key": "S4-WEB",
+      "role": "web_operator",
+      "person_id": "person.harper-lin",
+      "client_adapter": "team_web",
+      "depends_on": [
+        "S4-A",
+        "S4-B"
+      ]
+    },
+    {
+      "key": "S4-TWEAK",
+      "role": "executor",
+      "person_id": "person.taylor-zhou",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "S4-WEB"
+      ]
+    },
+    {
+      "key": "S4-JOIN",
+      "role": "executor_peer",
+      "person_id": "person.taylor-zhou",
+      "client_adapter": "claude_code",
+      "depends_on": [
+        "S4-TWEAK"
+      ]
+    },
+    {
+      "key": "S4-REVIEW",
+      "role": "reviewer",
+      "person_id": "person.harper-lin",
+      "client_adapter": "team_web",
+      "depends_on": [
+        "S4-JOIN"
+      ]
+    },
+    {
+      "key": "S4-DELIVER",
+      "role": "executor",
+      "person_id": "person.taylor-zhou",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "S4-REVIEW"
+      ]
+    }
+  ],
+  "reviewer_distinct_from": [
+    "executor"
+  ],
+  "required_surfaces": [
+    "codex_cli",
+    "claude_code",
+    "team_web"
+  ],
+  "handoff_requirement": "同一负责人可切换两个 Agent；独立复核必须是不同 person，禁止自有 Agent 冒充复核。"
+}

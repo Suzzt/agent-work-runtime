@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "awr_team": {
+      "url": "https://team.example/v1/projects/example/mcp",
+      "headers": {
+        "Authorization": "Bearer ${AWR_TEAM_BEARER}"
+      }
+    }
+  }
+}

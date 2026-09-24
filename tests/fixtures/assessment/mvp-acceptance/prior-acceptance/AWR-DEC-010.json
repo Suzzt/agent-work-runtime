@@ -2,7 +2,7 @@
   "work": "AWR-DEC-010",
   "pr_url": "https://github.com/originoneai/awr/pull/146",
   "pr_number": 146,
-  "head_sha": "8a7afec51110b70a1d47e523e1b31742bacb7b10",
+  "head_sha": "ed035731a03ab9285d92eb6e83ba12c7e56196de",
   "base_sha": "8fa6679981c823842282a0a4b5b79b9c7165b2a4",
   "base_branch": null,
   "acceptance_mapping": {

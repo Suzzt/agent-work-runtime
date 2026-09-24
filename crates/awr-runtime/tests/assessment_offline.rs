@@ -2,11 +2,10 @@
 use awr_core::*;
 use awr_runtime::{
     AdviceDeliveryMode, AttachExplanationOptions, CompletionExplanationInput,
-    DeliveryExplanationInput, EXPLANATION_CHAIN_PROFILE, ExplanationAuthority,
-    PreparedFactView, ReplayStatus, apply_advice_delivery_mode,
-    attach_according_to_advice_mode, capture_replay_snapshot, hard_protections_after_disable,
-    parse_replay_snapshot, prior_explanation_still_valid, replay_assessment,
-    replay_assessment_from_bytes, shadow_compare,
+    DeliveryExplanationInput, EXPLANATION_CHAIN_PROFILE, ExplanationAuthority, PreparedFactView,
+    ReplayStatus, apply_advice_delivery_mode, attach_according_to_advice_mode,
+    capture_replay_snapshot, hard_protections_after_disable, parse_replay_snapshot,
+    prior_explanation_still_valid, replay_assessment, replay_assessment_from_bytes, shadow_compare,
 };
 use serde_json::json;
 use std::fs;
@@ -88,12 +87,21 @@ fn ac1_offline_replay_fixed_inputs_and_missing_snapshot() {
     )
     .expect("capture");
 
-    let dir = fixtures_dir();
-    fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("baseline-snapshot.json");
-    fs::write(&path, serde_json::to_vec_pretty(&snap).unwrap()).unwrap();
+    // Round-trip outside the checkout. Rewriting the tracked fixture changes
+    // bytes under core.autocrlf and fails the Windows source_unchanged gate.
+    let scratch = std::env::temp_dir().join(format!("awr-dec022-baseline-{}.json", snap.rule_hash));
+    fs::write(&scratch, serde_json::to_vec_pretty(&snap).unwrap()).unwrap();
+    let again = parse_replay_snapshot(&fs::read(&scratch).unwrap()).unwrap();
+    let _ = fs::remove_file(&scratch);
 
-    let again = parse_replay_snapshot(&fs::read(&path).unwrap()).unwrap();
+    let committed_path = fixtures_dir().join("baseline-snapshot.json");
+    let committed_bytes = fs::read(&committed_path).unwrap();
+    let committed = parse_replay_snapshot(&committed_bytes).unwrap();
+    assert_eq!(
+        replay_assessment(&committed).unwrap().status,
+        ReplayStatus::Replayed
+    );
+    assert_eq!(fs::read(&committed_path).unwrap(), committed_bytes);
     let a = replay_assessment(&snap).unwrap();
     let b = replay_assessment(&again).unwrap();
     assert_eq!(a.status, ReplayStatus::Replayed);
@@ -152,13 +160,14 @@ fn ac2_shadow_compare_same_inputs_rule_version_and_retained_failures() {
     )
     .unwrap();
 
-    let dir = fixtures_dir();
-    fs::create_dir_all(&dir).unwrap();
-    fs::write(
-        dir.join("candidate-snapshot.json"),
-        serde_json::to_vec_pretty(&candidate).unwrap(),
-    )
-    .unwrap();
+    let candidate_path = fixtures_dir().join("candidate-snapshot.json");
+    let candidate_bytes = fs::read(&candidate_path).unwrap();
+    let committed_candidate = parse_replay_snapshot(&candidate_bytes).unwrap();
+    assert_eq!(
+        committed_candidate.prepared.work_key,
+        candidate.prepared.work_key
+    );
+    assert_eq!(fs::read(&candidate_path).unwrap(), candidate_bytes);
 
     assert_ne!(baseline.rule_hash, candidate.rule_hash);
     let report = shadow_compare(&baseline, &candidate).unwrap();
@@ -169,7 +178,9 @@ fn ac2_shadow_compare_same_inputs_rule_version_and_retained_failures() {
     for diff in &report.differences {
         assert!(
             diff.explained_by_rule_version.contains(&baseline.rule_hash)
-                && diff.explained_by_rule_version.contains(&candidate.rule_hash),
+                && diff
+                    .explained_by_rule_version
+                    .contains(&candidate.rule_hash),
             "diff must cite rule versions: {diff:?}"
         );
     }
@@ -245,8 +256,14 @@ fn ac3_shadow_and_killswitch_preserve_hard_protections() {
         },
     )
     .unwrap();
-    assert_eq!(shadowed["assessment_explanation"]["execution_adoption"], false);
-    assert_eq!(shadowed["assessment_explanation"]["context_adoption"], false);
+    assert_eq!(
+        shadowed["assessment_explanation"]["execution_adoption"],
+        false
+    );
+    assert_eq!(
+        shadowed["assessment_explanation"]["context_adoption"],
+        false
+    );
     assert_eq!(shadowed["assessment_explanation"]["shadow"], true);
 
     let killed = attach_according_to_advice_mode(

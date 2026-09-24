@@ -1,0 +1,77 @@
+{
+  "namespace": "awr-ws-r2-ws-biz-03",
+  "hard_gate": "cross_person_handoff_recovery",
+  "nodes": [
+    {
+      "key": "H3-START",
+      "role": "executor",
+      "person_id": "person.jordan-hao",
+      "client_adapter": "codex_cli",
+      "depends_on": []
+    },
+    {
+      "key": "H3-OFFER",
+      "role": "web_operator",
+      "person_id": "person.reese-tan",
+      "client_adapter": "team_web",
+      "depends_on": [
+        "H3-START"
+      ]
+    },
+    {
+      "key": "H3-ACCEPT",
+      "role": "executor_peer",
+      "person_id": "person.quinn-xu",
+      "client_adapter": "claude_code",
+      "depends_on": [
+        "H3-OFFER"
+      ]
+    },
+    {
+      "key": "H3-PACK",
+      "role": "executor",
+      "person_id": "person.jordan-hao",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "H3-ACCEPT"
+      ]
+    },
+    {
+      "key": "H3-CONT",
+      "role": "executor_peer",
+      "person_id": "person.quinn-xu",
+      "client_adapter": "claude_code",
+      "depends_on": [
+        "H3-PACK"
+      ]
+    },
+    {
+      "key": "H3-REVIEW",
+      "role": "reviewer",
+      "person_id": "person.reese-tan",
+      "client_adapter": "team_web",
+      "depends_on": [
+        "H3-CONT"
+      ]
+    },
+    {
+      "key": "H3-DELIVER",
+      "role": "executor_peer",
+      "person_id": "person.quinn-xu",
+      "client_adapter": "claude_code",
+      "depends_on": [
+        "H3-REVIEW"
+      ]
+    }
+  ],
+  "reviewer_distinct_from": [
+    "executor",
+    "executor_peer"
+  ],
+  "required_surfaces": [
+    "codex_cli",
+    "claude_code",
+    "team_web"
+  ],
+  "handoff_requirement": "执行、同伴与复核的责任边界清晰；禁止同一 agent 会话同时签署执行与独立复核；须含真实 Web 操作。"
+}
