@@ -1,0 +1,13 @@
+{
+  "work": "AWR-EVO-010",
+  "local_matrix": ".local/awr-evolution-20260919/semantic-contract-matrix.json",
+  "mirror": "tests/fixtures/evolution/AWR-EVO-010/",
+  "matrix_hash": "sha256:8dfe9326ec399efc4d0e1ca4eb9dd15d094101ff34fc6c0956f7d0e7871c6ad6",
+  "verifier": "scripts/evolution/verify_evo_010_semantic_contract.py",
+  "docs": [
+    "docs/reference/host-contract.md",
+    "docs/reference/cli-mcp-contract.md",
+    "docs/benchmarks/evolution-semantic-contract.md"
+  ],
+  "recorded_at": "2026-09-23T07:52:34+08:00"
+}

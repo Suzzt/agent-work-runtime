@@ -1,0 +1,29 @@
+{
+  "id": "CX-EA-01",
+  "layer": "execution_admission",
+  "title": "Claimed but execution observation unknown",
+  "scenario": {
+    "execution_admission": {
+      "claimed": true,
+      "claim_id": "01CLAIMDEMO",
+      "session_id": "01SESSIONDEMO"
+    },
+    "delivery_observation": {
+      "phase": "unknown",
+      "report_found": false,
+      "reason": "timeout_before_receipt"
+    },
+    "false_inference_forbidden": [
+      "phase_succeeded",
+      "completion_pass"
+    ]
+  },
+  "expect": {
+    "execution_admission.claimed": true,
+    "delivery_observation.phase": "unknown",
+    "must_not_promote_to": [
+      "delivery_observation.succeeded",
+      "completion_validity.pass"
+    ]
+  }
+}

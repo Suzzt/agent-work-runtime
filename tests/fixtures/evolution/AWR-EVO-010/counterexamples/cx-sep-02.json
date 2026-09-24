@@ -1,0 +1,13 @@
+{
+  "id": "CX-SEP-02",
+  "layer": "separation",
+  "title": "Readable but not writable",
+  "scenario": {
+    "read_only": true,
+    "execution_admission.writable": false,
+    "mixed_flag_forbidden": "writable_because_readable"
+  },
+  "expect": {
+    "expressible_without_mixing": true
+  }
+}

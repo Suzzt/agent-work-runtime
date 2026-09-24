@@ -1,0 +1,924 @@
+{
+  "schema": "awr-evolution-semantic-contract-matrix/v1",
+  "schema_version": 1,
+  "work": "AWR-EVO-010",
+  "title": "Five-layer result semantics and two host-integration contracts",
+  "title_zh": "五层结果语义及两种宿主接入合同",
+  "recorded_at": "2026-09-23T07:52:34+08:00",
+  "timezone": "Asia/Taipei",
+  "contract_version": "evo-010-semantic/v1",
+  "depends_on": [
+    "AWR-EVO-000",
+    "AWR-EVO-001",
+    "AWR-EVO-002"
+  ],
+  "base": {
+    "branch": "codex/awr-evo-002-team-compatible-local-plan-check",
+    "sha": "1c25bd0bb800509b900486b8c012703fe85dea25",
+    "pr": 156
+  },
+  "layer_ids": [
+    "work_readiness",
+    "execution_admission",
+    "context_completeness",
+    "delivery_observation",
+    "completion_validity"
+  ],
+  "host_mode_ids": [
+    "runtime_delegated",
+    "component_only"
+  ],
+  "premises": [
+    "Reuse existing objects (work/status/claim/session/context/execution/evidence/completion); do not invent five independently advancing state machines.",
+    "unknown must never default to success.",
+    "readable must never imply writable.",
+    "context_completeness must never imply dependencies_done / work_readiness.",
+    "work_readiness must never imply execution_admission.",
+    "host-reported delivery success must never imply completion_validity.",
+    "New fields/views require explicit capability or protocol negotiation; keep legacy shapes for unnegotiated consumers.",
+    "Missing required capability fails closed (CapabilityUnavailable / ProtocolUnsupported); do not silently degrade."
+  ],
+  "layers": [
+    {
+      "id": "work_readiness",
+      "title_zh": "工作准备",
+      "title_en": "Work readiness",
+      "version": "evo-010-layer-work_readiness/v1",
+      "reuses": [
+        "status action queues (current/ready/waiting/blocked)",
+        "ready / awr_work_ready eligibility",
+        "work structure + dependency projection",
+        "prepare readiness diagnostics"
+      ],
+      "sources": {
+        "local_cli": {
+          "classification": "shared+transformed",
+          "entrypoints": [
+            "status",
+            "ready",
+            "work show",
+            "work prepare"
+          ],
+          "notes": "CLI refresh may update rebuildable projections; authoritative sources untouched.",
+          "fields": [
+            "ready",
+            "queues.*",
+            "missing_dependencies",
+            "diagnostics"
+          ],
+          "freshness_basis": "source_refresh"
+        },
+        "shared_mcp": {
+          "classification": "shared+transformed",
+          "entrypoints": [
+            "awr_project_status",
+            "awr_work_ready",
+            "awr_work_get",
+            "awr_work_prepare"
+          ],
+          "notes": "Read-only verified snapshot; stale sources reject rather than refresh.",
+          "fields": [
+            "ready",
+            "queues.*",
+            "missing_dependencies",
+            "diagnostics"
+          ],
+          "freshness_basis": "source_verified_readonly"
+        },
+        "team_pg": {
+          "classification": "shared+unsupported_partial",
+          "entrypoints": [
+            "Team status/ready when authorized"
+          ],
+          "notes": "Team PostgreSQL is unique fact owner in Team mode (EVO-000).",
+          "fields": [
+            "coordination readiness overlays"
+          ],
+          "unsupported": [
+            "Personal SQLite readiness as Team authority when remote missing"
+          ]
+        }
+      },
+      "can_prove": [
+        "Source-declared structure and required dependencies are present or explicitly missing.",
+        "Work is or is not eligible for a new claim under current projection.",
+        "Navigation queues classify current/ready/waiting/blocked without authorizing execution."
+      ],
+      "cannot_prove": [
+        "Caller holds execution admission / writable claim.",
+        "Compiled context is complete.",
+        "Any delivery reached a model or host consumer.",
+        "Completion / acceptance is valid.",
+        "Unknown dependency or source state is actually clear."
+      ],
+      "independent_counterexample": "CX-WR-01"
+    },
+    {
+      "id": "execution_admission",
+      "title_zh": "执行准入",
+      "title_en": "Execution admission",
+      "version": "evo-010-layer-execution_admission/v1",
+      "reuses": [
+        "session start/bind",
+        "claim acquire/release",
+        "expected-revision optimistic concurrency",
+        "management.decision.execution_admission constant (never grants)"
+      ],
+      "sources": {
+        "local_cli": {
+          "classification": "shared",
+          "entrypoints": [
+            "session start",
+            "work claim/progress/block/complete",
+            "client bind"
+          ],
+          "notes": "Client bind does not claim work; claim remains an explicit domain action.",
+          "fields": [
+            "active_claims",
+            "session_id",
+            "claim.id",
+            "expected_revision"
+          ],
+          "writable": true
+        },
+        "shared_mcp": {
+          "classification": "shared+transformed",
+          "entrypoints": [
+            "awr_session_start",
+            "awr_work_transition",
+            "awr_client_bind"
+          ],
+          "notes": "Shared HTTP writes require authenticated client-bound session.",
+          "fields": [
+            "active_claims",
+            "session",
+            "claim"
+          ],
+          "writable": true
+        },
+        "team_pg": {
+          "classification": "shared+transformed",
+          "entrypoints": [
+            "Team claim/session leases"
+          ],
+          "notes": "Admission facts owned by Team PG under Team entry.",
+          "fields": [
+            "lease/session ownership"
+          ],
+          "unsupported": [
+            "Personal MCP as Team command dispatch"
+          ]
+        }
+      },
+      "can_prove": [
+        "Whether an active claim exists for a session/agent on a work item.",
+        "Whether a mutation was rejected for ClaimConflict / RevisionConflict / RuleViolation.",
+        "That management classification alone does not grant admission."
+      ],
+      "cannot_prove": [
+        "Context completeness.",
+        "Dependency readiness (claimed work may still be blocked).",
+        "Delivery or model receipt.",
+        "Business completion validity.",
+        "That unknown claim/session state is safe to treat as admitted."
+      ],
+      "independent_counterexample": "CX-EA-01"
+    },
+    {
+      "id": "context_completeness",
+      "title_zh": "上下文完整",
+      "title_en": "Context completeness",
+      "version": "evo-010-layer-context_completeness/v1",
+      "reuses": [
+        "context compile / awr_context_compile",
+        "ContextCompleteness / completeness.complete",
+        "ContextIncomplete / BudgetExceeded",
+        "context hash + source version bindings"
+      ],
+      "sources": {
+        "local_cli": {
+          "classification": "shared",
+          "entrypoints": [
+            "context compile",
+            "branch context",
+            "work prepare"
+          ],
+          "notes": "ok=false with ContextIncomplete retains body; hard facts are not truncated.",
+          "fields": [
+            "completeness",
+            "work_context",
+            "context_hash",
+            "gaps",
+            "ok"
+          ]
+        },
+        "shared_mcp": {
+          "classification": "shared",
+          "entrypoints": [
+            "awr_context_compile",
+            "awr_work_prepare"
+          ],
+          "notes": "continuity envelope is independent of L1 body/budget/hash.",
+          "fields": [
+            "completeness",
+            "work_context",
+            "context_hash",
+            "continuity"
+          ]
+        },
+        "team_pg": {
+          "classification": "transformed+unsupported_partial",
+          "entrypoints": [
+            "Team context surfaces when implemented"
+          ],
+          "notes": "Completeness still binds declared required sources/rules/acceptance.",
+          "unsupported": [
+            "Substituting Team coordination blobs for required hard facts"
+          ]
+        }
+      },
+      "can_prove": [
+        "Required context ingredients are present, missing, or omitted with reasons under a budget.",
+        "A context hash binds specific source/runtime snapshot identities.",
+        "Hard-fact budget overflow is BudgetExceeded, not silent truncation."
+      ],
+      "cannot_prove": [
+        "Dependencies are finished (context may be complete while work is blocked).",
+        "Caller has writable execution admission.",
+        "Delivered bytes were received/consumed by a model.",
+        "Completion evidence satisfies acceptance.",
+        "Unknown completeness fields default to complete=true."
+      ],
+      "independent_counterexample": "CX-CC-01"
+    },
+    {
+      "id": "delivery_observation",
+      "title_zh": "投递",
+      "title_en": "Delivery observation",
+      "version": "evo-010-layer-delivery_observation/v1",
+      "reuses": [
+        "context acknowledge / consumed-hash",
+        "client progress / hooks",
+        "execution register/report (ExternalExecutionReport)",
+        "waiting queues and non-terminal executions",
+        "host-reported phases"
+      ],
+      "sources": {
+        "local_cli": {
+          "classification": "shared",
+          "entrypoints": [
+            "client progress",
+            "client hook",
+            "execution report",
+            "execution report-status",
+            "workflow ack"
+          ],
+          "notes": "Host-reported succeeded still leaves AWR observation unknown/unverified.",
+          "fields": [
+            "phase",
+            "origin",
+            "request_key",
+            "consumed_hash",
+            "detail_references"
+          ]
+        },
+        "shared_mcp": {
+          "classification": "shared+transformed",
+          "entrypoints": [
+            "awr_client_progress",
+            "awr_execution_report",
+            "continuity waits"
+          ],
+          "notes": "Transport receipt is not model comprehension.",
+          "fields": [
+            "phase",
+            "continuity",
+            "waits"
+          ]
+        },
+        "team_pg": {
+          "classification": "shared+transformed",
+          "entrypoints": [
+            "Team execution/wait records"
+          ],
+          "notes": "Recorded waits/unknown outcomes only; no invented live probe.",
+          "unsupported": [
+            "Live process probes as delivery proof"
+          ]
+        }
+      },
+      "can_prove": [
+        "A host attested delivery/ack/progress/report with durable request identity.",
+        "Whether a retained report receipt exists for a request_key.",
+        "That interrupted/unknown delivery remains unknown until inspected."
+      ],
+      "cannot_prove": [
+        "Model comprehension or correct tool use.",
+        "Work readiness or dependency completion.",
+        "Execution admission.",
+        "Acceptance/completion validity.",
+        "Transport timeout implies source_write_performed=false or success."
+      ],
+      "independent_counterexample": "CX-DO-01"
+    },
+    {
+      "id": "completion_validity",
+      "title_zh": "完成有效性",
+      "title_en": "Completion validity",
+      "version": "evo-010-layer-completion_validity/v1",
+      "reuses": [
+        "work complete / awr_work_transition action=complete",
+        "evidence add + validation_basis",
+        "ordinary_completion vs verified_completed",
+        "intake inspect / history verification codes",
+        "CompletionReport runtime-v1"
+      ],
+      "sources": {
+        "local_cli": {
+          "classification": "shared",
+          "entrypoints": [
+            "work complete",
+            "evidence add",
+            "intake inspect",
+            "host confirm_ordinary"
+          ],
+          "notes": "Evidence record success is not command execution or business acceptance.",
+          "fields": [
+            "completion",
+            "evidence",
+            "validation_basis",
+            "history.verification_*",
+            "ordinary_completion"
+          ]
+        },
+        "shared_mcp": {
+          "classification": "shared",
+          "entrypoints": [
+            "awr_work_transition(complete)",
+            "awr_evidence_record"
+          ],
+          "notes": "Same domain gates as CLI.",
+          "fields": [
+            "completion",
+            "evidence",
+            "validation_basis"
+          ]
+        },
+        "team_pg": {
+          "classification": "shared+transformed",
+          "entrypoints": [
+            "Team completion/evidence when authorized"
+          ],
+          "notes": "Preserve historical denominators (EVO-000/002).",
+          "unsupported": [
+            "GitHub merge as completion",
+            "Rewriting V1/Team denominators"
+          ]
+        }
+      },
+      "can_prove": [
+        "Whether domain completion gates accepted a bound evidence set for a work item.",
+        "Distinction among user_confirmed / business_checked / verified_completed under policy.",
+        "That unknown/missing evidence is not a pass."
+      ],
+      "cannot_prove": [
+        "That context delivery occurred.",
+        "That readiness queues alone authorize completion.",
+        "That host-reported execution succeeded implies acceptance.",
+        "That historical warnings certify unrelated current work.",
+        "That absent verification equals verified_completed."
+      ],
+      "independent_counterexample": "CX-CV-01"
+    }
+  ],
+  "host_modes": [
+    {
+      "id": "runtime_delegated",
+      "title_zh": "运行时委托模式",
+      "title_en": "Runtime-delegated host integration",
+      "version": "evo-010-host-runtime_delegated/v1",
+      "unique_write_owner": "awr_runtime",
+      "host_owns": [
+        "ui",
+        "credentials",
+        "scheduling",
+        "model_execution",
+        "native_conversation_ids",
+        "optional_private_workflow_continuity"
+      ],
+      "awr_owns_writes": [
+        "work_status_transitions",
+        "claims_sessions_checkpoints",
+        "evidence_events_completion",
+        "reviewed_source_mutations"
+      ],
+      "may_create": [
+        "awr_work_projection",
+        "awr_session",
+        "awr_claim",
+        "awr_execution_record"
+      ],
+      "must_not": [
+        "replace_source_work_with_host_private_workflow_state",
+        "treat_host_workflow_phase_as_completion_validity",
+        "silent_fallback_to_second_authority_on_awr_write_failure"
+      ],
+      "independent_counterexample": "CX-HM-RD-01"
+    },
+    {
+      "id": "component_only",
+      "title_zh": "组件模式",
+      "title_en": "Component-only host integration",
+      "version": "evo-010-host-component_only/v1",
+      "unique_write_owner": "embedding_host",
+      "host_owns": [
+        "host_work",
+        "host_run",
+        "host_owner",
+        "host_lifecycle_state_machine",
+        "call_mapping"
+      ],
+      "awr_owns_writes": [
+        "only_explicit_host_requested_awr_domain_writes"
+      ],
+      "may_create": [],
+      "must_not": [
+        "create_host_work",
+        "create_host_run",
+        "create_host_owner",
+        "hold_second_work_state",
+        "auto_claim_or_auto_complete_from_component_check"
+      ],
+      "notes": "Component mode may read/verify/project and optionally perform host-requested AWR writes, but must not introduce a competing work authority.",
+      "independent_counterexample": "CX-HM-CO-01"
+    }
+  ],
+  "ownership_matrix": [
+    {
+      "object": "source_work_status",
+      "runtime_delegated_writer": "awr_runtime",
+      "component_only_writer": "embedding_host"
+    },
+    {
+      "object": "claim_session",
+      "runtime_delegated_writer": "awr_runtime",
+      "component_only_writer": "forbidden_second_authority"
+    },
+    {
+      "object": "execution_observation",
+      "runtime_delegated_writer": "host_reports_into_awr",
+      "component_only_writer": "embedding_host_run_store"
+    },
+    {
+      "object": "completion",
+      "runtime_delegated_writer": "awr_runtime",
+      "component_only_writer": "embedding_host"
+    },
+    {
+      "object": "private_host_ui_state",
+      "runtime_delegated_writer": "embedding_host",
+      "component_only_writer": "embedding_host"
+    }
+  ],
+  "separations": {
+    "context_complete_but_dependencies_incomplete": {
+      "expressible": true,
+      "how": "context_completeness.complete=true with work_readiness.missing_dependencies non-empty",
+      "counterexample": "CX-SEP-01"
+    },
+    "readable_but_not_writable": {
+      "expressible": true,
+      "how": "read_only=true / no claim; CapabilityUnavailable on required write capability",
+      "counterexample": "CX-SEP-02"
+    },
+    "entry_semantics_not_mixed": {
+      "rule": "Each CLI/MCP/Team entry maps to primary layer(s); consumers must not reinterpret one layer success as another",
+      "counterexample": "CX-MIX-01"
+    }
+  },
+  "field_source_audit": [
+    {
+      "field": "ready",
+      "layer": "work_readiness",
+      "local_cli": "shared",
+      "shared_mcp": "shared",
+      "team_pg": "shared_when_authorized",
+      "readable": true,
+      "writable": false,
+      "unknown_policy": "omit_or_diagnostic_not_true"
+    },
+    {
+      "field": "missing_dependencies",
+      "layer": "work_readiness",
+      "local_cli": "shared",
+      "shared_mcp": "shared",
+      "team_pg": "shared_when_authorized",
+      "readable": true,
+      "writable": false,
+      "unknown_policy": "gap_not_empty_success"
+    },
+    {
+      "field": "active_claims",
+      "layer": "execution_admission",
+      "local_cli": "shared",
+      "shared_mcp": "shared",
+      "team_pg": "transformed_leases",
+      "readable": true,
+      "writable": false,
+      "unknown_policy": "unknown_blocks_write"
+    },
+    {
+      "field": "read_only",
+      "layer": "cross_cutting",
+      "local_cli": "transformed_false_on_refresh_reads",
+      "shared_mcp": "shared_true",
+      "team_pg": "endpoint_specific",
+      "readable": true,
+      "writable": false,
+      "unknown_policy": "absent_not_writable"
+    },
+    {
+      "field": "freshness_basis",
+      "layer": "cross_cutting",
+      "local_cli": "transformed_source_refresh",
+      "shared_mcp": "transformed_source_verified_readonly",
+      "team_pg": "team_specific",
+      "readable": true,
+      "writable": false,
+      "unknown_policy": "cached_not_current_progress"
+    },
+    {
+      "field": "completeness.complete",
+      "layer": "context_completeness",
+      "local_cli": "shared",
+      "shared_mcp": "shared",
+      "team_pg": "unsupported_unless_context_surface",
+      "readable": true,
+      "writable": false,
+      "unknown_policy": "missing_not_true"
+    },
+    {
+      "field": "context_hash_ack",
+      "layer": "delivery_observation",
+      "local_cli": "shared",
+      "shared_mcp": "shared",
+      "team_pg": "transformed_when_present",
+      "readable": true,
+      "writable": "caller_attestation",
+      "unknown_policy": "hash_alone_not_delivery"
+    },
+    {
+      "field": "execution.phase",
+      "layer": "delivery_observation",
+      "local_cli": "shared",
+      "shared_mcp": "shared",
+      "team_pg": "shared_when_authorized",
+      "readable": true,
+      "writable": "host_report",
+      "unknown_policy": "unknown_remains_unknown"
+    },
+    {
+      "field": "validation_basis",
+      "layer": "completion_validity",
+      "local_cli": "shared",
+      "shared_mcp": "shared",
+      "team_pg": "shared_when_authorized",
+      "readable": true,
+      "writable": "domain_completion",
+      "unknown_policy": "unknown_not_pass"
+    },
+    {
+      "field": "management.decision.execution_admission",
+      "layer": "execution_admission",
+      "local_cli": "shared_constant",
+      "shared_mcp": "shared_constant",
+      "team_pg": "shared_constant",
+      "readable": true,
+      "writable": false,
+      "unknown_policy": "never_granted_by_management"
+    }
+  ],
+  "compatibility": {
+    "version": "evo-010-compat/v1",
+    "keep_old_outputs": true,
+    "negotiation": {
+      "protocol": "awr.host capability discovery",
+      "require_mechanism": [
+        "capabilities --require",
+        "MCP capability / schema negotiation"
+      ],
+      "new_fields_views_require_negotiation": [
+        "response_view=action|summary",
+        "query.coherent_snapshot",
+        "workflow.prepare / workflow.response_summary / workflow.action_guidance",
+        "assessment.explain"
+      ],
+      "failure_on_missing_required": [
+        "CapabilityUnavailable",
+        "ProtocolUnsupported"
+      ],
+      "forbidden": [
+        "silent_degrade_when_required_capability_missing",
+        "reinterpret_legacy_summary_blocked_count_as_action_blocked_count",
+        "default_unknown_layer_status_to_success"
+      ]
+    },
+    "legacy_consumers": {
+      "status_full_view": "opt-in --view full / view:full",
+      "status_summary_view": "retained; blocked_count remains legacy not-selectable meaning",
+      "unnegotiated_mcp_tools": "prior shapes retained",
+      "evidence_show_summary": "retained distinct from write receipt"
+    },
+    "independent_counterexample": "CX-COMPAT-01"
+  },
+  "counterexamples": [
+    {
+      "id": "CX-WR-01",
+      "layer": "work_readiness",
+      "title": "Context complete while readiness blocked",
+      "scenario": {
+        "context_completeness": {
+          "complete": true,
+          "context_hash": "sha256:demo-complete"
+        },
+        "work_readiness": {
+          "ready": false,
+          "missing_dependencies": [
+            "AWR-EVO-000"
+          ],
+          "queue": "waiting"
+        },
+        "execution_admission": {
+          "active_claims": []
+        },
+        "false_inference_forbidden": [
+          "treat_as_admitted",
+          "treat_as_completed"
+        ]
+      },
+      "expect": {
+        "work_readiness.ready": false,
+        "context_completeness.complete": true,
+        "must_not_promote_to": [
+          "execution_admission.granted",
+          "completion_validity.pass"
+        ]
+      }
+    },
+    {
+      "id": "CX-EA-01",
+      "layer": "execution_admission",
+      "title": "Claimed but execution observation unknown",
+      "scenario": {
+        "execution_admission": {
+          "claimed": true,
+          "claim_id": "01CLAIMDEMO",
+          "session_id": "01SESSIONDEMO"
+        },
+        "delivery_observation": {
+          "phase": "unknown",
+          "report_found": false,
+          "reason": "timeout_before_receipt"
+        },
+        "false_inference_forbidden": [
+          "phase_succeeded",
+          "completion_pass"
+        ]
+      },
+      "expect": {
+        "execution_admission.claimed": true,
+        "delivery_observation.phase": "unknown",
+        "must_not_promote_to": [
+          "delivery_observation.succeeded",
+          "completion_validity.pass"
+        ]
+      }
+    },
+    {
+      "id": "CX-CC-01",
+      "layer": "context_completeness",
+      "title": "Readable complete context without write admission",
+      "scenario": {
+        "context_completeness": {
+          "complete": true,
+          "body_present": true
+        },
+        "transport": {
+          "read_only": true,
+          "freshness_basis": "source_verified_readonly"
+        },
+        "execution_admission": {
+          "active_claims": [],
+          "writable": false
+        },
+        "false_inference_forbidden": [
+          "writable_true",
+          "claim_implied"
+        ]
+      },
+      "expect": {
+        "context_completeness.complete": true,
+        "execution_admission.writable": false,
+        "must_not_promote_to": [
+          "execution_admission.granted"
+        ]
+      }
+    },
+    {
+      "id": "CX-DO-01",
+      "layer": "delivery_observation",
+      "title": "Emitted context unacknowledged",
+      "scenario": {
+        "delivery_observation": {
+          "emitted": true,
+          "consumed_hash_acked": false,
+          "phase": "unknown",
+          "note": "hash alone does not prove model receipt"
+        },
+        "completion_validity": {
+          "status": "not_evaluated"
+        },
+        "false_inference_forbidden": [
+          "completion_pass",
+          "model_comprehension"
+        ]
+      },
+      "expect": {
+        "delivery_observation.consumed_hash_acked": false,
+        "must_not_promote_to": [
+          "completion_validity.pass"
+        ]
+      }
+    },
+    {
+      "id": "CX-CV-01",
+      "layer": "completion_validity",
+      "title": "Legacy acceptance under new contract without negotiation",
+      "scenario": {
+        "legacy_consumer": {
+          "view": "summary",
+          "negotiated_capabilities": []
+        },
+        "new_contract_fields_present_without_negotiation": true,
+        "completion_validity": {
+          "legacy_acceptance_present": true,
+          "verified_completed": false
+        },
+        "false_inference_forbidden": [
+          "silent_accept_new_contract",
+          "verified_completed"
+        ]
+      },
+      "expect": {
+        "completion_validity.verified_completed": false,
+        "must_fail_closed_or_keep_legacy_shape": true
+      }
+    },
+    {
+      "id": "CX-SEP-01",
+      "layer": "separation",
+      "title": "Context complete but dependencies incomplete",
+      "scenario": {
+        "context_completeness.complete": true,
+        "work_readiness.missing_dependencies": [
+          "DEP-1"
+        ],
+        "mixed_flag_forbidden": "ready_because_context_complete"
+      },
+      "expect": {
+        "expressible_without_mixing": true
+      }
+    },
+    {
+      "id": "CX-SEP-02",
+      "layer": "separation",
+      "title": "Readable but not writable",
+      "scenario": {
+        "read_only": true,
+        "execution_admission.writable": false,
+        "mixed_flag_forbidden": "writable_because_readable"
+      },
+      "expect": {
+        "expressible_without_mixing": true
+      }
+    },
+    {
+      "id": "CX-MIX-01",
+      "layer": "entry_isolation",
+      "title": "Entry mixes readiness success as completion",
+      "scenario": {
+        "entry": "awr_work_ready",
+        "primary_layer": "work_readiness",
+        "illegal_reinterpretation": "completion_validity.pass",
+        "result": "rejected_by_contract"
+      },
+      "expect": {
+        "rejected_or_flagged": true
+      }
+    },
+    {
+      "id": "CX-HM-RD-01",
+      "layer": "host_mode",
+      "host_mode": "runtime_delegated",
+      "title": "Host private workflow presented as source work state",
+      "scenario": {
+        "host_private_workflow_phase": "completed",
+        "awr_source_work_status": "in_progress",
+        "attempt": "overwrite_source_status_from_host_workflow"
+      },
+      "expect": {
+        "rejected": true,
+        "unique_write_owner": "awr_runtime"
+      }
+    },
+    {
+      "id": "CX-HM-CO-01",
+      "layer": "host_mode",
+      "host_mode": "component_only",
+      "title": "Component creates second work state",
+      "scenario": {
+        "component_attempt": {
+          "create_host_work": true,
+          "create_host_run": true,
+          "create_host_owner": true,
+          "shadow_claim_lifecycle": true
+        }
+      },
+      "expect": {
+        "rejected": true,
+        "must_not_create": [
+          "host_work",
+          "host_run",
+          "host_owner",
+          "shadow_claim_lifecycle"
+        ]
+      }
+    },
+    {
+      "id": "CX-COMPAT-01",
+      "layer": "compatibility",
+      "title": "Silent degrade when required capability missing",
+      "scenario": {
+        "required_capability": "workflow.response_summary",
+        "capability_present": false,
+        "illegal_behavior": "silently_return_summary_shaped_as_success",
+        "required_behavior": "CapabilityUnavailable_or_ProtocolUnsupported"
+      },
+      "expect": {
+        "must_fail_closed": true,
+        "legacy_shape_preserved_without_negotiation": true
+      }
+    }
+  ],
+  "acceptance_mapping": {
+    "1": {
+      "text": "五层结果都有来源、版本、能证明与不能证明的边界及独立反例。",
+      "proof_refs": [
+        "layers",
+        "counterexamples:CX-WR-01,CX-EA-01,CX-CC-01,CX-DO-01,CX-CV-01"
+      ]
+    },
+    "2": {
+      "text": "可表达上下文完整但依赖未完成、可读但无执行权，各入口不混用语义。",
+      "proof_refs": [
+        "separations",
+        "counterexamples:CX-SEP-01,CX-SEP-02,CX-MIX-01",
+        "field_source_audit"
+      ]
+    },
+    "3": {
+      "text": "两种模式都有唯一写入所有者，组件模式不持有第二工作状态。",
+      "proof_refs": [
+        "host_modes",
+        "ownership_matrix",
+        "counterexamples:CX-HM-RD-01,CX-HM-CO-01"
+      ]
+    },
+    "4": {
+      "text": "兼容和协商策略可验证，旧消费者无无提示破坏。",
+      "proof_refs": [
+        "compatibility",
+        "counterexamples:CX-COMPAT-01",
+        "premises"
+      ]
+    }
+  },
+  "gates": {
+    "evo_011_started": false,
+    "dec_040_started": false,
+    "dec_041_started": false,
+    "mac_work_complete": false,
+    "paid_or_native_agent_runs_required": false
+  },
+  "invariants": [
+    "layer_count_is_5",
+    "host_mode_count_is_2",
+    "each_layer_has_independent_counterexample",
+    "each_host_mode_has_unique_write_owner",
+    "component_only_forbids_second_work_state",
+    "unknown_never_defaults_to_success",
+    "no_five_independent_state_machines",
+    "local_and_mirror_matrix_byte_identical"
+  ],
+  "matrix_hash": "sha256:8dfe9326ec399efc4d0e1ca4eb9dd15d094101ff34fc6c0956f7d0e7871c6ad6"
+}
