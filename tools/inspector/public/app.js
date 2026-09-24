@@ -1741,7 +1741,11 @@
   }
 
   function renderMainline(response) {
-    const payload = response && response.result ? response.result : response;
+    // The bridge returns { ok, command, data: <awr nav json> }. Accounting and
+    // blockers live on data, not on result or the envelope itself.
+    const payload = response && response.data && typeof response.data === 'object'
+      ? response.data
+      : (response && response.result ? response.result : response);
     const acc = (payload && payload.accounting) || {};
     const accBody = $('navAccBody');
     const accSub = $('navAccSub');

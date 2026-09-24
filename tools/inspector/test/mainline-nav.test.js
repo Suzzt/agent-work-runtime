@@ -28,12 +28,17 @@ test('Load mainline is bound at startup and Refresh does not stack another liste
     if (String(url).includes('/api/mainline-nav')) {
       return json({
         ok: true,
+        command: 'mainlineNav',
         data: {
-          result: {
-            accounting: { available: false, reason: 'none' },
-            blockers: [],
-            cross_dependencies: [],
+          accounting: {
+            available: true,
+            required_count: 4,
+            planned: { recorded: 1, not_met: 0, unknown: 0 },
           },
+          blockers: [{ work: 'W1', blocker: 'needs review' }],
+          cross_dependencies: [],
+          mainline_graph: { nodes: [], edges: [] },
+          guidance: { when: 'now', basis: 'scope', next_action: 'review W1', recheck: 'after review' },
         },
       });
     }
@@ -57,6 +62,11 @@ test('Load mainline is bound at startup and Refresh does not stack another liste
     urls.some((url) => url.includes('/api/mainline-nav')),
     'clicking Load mainline before Refresh must call the mainline API',
   );
+  const acc = document.getElementById('navAccBody').textContent;
+  assert.match(acc, /Required work count: 4/);
+  assert.match(acc, /W1: needs review/);
+  assert.doesNotMatch(acc, /Accounting unavailable/);
+  assert.match(document.getElementById('navGuideBody').textContent, /when: now/i);
 
   const refresh = document.getElementById('btnRefresh');
   await refresh.click();
