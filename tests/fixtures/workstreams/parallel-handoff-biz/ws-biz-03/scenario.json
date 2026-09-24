@@ -1,0 +1,143 @@
+{
+  "scenario_id": "WS-BIZ-03",
+  "fixture_version": "1.0.0",
+  "scope_revision": 2,
+  "namespace": "awr-ws-r2-ws-biz-03",
+  "business_title": "跨人跨 Agent 接力恢复",
+  "purpose": "长程工作跨人跨 Agent 接力及异常恢复",
+  "hard_gate": "cross_person_handoff_recovery",
+  "summary": "成员做到中途由另一成员接手；接收方指出缺上下文后原方补齐；核对原执行后换客户端继续并独立复核。",
+  "project_directory": "project",
+  "work_graph": "work-graph.json",
+  "identities": "identities.json",
+  "delegations": "delegations.json",
+  "entry_work": "H3-START",
+  "participants": {
+    "executor": {
+      "person_ref": "executor",
+      "purpose": "主执行开发者，经命名客户端推进"
+    },
+    "executor_peer": {
+      "person_ref": "peer",
+      "purpose": "同伴开发者或同人第二 Agent"
+    },
+    "reviewer": {
+      "person_ref": "reviewer",
+      "purpose": "与执行者独立的复核 person"
+    },
+    "web_operator": {
+      "person_ref": "web_operator",
+      "purpose": "真实 Team Web 操作者"
+    }
+  },
+  "person_bindings": {
+    "executor": "person.jordan-hao",
+    "peer": "person.quinn-xu",
+    "reviewer": "person.reese-tan",
+    "web_operator": "person.reese-tan"
+  },
+  "named_clients": [
+    "codex_cli",
+    "claude_code"
+  ],
+  "required_surfaces": [
+    "codex_cli",
+    "claude_code",
+    "team_web"
+  ],
+  "reviewer_distinct_from": [
+    "executor",
+    "executor_peer"
+  ],
+  "same_person_dual_agent": false,
+  "initial_request": "一位成员做到中途需要由另一位成员接手，原执行的最终结果暂不确定。请走正式交接，不要静默转移责任。",
+  "natural_initiation_contract": "一位成员做到中途需要由另一位成员接手，原执行的最终结果暂不确定。请走正式交接，不要静默转移责任。",
+  "prelude": null,
+  "followups": [
+    {
+      "number": 1,
+      "request": "接收方发现缺少运行环境说明与未关闭的外部效果清单，请原方补齐交接包。",
+      "contract_followup": "接收方检查成果后指出缺少的上下文或待办，由原方补齐交接包。",
+      "publish": [
+        {
+          "source": "updates/round-1/materials/handoff-gaps.md",
+          "target": "materials/handoff-gaps.md",
+          "expected_previous_sha256": null
+        }
+      ],
+      "required_observation": "接收方发现缺少运行环境说明与未关闭的外部效果清单，请原方补齐交接包。"
+    },
+    {
+      "number": 2,
+      "request": "原执行已核对。请用另一客户端继续实现；验收要求补一条失败重试说明后再提审。",
+      "contract_followup": "核对原执行后继续实现，验收提出业务修订，再完成独立复核与交付。",
+      "publish": [
+        {
+          "source": "updates/round-2/materials/retry-note.md",
+          "target": "materials/retry-note.md",
+          "expected_previous_sha256": null
+        }
+      ],
+      "required_observation": "原执行已核对。请用另一客户端继续实现；验收要求补一条失败重试说明后再提审。"
+    }
+  ],
+  "artifacts": [
+    {
+      "title": "交接发起与接收记录",
+      "path": "deliverables/handoff.md",
+      "producer": "executor"
+    },
+    {
+      "title": "交接包补齐说明",
+      "path": "deliverables/handoff-pack.md",
+      "producer": "executor"
+    },
+    {
+      "title": "核对后续实现与修订",
+      "path": "deliverables/continue-after-verify.md",
+      "producer": "executor_peer"
+    },
+    {
+      "title": "独立复核记录",
+      "path": "deliverables/independent-review.md",
+      "producer": "reviewer"
+    },
+    {
+      "title": "最终交付回执说明",
+      "path": "deliverables/delivery.md",
+      "producer": "executor_peer"
+    }
+  ],
+  "review_rubric": [
+    "接收确认之前不静默转移责任；未知执行核对前不授予冲突资源。",
+    "后继用另一种实际 Agent 客户端继续同一任务且旧结果不能冒充当前结果。",
+    "含 Web 交接可见性；独立复核。"
+  ],
+  "required_gates": [
+    "natural_client_initiation",
+    "actual_tool_or_role_execution",
+    "real_artifact",
+    "business_followup_1",
+    "business_followup_2",
+    "independent_review",
+    "delivery",
+    "traceable_receipt"
+  ],
+  "dimensions": [
+    "interruption",
+    "recovery",
+    "ownership",
+    "external_effect"
+  ],
+  "artifact_directory": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-03/artifacts",
+  "fixture_materialize_to": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-03/fixture",
+  "work_graph_materialize_to": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-03/work-graph.json",
+  "evidence_report": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-03/report.json",
+  "minimum_real_clients": 2,
+  "minimum_developer_persons": 2,
+  "team_web_required": true,
+  "native_client_required": true,
+  "independent_reviewer_required": true,
+  "runtime_seed_policy": "Never seed sessions, claims, events, checkpoints, completed work or receipts. Do not mutate business state via SQL for acceptance.",
+  "api_db_evidence_policy": "read_only"
+}

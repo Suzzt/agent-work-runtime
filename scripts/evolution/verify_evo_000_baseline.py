@@ -2,6 +2,7 @@
 """Verify AWR-EVO-000 execution-baseline gate artifacts."""
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -9,6 +10,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL = ROOT / ".local/awr-evolution-20260919"
 MIRROR = ROOT / "tests/fixtures/evolution/AWR-EVO-000"
+MATRIX = ROOT / "docs/reference/team-v1-evidence-matrix.json"
+HISTORICAL = ROOT / "docs/reference/team-v1-historical-agent-evidence-v1.json"
 REQUIRED_BASELINE_KEYS = {
     "schema",
     "work",
@@ -43,14 +46,23 @@ def main() -> int:
     local_md = LOCAL / "overlap-and-authority.md"
     mirror_md = MIRROR / "overlap-and-authority.md"
 
-    for p in (local_json, mirror_json, local_md, mirror_md, MIRROR / "README.md"):
+    for p in (mirror_json, mirror_md, MIRROR / "README.md"):
         if not p.is_file():
             fail(f"missing required artifact {p}")
 
-    baseline = load(local_json)
     mirror = load(mirror_json)
-    if baseline != mirror:
-        fail("local baseline JSON differs from checked-in mirror")
+    # The checked-in mirror is the gate. A private .local copy is optional, but
+    # if it exists it must match the mirror. CI and clean checkouts have no .local.
+    if local_json.is_file() or local_md.is_file():
+        if not local_json.is_file() or not local_md.is_file():
+            fail("local evolution baseline is partial; json and markdown must both exist")
+        baseline = load(local_json)
+        if baseline != mirror:
+            fail("local baseline JSON differs from checked-in mirror")
+        if local_md.read_text() != mirror_md.read_text():
+            fail("local overlap markdown differs from checked-in mirror")
+    else:
+        baseline = mirror
 
     missing = REQUIRED_BASELINE_KEYS - set(baseline)
     if missing:
@@ -91,6 +103,10 @@ def main() -> int:
 
     den = baseline["preserved_denominators"]
     counts = den.get("team_v1_evidence_matrix_counts") or {}
+    matrix = load(MATRIX)
+    matrix_counts = matrix.get("counts") or {}
+    if len(matrix.get("cases") or []) != matrix_counts.get("required"):
+        fail("evidence matrix case count does not match counts.required")
     for key, expected in (
         ("required", 69),
         ("real_agent_accepted", 42),
@@ -99,6 +115,17 @@ def main() -> int:
     ):
         if counts.get(key) != expected:
             fail(f"Team V1 denominator {key} changed or missing: {counts.get(key)}")
+        if matrix_counts.get(key) != expected:
+            fail(f"evidence matrix {key} is {matrix_counts.get(key)}, expected {expected}")
+    hist = den.get("team_v1_historical_agent_evidence") or {}
+    recorded = str(hist.get("fingerprint") or "")
+    digest = recorded.removeprefix("sha256:")
+    actual = hashlib.sha256(HISTORICAL.read_bytes()).hexdigest()
+    if not digest or digest != actual:
+        fail("historical evidence fingerprint does not match the checked-in file")
+    matrix_hist = (matrix.get("historical_agent_evidence") or {}).get("index_sha256")
+    if matrix_hist != actual:
+        fail("evidence matrix historical index hash does not match the file")
     if den.get("explicit_non_rewrite") is not True:
         fail("explicit_non_rewrite must be true")
 
@@ -119,7 +146,7 @@ def main() -> int:
     if baseline.get("dec_041_started") is not False:
         fail("dec_041_started must be false")
 
-    md = local_md.read_text()
+    md = mirror_md.read_text()
     for needle in (
         "Unique work authority",
         "Requirement对照",
@@ -130,9 +157,6 @@ def main() -> int:
     ):
         if needle not in md:
             fail(f"overlap doc missing section/marker: {needle}")
-    if local_md.read_text() != mirror_md.read_text():
-        fail("local overlap markdown differs from checked-in mirror")
-
     occ = baseline["path_occupancy"]
     for path, info in occ.items():
         if info.get("conflict") is True:

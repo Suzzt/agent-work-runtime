@@ -47,11 +47,33 @@ def main() -> int:
         pass
     assert compare_mod.nearest_rank_p95([float(i) for i in range(1, 31)]) == 29.0
 
-    ok = compare_mod.compare_pair(
+    pending = compare_mod.compare_pair(
         contract, budgets, samples["baseline_receipt"], samples["candidate_receipt_ok"]
     )
+    assert pending["passed"] is False
+    assert pending["families"]["runtime_overhead"]["baseline_bound"] is False
+    assert pending["families"]["runtime_overhead"]["zero_filled"] is False
+    assert pending["families_kept_separate"] is True
+
+    bound = json.loads(json.dumps(budgets))
+    bound["status"] = "frozen_with_baseline"
+    bound["dimensions"]["collect"]["measured_baseline"] = 10.0
+    bound["dimensions"]["judge"]["measured_baseline"] = 1.0
+    bound["dimensions"]["output"]["measured_baseline"] = 2.0
+    ok = compare_mod.compare_pair(
+        contract, bound, samples["baseline_receipt"], samples["candidate_receipt_ok"]
+    )
     assert ok["passed"] is True
-    assert ok["families_kept_separate"] is True
+    assert ok["families"]["runtime_overhead"]["evaluable"] is True
+
+    stripped = json.loads(json.dumps(samples["candidate_receipt_ok"]))
+    del stripped["costs"]["collect_ms"]
+    missing = compare_mod.compare_pair(
+        contract, bound, samples["baseline_receipt"], stripped
+    )
+    assert missing["passed"] is False
+    assert "collect_ms" in missing["families"]["runtime_overhead"]["missing_fields"]
+    assert "collect_ms_delta" not in missing["families"]["runtime_overhead"]
 
     bad = compare_mod.compare_pair(
         contract,
@@ -71,8 +93,26 @@ def main() -> int:
         base.write_text(json.dumps(samples["baseline_receipt"]))
         cand_ok.write_text(json.dumps(samples["candidate_receipt_ok"]))
         cand_bad.write_text(json.dumps(samples["candidate_receipt_hard_fail_offset_attempt"]))
-        r1 = subprocess.run(
+        bound_path = td_path / "budgets.json"
+        bound_path.write_text(json.dumps(bound))
+        r_pending = subprocess.run(
             [sys.executable, str(HERE / "compare.py"), "--baseline", str(base), "--candidate", str(cand_ok)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert r_pending.returncode == 1, r_pending.stdout
+        r1 = subprocess.run(
+            [
+                sys.executable,
+                str(HERE / "compare.py"),
+                "--budgets",
+                str(bound_path),
+                "--baseline",
+                str(base),
+                "--candidate",
+                str(cand_ok),
+            ],
             capture_output=True,
             text=True,
             check=False,

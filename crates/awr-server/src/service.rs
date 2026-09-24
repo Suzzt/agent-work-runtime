@@ -1,9 +1,21 @@
 //! Operator-bound multi-project HTTP/MCP service. Every request authenticates
 //! inside PostgreSQL; tenant/actor/client/grants are never taken from its JSON.
+mod action_auth;
 mod mcp;
+mod web;
+
+pub use crate::named_agent_host::{
+    named_agent_host_capabilities, negotiate_named_adapter, usable_named_clients,
+};
+pub use action_auth::{
+    action_authorization_capabilities, command_action_name, query_action_name,
+    reject_access_management_forgeries, reject_forged_authority_fields,
+};
 
 use awr_team_pg::{
-    PgError, WorkstreamCommand, WorkstreamCommandStore, WorkstreamQuery, WorkstreamReadStore,
+    AdminAccessPlan, PgError, PlanningApproveRequest, PlanningDraftRequest, PlanningPublishRequest,
+    PlanningSuggestRequest, WorkstreamCommand, WorkstreamCommandStore, WorkstreamQuery,
+    WorkstreamReadStore,
 };
 use axum::{
     Router,
@@ -34,6 +46,10 @@ pub struct ServiceConfig {
     pub listen: SocketAddr,
     #[serde(default)]
     pub allowed_hosts: Vec<String>,
+    /// Exact browser Origins allowed to use the designed `/v1/web/*` entry (WS-044).
+    /// Classic `/v1/projects/*` and MCP continue to reject any Origin.
+    #[serde(default)]
+    pub allowed_web_origins: Vec<String>,
     pub projects: Vec<ProjectBinding>,
 }
 
@@ -85,15 +101,28 @@ impl ServiceConfig {
                     .into(),
             );
         }
+        if self.allowed_web_origins.len() > 64
+            || self.allowed_web_origins.iter().any(|s| {
+                s.is_empty()
+                    || s.len() > 255
+                    || !(s.starts_with("http://") || s.starts_with("https://"))
+                    || s.chars().any(|c| c.is_whitespace())
+                    || s.contains('*')
+            })
+        {
+            return Err("allowed_web_origins must be exact http(s) Origins".into());
+        }
         Ok(())
     }
 }
 
-struct StateData {
+pub(crate) struct StateData {
     store: WorkstreamReadStore,
     commands: WorkstreamCommandStore,
     projects: BTreeMap<String, ProjectBinding>,
     hosts: Vec<String>,
+    web_origins: Vec<String>,
+    web_sessions: Arc<web::WebSessionStore>,
     permits: Arc<tokio::sync::Semaphore>,
 }
 
@@ -108,6 +137,7 @@ pub fn router(
         hosts.push(actual.to_string());
         hosts.push(format!("localhost:{}", actual.port()));
     }
+    let web_origins = config.allowed_web_origins;
     let state = Arc::new(StateData {
         commands: store.commands(),
         store,
@@ -117,20 +147,60 @@ pub fn router(
             .map(|p| (p.key.clone(), p))
             .collect(),
         hosts,
+        web_origins,
+        web_sessions: Arc::new(web::WebSessionStore::default()),
         permits: Arc::new(tokio::sync::Semaphore::new(64)),
     });
     let mut router = Router::new()
         .route("/v1/projects/{project}/query", post(query))
         .route("/v1/projects/{project}/command", post(command))
+        .route(
+            "/v1/projects/{project}/access/inspect",
+            post(access_inspect),
+        )
+        .route(
+            "/v1/projects/{project}/access/preview",
+            post(access_preview),
+        )
+        .route("/v1/projects/{project}/access/apply", post(access_apply))
+        .route(
+            "/v1/projects/{project}/access/outcome",
+            post(access_outcome),
+        )
+        .route(
+            "/v1/projects/{project}/planning/suggest",
+            post(planning_suggest),
+        )
+        .route(
+            "/v1/projects/{project}/planning/draft",
+            post(planning_draft),
+        )
+        .route(
+            "/v1/projects/{project}/planning/preview",
+            post(planning_preview),
+        )
+        .route(
+            "/v1/projects/{project}/planning/approve",
+            post(planning_approve),
+        )
+        .route(
+            "/v1/projects/{project}/planning/publish",
+            post(planning_publish),
+        )
+        .route(
+            "/v1/projects/{project}/planning/outcome",
+            post(planning_outcome),
+        )
         .layer(DefaultBodyLimit::max(65536))
         .with_state(state.clone());
     for project in state.projects.values() {
         router = router.merge(mcp::router(state.clone(), project.clone()));
     }
+    router = router.merge(web::router(state.clone()));
     Ok(router)
 }
 
-fn response(status: StatusCode, value: Value) -> Response {
+pub(crate) fn response(status: StatusCode, value: Value) -> Response {
     (
         status,
         [
@@ -142,7 +212,7 @@ fn response(status: StatusCode, value: Value) -> Response {
         .into_response()
 }
 
-fn denied() -> Response {
+pub(crate) fn denied() -> Response {
     response(
         StatusCode::FORBIDDEN,
         json!({"code":"Forbidden","message":"access denied"}),
@@ -180,12 +250,29 @@ async fn dispatch(
     let Some(token) = bearer(&headers) else {
         return denied();
     };
+    dispatch_authorized(state, key, token, body, write).await
+}
+
+/// Shared query/command path used by classic bearer transport and the Web entry.
+pub(crate) async fn dispatch_authorized(
+    state: Arc<StateData>,
+    key: String,
+    token: &str,
+    body: Bytes,
+    write: bool,
+) -> Response {
     let Some(project) = state.projects.get(&key) else {
         return denied();
     };
     enum Request {
         Query(WorkstreamQuery),
         Command(WorkstreamCommand),
+    }
+    // Body/selectors never supply identity or grants (TMCP-011).
+    if let Ok(raw) = serde_json::from_slice::<Value>(&body) {
+        if reject_forged_authority_fields(&raw).is_err() {
+            return denied();
+        }
     }
     let parsed = if write {
         serde_json::from_slice(&body).map(Request::Command)
@@ -228,6 +315,191 @@ async fn dispatch(
     }
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccessInspectBody {
+    protocol_version: u32,
+    subject_actor_id: String,
+    subject_client_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccessPreviewBody {
+    protocol_version: u32,
+    plan: AdminAccessPlan,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccessApplyBody {
+    protocol_version: u32,
+    request_id: String,
+    expected_state: String,
+    expected_plan: String,
+    plan: AdminAccessPlan,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccessOutcomeBody {
+    protocol_version: u32,
+    request_id: String,
+}
+
+async fn access_inspect(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    access_dispatch(state, key, headers, body, AccessOp::Inspect).await
+}
+async fn access_preview(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    access_dispatch(state, key, headers, body, AccessOp::Preview).await
+}
+async fn access_apply(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    access_dispatch(state, key, headers, body, AccessOp::Apply).await
+}
+async fn access_outcome(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    access_dispatch(state, key, headers, body, AccessOp::Outcome).await
+}
+
+pub(crate) enum AccessOp {
+    Inspect,
+    Preview,
+    Apply,
+    Outcome,
+}
+
+pub(crate) async fn access_dispatch(
+    state: Arc<StateData>,
+    key: String,
+    headers: HeaderMap,
+    body: Bytes,
+    op: AccessOp,
+) -> Response {
+    if !allowed_request(&state, &headers) {
+        return denied();
+    }
+    let Some(token) = bearer(&headers) else {
+        return denied();
+    };
+    access_dispatch_authorized(state, key, token, body, op).await
+}
+
+pub(crate) async fn access_dispatch_authorized(
+    state: Arc<StateData>,
+    key: String,
+    token: &str,
+    body: Bytes,
+    op: AccessOp,
+) -> Response {
+    let Some(project) = state.projects.get(&key) else {
+        return denied();
+    };
+    if let Ok(raw) = serde_json::from_slice::<Value>(&body) {
+        if reject_access_management_forgeries(&raw).is_err() {
+            return denied();
+        }
+    }
+    let Ok(_permit) = state.permits.try_acquire() else {
+        return response(StatusCode::SERVICE_UNAVAILABLE, json!({"code":"Busy"}));
+    };
+    let result = tokio::time::timeout(Duration::from_secs(30), async {
+        match op {
+            AccessOp::Inspect => {
+                let req: AccessInspectBody = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid access inspect".into()))?;
+                if req.protocol_version != 1 {
+                    return Err(PgError::Protocol("invalid access inspect".into()));
+                }
+                state
+                    .store
+                    .project_access()
+                    .inspect(
+                        &project.tenant_id,
+                        &project.project_id,
+                        token,
+                        &req.subject_actor_id,
+                        &req.subject_client_id,
+                    )
+                    .await
+            }
+            AccessOp::Preview => {
+                let req: AccessPreviewBody = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid access preview".into()))?;
+                if req.protocol_version != 1 {
+                    return Err(PgError::Protocol("invalid access preview".into()));
+                }
+                state
+                    .store
+                    .project_access()
+                    .preview(&project.tenant_id, &project.project_id, token, &req.plan)
+                    .await
+            }
+            AccessOp::Apply => {
+                let req: AccessApplyBody = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid access apply".into()))?;
+                if req.protocol_version != 1 {
+                    return Err(PgError::Protocol("invalid access apply".into()));
+                }
+                state
+                    .store
+                    .project_access()
+                    .apply(
+                        &project.tenant_id,
+                        &project.project_id,
+                        token,
+                        &req.plan,
+                        &req.request_id,
+                        &req.expected_state,
+                        &req.expected_plan,
+                    )
+                    .await
+            }
+            AccessOp::Outcome => {
+                let req: AccessOutcomeBody = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid access outcome".into()))?;
+                if req.protocol_version != 1 {
+                    return Err(PgError::Protocol("invalid access outcome".into()));
+                }
+                state
+                    .store
+                    .project_access()
+                    .outcome(
+                        &project.tenant_id,
+                        &project.project_id,
+                        token,
+                        &req.request_id,
+                    )
+                    .await
+            }
+        }
+    })
+    .await;
+    match result {
+        Ok(Ok(value)) => response(StatusCode::OK, value),
+        Ok(Err(error)) => error_response(error),
+        Err(_) => unavailable(),
+    }
+}
+
 fn allowed_request(state: &StateData, headers: &HeaderMap) -> bool {
     !headers.contains_key("origin")
         && headers.get_all("host").iter().count() == 1
@@ -242,7 +514,7 @@ fn allowed_request(state: &StateData, headers: &HeaderMap) -> bool {
             })
 }
 
-fn bearer(headers: &HeaderMap) -> Option<&str> {
+pub(crate) fn bearer(headers: &HeaderMap) -> Option<&str> {
     let mut values = headers.get_all("authorization").iter();
     let value = values.next()?;
     if values.next().is_some() {
@@ -256,15 +528,193 @@ fn bearer(headers: &HeaderMap) -> Option<&str> {
         .map(|(_, token)| token)
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PlanningPreviewBody {
+    protocol_version: u32,
+    candidate_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PlanningOutcomeBody {
+    protocol_version: u32,
+    request_id: String,
+}
+
+async fn planning_suggest(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    planning_dispatch(state, key, headers, body, PlanningOp::Suggest).await
+}
+async fn planning_draft(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    planning_dispatch(state, key, headers, body, PlanningOp::Draft).await
+}
+async fn planning_preview(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    planning_dispatch(state, key, headers, body, PlanningOp::Preview).await
+}
+async fn planning_approve(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    planning_dispatch(state, key, headers, body, PlanningOp::Approve).await
+}
+async fn planning_publish(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    planning_dispatch(state, key, headers, body, PlanningOp::Publish).await
+}
+async fn planning_outcome(
+    State(state): State<Arc<StateData>>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    planning_dispatch(state, key, headers, body, PlanningOp::Outcome).await
+}
+
+enum PlanningOp {
+    Suggest,
+    Draft,
+    Preview,
+    Approve,
+    Publish,
+    Outcome,
+}
+
+async fn planning_dispatch(
+    state: Arc<StateData>,
+    key: String,
+    headers: HeaderMap,
+    body: Bytes,
+    op: PlanningOp,
+) -> Response {
+    if !allowed_request(&state, &headers) {
+        return denied();
+    }
+    let Some(token) = bearer(&headers) else {
+        return denied();
+    };
+    let Some(project) = state.projects.get(&key) else {
+        return denied();
+    };
+    if let Ok(raw) = serde_json::from_slice::<Value>(&body) {
+        if reject_forged_authority_fields(&raw).is_err() {
+            return denied();
+        }
+    }
+    let Ok(_permit) = state.permits.try_acquire() else {
+        return response(StatusCode::SERVICE_UNAVAILABLE, json!({"code":"Busy"}));
+    };
+    let result = tokio::time::timeout(Duration::from_secs(30), async {
+        let source = state.store.source();
+        match op {
+            PlanningOp::Suggest => {
+                let req: PlanningSuggestRequest = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid planning suggest".into()))?;
+                // protocol_version is transport-level; strip if present via wrapper
+                source
+                    .planning_suggest(&project.tenant_id, &project.project_id, token, &req)
+                    .await
+            }
+            PlanningOp::Draft => {
+                let req: PlanningDraftRequest = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid planning draft".into()))?;
+                source
+                    .planning_draft(&project.tenant_id, &project.project_id, token, &req)
+                    .await
+            }
+            PlanningOp::Preview => {
+                let req: PlanningPreviewBody = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid planning preview".into()))?;
+                if req.protocol_version != 1 {
+                    return Err(PgError::Protocol("invalid planning preview".into()));
+                }
+                source
+                    .preview_planning_candidate(
+                        &project.tenant_id,
+                        &project.project_id,
+                        token,
+                        &req.candidate_id,
+                    )
+                    .await
+            }
+            PlanningOp::Approve => {
+                let req: PlanningApproveRequest = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid planning approve".into()))?;
+                source
+                    .planning_approve(&project.tenant_id, &project.project_id, token, &req)
+                    .await
+            }
+            PlanningOp::Publish => {
+                let req: PlanningPublishRequest = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid planning publish".into()))?;
+                source
+                    .planning_publish(&project.tenant_id, &project.project_id, token, &req)
+                    .await
+            }
+            PlanningOp::Outcome => {
+                let req: PlanningOutcomeBody = serde_json::from_slice(&body)
+                    .map_err(|_| PgError::Protocol("invalid planning outcome".into()))?;
+                if req.protocol_version != 1 {
+                    return Err(PgError::Protocol("invalid planning outcome".into()));
+                }
+                match source
+                    .get_planning_command_receipt(
+                        &project.tenant_id,
+                        &project.project_id,
+                        token,
+                        &req.request_id,
+                    )
+                    .await?
+                {
+                    Some(v) => Ok(v),
+                    None => Ok(json!({
+                        "protocol":"awr-team-planning-command-v1",
+                        "request_id":req.request_id,
+                        "already_recorded":false,
+                        "result":null,
+                        "next_step":"absent receipt is unknown — wait/retry outcome before submitting a new request_id"
+                    })),
+                }
+            }
+        }
+    })
+    .await;
+    match result {
+        Ok(Ok(value)) => response(StatusCode::OK, value),
+        Ok(Err(error)) => error_response(error),
+        Err(_) => unavailable(),
+    }
+}
+
 fn unavailable_value() -> Value {
     json!({"code":"Unavailable","message":"request outcome unavailable; inspect a command before retrying with its original identity"})
 }
 
-fn unavailable() -> Response {
+pub(crate) fn unavailable() -> Response {
     response(StatusCode::SERVICE_UNAVAILABLE, unavailable_value())
 }
 
-fn error_response(error: PgError) -> Response {
+pub(crate) fn error_response(error: PgError) -> Response {
     let (status, value) = public_error(error);
     response(status, value)
 }
@@ -283,9 +733,53 @@ fn public_error(error: PgError) -> (StatusCode, Value) {
                 json!({"code":e.code(),"message":e.to_string()}),
             ),
         },
-        PgError::Unsupported(_) => (
+        PgError::Unsupported(msg) => (
             StatusCode::NOT_IMPLEMENTED,
-            json!({"code":"Unsupported","message":"operation or protocol is unavailable"}),
+            json!({
+                "code":"Unsupported",
+                "message": msg,
+                "next_step":"use a supported adapter (server_directory sole source) or an implemented planning op; do not hand-edit JSON/SQL"
+            }),
+        ),
+        PgError::ClaimBlocksActivation => (
+            StatusCode::CONFLICT,
+            json!({
+                "code":"ClaimBlocksActivation",
+                "message":"publish/activation blocked by in-flight claimed work",
+                "next_step":"stop/reconcile/replan affected works, then replay the same request_id with activate=true and stopped_work_ids"
+            }),
+        ),
+        PgError::ActivationImpactUnproven(msg) => (
+            StatusCode::CONFLICT,
+            json!({
+                "code":"ActivationImpactUnproven",
+                "message": msg,
+                "next_step":"prove impact scope or stop affected in-flight work; cancel/expiry/session-end do not prove process stopped"
+            }),
+        ),
+        PgError::WritebackRefused(msg) => (
+            StatusCode::CONFLICT,
+            json!({
+                "code":"WritebackRefused",
+                "message": msg,
+                "next_step":"fix the refused source write condition, then inspect planning.outcome before any new request_id"
+            }),
+        ),
+        PgError::CandidateNotApproved => (
+            StatusCode::CONFLICT,
+            json!({
+                "code":"CandidateNotApproved",
+                "message":"candidate is not approved for publish",
+                "next_step":"approve the current candidate_digest, then publish with the same digest"
+            }),
+        ),
+        PgError::ContextIncomplete => (
+            StatusCode::CONFLICT,
+            json!({
+                "code":"ContextIncomplete",
+                "message":"required context exceeds the requested budget or required specs are missing",
+                "next_step":"raise max_context_bytes, fetch source.content/artifact.content for missing refs, or restore authorized published specs"
+            }),
         ),
         PgError::Protocol(_) => (
             StatusCode::BAD_REQUEST,
@@ -326,10 +820,6 @@ fn public_error(error: PgError) -> (StatusCode, Value) {
                 json!({"code":code,"message":e.to_string()}),
             )
         }
-        PgError::ContextIncomplete => (
-            StatusCode::CONFLICT,
-            json!({"code":"ContextIncomplete","message":"required context exceeds the requested budget"}),
-        ),
         PgError::ResponseTooLarge => (
             StatusCode::CONFLICT,
             json!({"code":"ResponseTooLarge","message":"response exceeds service limit; use a smaller page or a narrower selector; inspect a command before retrying"}),

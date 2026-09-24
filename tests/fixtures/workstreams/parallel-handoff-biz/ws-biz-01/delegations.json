@@ -1,0 +1,42 @@
+{
+  "namespace": "awr-ws-r2-ws-biz-01",
+  "delegations": [
+    {
+      "delegation_id": "del.ws-biz-01.executor",
+      "person_id": "person.morgan-lee",
+      "client_adapter": "codex_cli",
+      "actions": [
+        "claim",
+        "execution",
+        "evidence.submit",
+        "delivery.register_pr",
+        "work.rework"
+      ],
+      "scope": "workstream"
+    },
+    {
+      "delegation_id": "del.ws-biz-01.peer",
+      "person_id": "person.casey-wu",
+      "client_adapter": "claude_code",
+      "actions": [
+        "claim",
+        "execution",
+        "evidence.submit"
+      ],
+      "scope": "workstream"
+    },
+    {
+      "delegation_id": "del.ws-biz-01.reviewer",
+      "person_id": "person.drew-kim",
+      "client_adapter": "team_web",
+      "actions": [
+        "review.open",
+        "review.decide",
+        "delivery.finalize",
+        "web.ops"
+      ],
+      "scope": "workstream",
+      "independent_review": true
+    }
+  ]
+}

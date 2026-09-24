@@ -1,0 +1,88 @@
+{
+  "schema": "workstream_parallel_handoff_biz_acceptance",
+  "schema_version": "1.0.0",
+  "work": "AWR-WS-051",
+  "scope_revision": 2,
+  "scenario_id": "WS-BIZ-06",
+  "namespace": "awr-ws-r2-ws-biz-06",
+  "hard_gate": "time_forecast_stage_acceptance",
+  "status": "blocked_pending_trial_participants",
+  "recorded_at_cst": null,
+  "source_commit": null,
+  "delivery_commit": null,
+  "delivery_remote_sha": null,
+  "persons": [
+    {
+      "person_id": "person.nicky-fang",
+      "display_name": "Nicky Fang",
+      "role": "developer",
+      "preferred_client": "codex_cli"
+    },
+    {
+      "person_id": "person.peyton-cho",
+      "display_name": "Peyton Cho",
+      "role": "developer",
+      "preferred_client": "claude_code"
+    },
+    {
+      "person_id": "person.sydney-ma",
+      "display_name": "Sydney Ma",
+      "role": "reviewer",
+      "preferred_client": "team_web"
+    }
+  ],
+  "named_clients": [
+    "codex_cli",
+    "claude_code"
+  ],
+  "required_surfaces": [
+    "codex_cli",
+    "claude_code",
+    "team_web"
+  ],
+  "gates": {
+    "natural_client_initiation": {
+      "status": "待验",
+      "evidence_paths": [],
+      "blocker": "Awaiting live multi-person run with two named Agent clients, real Team Web ops, and independent reviewer."
+    },
+    "actual_tool_or_role_execution": {
+      "status": "待验",
+      "evidence_paths": [],
+      "blocker": "Awaiting live multi-person run with two named Agent clients, real Team Web ops, and independent reviewer."
+    },
+    "real_artifact": {
+      "status": "待验",
+      "evidence_paths": [],
+      "blocker": "Awaiting live multi-person run with two named Agent clients, real Team Web ops, and independent reviewer."
+    },
+    "business_followup_1": {
+      "status": "待验",
+      "evidence_paths": [],
+      "blocker": "Awaiting live multi-person run with two named Agent clients, real Team Web ops, and independent reviewer."
+    },
+    "business_followup_2": {
+      "status": "待验",
+      "evidence_paths": [],
+      "blocker": "Awaiting live multi-person run with two named Agent clients, real Team Web ops, and independent reviewer."
+    },
+    "independent_review": {
+      "status": "待验",
+      "evidence_paths": [],
+      "blocker": "Awaiting live multi-person run with two named Agent clients, real Team Web ops, and independent reviewer."
+    },
+    "delivery": {
+      "status": "待验",
+      "evidence_paths": [],
+      "blocker": "Awaiting live multi-person run with two named Agent clients, real Team Web ops, and independent reviewer."
+    },
+    "traceable_receipt": {
+      "status": "待验",
+      "evidence_paths": [],
+      "blocker": "Awaiting live multi-person run with two named Agent clients, real Team Web ops, and independent reviewer."
+    }
+  },
+  "notes": [
+    "Fixture and harness shipped; live gates remain 待验 until two named Agent clients + human Web operator + independent reviewer finish the trial."
+  ]
+}

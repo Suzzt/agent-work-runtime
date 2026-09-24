@@ -98,14 +98,11 @@ pub fn normalize_receipt_for_explanation(value: &Value) -> Result<Value> {
         return Ok(value.clone());
     }
     // Assess-shaped: top-level `work` is a string key and `decision` sits at the root.
-    let work_key = value
-        .get("work")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            Error::InvalidInput(
-                "assessment explain requires prepare work.external_key or assess work key".into(),
-            )
-        })?;
+    let work_key = value.get("work").and_then(|v| v.as_str()).ok_or_else(|| {
+        Error::InvalidInput(
+            "assessment explain requires prepare work.external_key or assess work key".into(),
+        )
+    })?;
     let management = json!({
         "contract_fingerprint": value.get("contract_fingerprint"),
         "decision": value.get("decision"),
@@ -135,10 +132,8 @@ pub fn normalize_receipt_for_explanation(value: &Value) -> Result<Value> {
 }
 
 fn delivery_from_receipt(value: &Value) -> DeliveryExplanationInput {
-    let waiting = value
-        .pointer("/continuity/state")
-        .and_then(|v| v.as_str())
-        == Some("waiting_user");
+    let waiting =
+        value.pointer("/continuity/state").and_then(|v| v.as_str()) == Some("waiting_user");
     let wait_refs = value
         .pointer("/continuity/waits")
         .and_then(|v| v.as_array())
@@ -156,10 +151,7 @@ fn delivery_from_receipt(value: &Value) -> DeliveryExplanationInput {
     let mut unresolved = Vec::new();
     if let Some(diags) = value.get("diagnostics").and_then(|v| v.as_array()) {
         for d in diags {
-            let code = d
-                .get("code")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
+            let code = d.get("code").and_then(|v| v.as_str()).unwrap_or_default();
             if code.contains("execution_result_requires_query")
                 || code == "execution_result_requires_query"
             {
@@ -194,14 +186,23 @@ fn delivery_from_receipt(value: &Value) -> DeliveryExplanationInput {
             }
         }
     }
+    // Prepare stage and context consumption are not a delivery acknowledgement.
+    // Only an explicit delivery history may set these; otherwise the facet stays unchecked.
+    let historically_prepared = value
+        .get("historically_prepared")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let ack_present = if historically_prepared {
+        value.get("delivery_ack").and_then(|v| v.as_bool())
+    } else {
+        None
+    };
     DeliveryExplanationInput {
         waiting_user: waiting,
         wait_refs,
         unresolved_side_effects: unresolved,
-        historically_prepared: value.get("stage").and_then(|v| v.as_str()) == Some("prepared"),
-        ack_present: value
-            .get("context_consumed")
-            .and_then(|v| v.as_bool()),
+        historically_prepared,
+        ack_present,
         exec_state_probe: Some(ProbeSupport::Unsupported),
         host_process_probe: Some(ProbeSupport::Unsupported),
         soft_rerun_cues: vec![],
@@ -218,16 +219,7 @@ fn authority_from_receipt(value: &Value) -> ExplanationAuthority {
         .pointer("/work/source_ref/source_revision")
         .or_else(|| value.pointer("/source_ref/source_revision"))
         .and_then(|v| v.as_str())
-        .map(str::to_string)
-        .or_else(|| {
-            value
-                .get("project_revision")
-                .map(|v| match v {
-                    Value::Number(n) => n.to_string(),
-                    Value::String(s) => s.clone(),
-                    _ => v.to_string(),
-                })
-        });
+        .map(str::to_string);
     ExplanationAuthority {
         contract_hash: contract,
         source_revision,
@@ -458,24 +450,20 @@ mod tests {
         assert_eq!(explanation["side_effects"]["updated_completion"], false);
         assert_eq!(explanation["side_effects"]["auto_invoked_tools"], false);
         assert_eq!(explanation["side_effects"]["model_or_network"], false);
-        assert_eq!(
-            explanation["metrics"]["prepare_context_duplicated"],
-            false
-        );
-        assert_eq!(
-            explanation["metrics"]["rendered_context_bytes"],
-            rendered
-        );
+        assert_eq!(explanation["metrics"]["prepare_context_duplicated"], false);
+        assert_eq!(explanation["metrics"]["rendered_context_bytes"], rendered);
         let full = wire_bytes(&out).unwrap();
         let legacy = wire_bytes(&original).unwrap();
         assert!(full > legacy);
         // Envelope must not contain the rendered prepare body string.
         let envelope = serde_json::to_string(&explanation["envelope"]).unwrap();
-        assert!(!envelope.contains(
-            original["context"]["work_context"]["rendered_context"]
-                .as_str()
-                .unwrap()
-        ));
+        assert!(
+            !envelope.contains(
+                original["context"]["work_context"]["rendered_context"]
+                    .as_str()
+                    .unwrap()
+            )
+        );
         assert_eq!(
             explanation["metrics"]["explanation_embeds_rendered_context"],
             false
@@ -552,6 +540,99 @@ mod tests {
         assert_eq!(
             a[ASSESSMENT_EXPLAIN_FIELD]["envelope"]["assessment_hash"],
             b[ASSESSMENT_EXPLAIN_FIELD]["envelope"]["assessment_hash"]
+        );
+    }
+
+    #[test]
+    fn context_consumed_and_prepare_stage_are_not_a_delivery_ack() {
+        let mut prepare = sample_prepare();
+        prepare["stage"] = json!("prepared");
+        prepare["context_consumed"] = json!(true);
+        let out = attach_assessment_explanation(
+            prepare,
+            &AttachExplanationOptions {
+                enabled: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let assessments = out[ASSESSMENT_EXPLAIN_FIELD]["envelope"]["assessments"]
+            .as_array()
+            .unwrap();
+        assert!(
+            assessments.iter().all(|item| item["id"] != "delivery.ack"),
+            "context consumption must not become a delivery ack: {assessments:?}"
+        );
+    }
+
+    #[test]
+    fn explicit_prepared_without_ack_stays_unverified() {
+        let mut prepare = sample_prepare();
+        prepare["historically_prepared"] = json!(true);
+        prepare["delivery_ack"] = json!(false);
+        let out = attach_assessment_explanation(
+            prepare,
+            &AttachExplanationOptions {
+                enabled: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let ack = out[ASSESSMENT_EXPLAIN_FIELD]["envelope"]["assessments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == "delivery.ack")
+            .unwrap();
+        assert_eq!(ack["conclusion"], "not_verified");
+        assert_eq!(ack["support"], "unknown");
+    }
+
+    #[test]
+    fn project_revision_is_not_a_source_revision() {
+        let assess = json!({
+            "version": 1,
+            "work": "W",
+            "work_id": "01WORK",
+            "work_revision": 1,
+            "branch_id": "main",
+            "contract_fingerprint": "c1",
+            "decision": {
+                "version": 1,
+                "mode": "lightweight",
+                "reasons": [],
+                "unknown_observations": [],
+                "reevaluation_signals": [],
+                "required_actions": [
+                    "preserve_identity_intent_scope_and_current_state",
+                    "consume_required_context_and_hard_rules",
+                    "retain_completion_basis_and_actual_outcome",
+                    "check_source_versions_permissions_claims_and_request_identity"
+                ],
+                "optional_maintenance": [],
+                "completion_policy": "unchanged_source_policy",
+                "execution_admission": "not_granted_by_management_classification"
+            },
+            "observation_basis": "host_assertion_not_independently_verified",
+            "admission_gaps": [],
+            "record_required": false,
+            "next_action": "follow_required_actions_and_existing_workflow",
+            "project_revision": 7
+        });
+        let out = attach_assessment_explanation(
+            assess,
+            &AttachExplanationOptions {
+                enabled: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let summary = out[ASSESSMENT_EXPLAIN_FIELD]["envelope"]["identity"]["input_summary"]
+            .as_str()
+            .unwrap_or("");
+        assert!(
+            !summary.contains("source_revision=7") && !summary.contains("source_revision:7"),
+            "{summary}"
         );
     }
 }

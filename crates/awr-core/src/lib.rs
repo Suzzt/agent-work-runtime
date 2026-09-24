@@ -9,6 +9,8 @@ mod completion;
 mod error;
 mod event_payload;
 mod execution;
+mod execution_adapter;
+pub use execution_adapter::*;
 mod management;
 mod model;
 pub use management::*;
@@ -59,10 +61,23 @@ mod assessment_envelope;
 pub use assessment_envelope::*;
 mod ordinary;
 pub use ordinary::*;
+mod responsibility;
+pub use responsibility::*;
+mod agent_authorization;
+pub use agent_authorization::*;
+mod team_handoff;
+pub use team_handoff::*;
 
 pub mod workstream_usage;
 
+pub mod workstream_eta;
+pub use workstream_eta::*;
+
 pub mod workstream_adoption;
+pub use workstream_adoption::*;
+
+pub mod migration_takeover;
+pub use migration_takeover::*;
 
 pub use secrets::sensitive_field_category;
 

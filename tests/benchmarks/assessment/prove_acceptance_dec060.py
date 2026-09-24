@@ -47,6 +47,16 @@ def _run(script: Path) -> None:
     assert r.returncode == 0, f"{script.name} failed\n{r.stderr}\n{r.stdout}"
 
 
+def _require_ancestor(sha: str) -> None:
+    r = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", sha, "HEAD"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, f"{sha} is not in this tree"
+
+
 def ac1_cross_check_eight_independent() -> bool:
     manifest = json.loads((PACK / "manifest.json").read_text())
     checklist = json.loads((PACK / "gate-checklist.json").read_text())
@@ -69,7 +79,8 @@ def ac1_cross_check_eight_independent() -> bool:
         receipt = json.loads((PACK / "prior-acceptance" / f"{row['work']}.json").read_text())
         assert receipt["work"] == row["work"]
         assert receipt["pr_url"]
-        assert receipt["head_sha"]
+        assert receipt["head_sha"] == row["head_sha"]
+        _require_ancestor(receipt["head_sha"])
         assert receipt["independently_rechecked_by"] == "AWR-DEC-060"
     # Corpus marker
     ce = json.loads((CE / "manifest.json").read_text())
@@ -97,6 +108,22 @@ def ac2_offline_cli_mcp_hard_reject_killswitch_perf() -> bool:
     assert offline["cli_mcp_parity"]["shared_assessment_hash"] is True
     assert offline["hard_reject"]["critical_families_zero_tolerance"] is True
     assert offline["hard_reject"]["offset_by_average_rejected"] is True
+    # Re-execute the compare harness. A handwritten flag is not the check.
+    sys.path.insert(0, str(HERE))
+    import compare as compare_mod
+
+    contract = json.loads((HERE / "contract.json").read_text())
+    budgets = json.loads((HERE / "budgets.json").read_text())
+    samples = json.loads((HERE / "sample-receipts.json").read_text())
+    bad = compare_mod.compare_pair(
+        contract,
+        budgets,
+        samples["baseline_receipt"],
+        samples["candidate_receipt_hard_fail_offset_attempt"],
+    )
+    assert bad["passed"] is False
+    assert bad["families"]["structural_correctness"]["hard_pass"] is False
+    assert bad["families"]["structural_correctness"].get("offset_attempt_rejected") is True
     assert offline["kill_switch_fallback"]["advice_mode_disabled_restores_prior_advice"] is True
     assert offline["kill_switch_fallback"]["hard_protections_retained"] is True
 
