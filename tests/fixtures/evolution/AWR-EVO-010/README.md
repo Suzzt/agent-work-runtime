@@ -17,6 +17,9 @@ Authoritative local working copies (ignored by Git):
 
 ## Validate
 
+Validate from a clean checkout. The script reads this fixture. A private
+`.local/awr-evolution-20260919` copy is optional; if present, it must match.
+
 ```sh
 python3 scripts/evolution/verify_evo_010_semantic_contract.py
 python3 scripts/check_public_tree.py

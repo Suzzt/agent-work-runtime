@@ -57,14 +57,16 @@ def require_keys(obj: dict, keys: set[str], label: str) -> None:
 def main() -> int:
     local_matrix = LOCAL / "semantic-contract-matrix.json"
     mirror_matrix = MIRROR / "semantic-contract-matrix.json"
-    for path in [local_matrix, mirror_matrix, MIRROR / "README.md", *DOCS]:
+    for path in [mirror_matrix, MIRROR / "README.md", *DOCS]:
         if not path.is_file():
             fail(f"missing required artifact {path}")
 
-    if local_matrix.read_text() != mirror_matrix.read_text():
+    # Checked-in fixture is the gate. A private .local copy is optional and
+    # must match when present, so a clean checkout can verify the freeze.
+    if local_matrix.is_file() and local_matrix.read_text() != mirror_matrix.read_text():
         fail("local semantic-contract-matrix.json differs from checked-in mirror")
 
-    matrix = load(local_matrix)
+    matrix = load(mirror_matrix)
     require_keys(
         matrix,
         {
