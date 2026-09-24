@@ -1765,7 +1765,7 @@
       const blockers = (payload && payload.blockers) || [];
       accBody.appendChild(el('h3', null, i18n.t('ui.blockers')));
       if (!blockers.length) {
-        accBody.appendChild(el('p', null, i18n.t('ui.no_blockers_in_scope_in_scope')));
+        accBody.appendChild(el('p', null, i18n.t('ui.no_blockers_in_scope')));
       } else {
         const ul = el('ul', { class: 'loops' });
         for (const b of blockers) {
