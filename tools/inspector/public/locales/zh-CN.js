@@ -365,14 +365,7 @@
   "demo.history_replay": "压缩后的历史可重放得到相同投影",
   "demo.decision_indexed": "决策记录已存在并完成索引",
   "demo.migration_note": "迁移说明覆盖依赖回退行为的项目",
-  "demo.continue_work": "当前工作可以继续"
-};
-  if (typeof module !== 'undefined' && module.exports) module.exports = messages;
-  else {
-    root.AWR_LOCALES = root.AWR_LOCALES || {};
-    root.AWR_LOCALES["zh-CN"] = messages;
-  }
-})(typeof globalThis !== 'undefined' ? globalThis : this);
+  "demo.continue_work": "当前工作可以继续",
   "ui.mainline": "主线",
   "ui.mainline_navigation": "主线导航",
   "ui.mainline_lede": "只读查看范围、交叉依赖、核算、阻塞与具体成果连边。完整 Team Web 写操作留在 WS-044。",
@@ -407,3 +400,11 @@
   "ui.next_action": "动作",
   "ui.recheck": "重判触发",
   "ui.ws044_writes_deferred": "入口仅导航与读取。完整 Team Web 写操作按 WS-044 独立验收。",
+};
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = messages;
+  else {
+    root.AWR_LOCALES = root.AWR_LOCALES || {};
+    root.AWR_LOCALES["zh-CN"] = messages;
+  }
+})(typeof globalThis !== 'undefined' ? globalThis : this);

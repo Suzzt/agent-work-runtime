@@ -365,14 +365,7 @@
   "demo.history_replay": "A compacted history replays to the same projection",
   "demo.decision_indexed": "A decision record exists and is indexed",
   "demo.migration_note": "Migration note covers projects relying on the fallback",
-  "demo.continue_work": "Current work can be continued"
-};
-  if (typeof module !== 'undefined' && module.exports) module.exports = messages;
-  else {
-    root.AWR_LOCALES = root.AWR_LOCALES || {};
-    root.AWR_LOCALES["en"] = messages;
-  }
-})(typeof globalThis !== 'undefined' ? globalThis : this);
+  "demo.continue_work": "Current work can be continued",
   "ui.mainline": "Mainline",
   "ui.mainline_navigation": "Mainline navigation",
   "ui.mainline_lede": "Read-only scope, cross-dependencies, accounting, blockers and concrete outcome edges. Team Web writes stay on WS-044.",
@@ -407,3 +400,11 @@
   "ui.next_action": "Next action",
   "ui.recheck": "Recheck",
   "ui.ws044_writes_deferred": "Entry is navigation/read only. Full Team Web writes are accepted under WS-044.",
+};
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = messages;
+  else {
+    root.AWR_LOCALES = root.AWR_LOCALES || {};
+    root.AWR_LOCALES["en"] = messages;
+  }
+})(typeof globalThis !== 'undefined' ? globalThis : this);
