@@ -228,6 +228,33 @@ fn ac1_negative_context_complete_does_not_force_readiness() {
     assert!(!expected);
 }
 
+/// Known incomplete context is a false conclusion, not an unknown support.
+#[test]
+fn known_incomplete_context_stays_supported_false() {
+    let mut view = base_view();
+    view.context_complete = Some(false);
+    view.context_issues = vec!["goal_missing".into()];
+    let result = compose(
+        view,
+        DeliveryExplanationInput::default(),
+        CompletionExplanationInput::default(),
+        authority_from_view(&base_view()),
+        None,
+    );
+    let layer = &result.envelope.layers["context_completeness"];
+    assert_eq!(layer.status, LayerStatus::Supported);
+    assert_eq!(layer.summary.as_deref(), Some("incomplete"));
+    let item = result
+        .envelope
+        .assessments
+        .iter()
+        .find(|item| item.id == "context_completeness")
+        .unwrap();
+    assert_eq!(item.support, AssessmentSupport::Supported);
+    assert_eq!(item.conclusion, Some(json!(false)));
+    assert!(item.reason_codes.iter().any(|code| code == "goal_missing"));
+}
+
 /// Acceptance 2 (positive): unresolved side effects → query original only.
 #[test]
 fn ac2_unresolved_side_effects_query_original_only() {

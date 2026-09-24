@@ -6,7 +6,12 @@ use rmcp::{
     RoleClient, ServiceExt, model::*, service::RunningService, transport::TokioChildProcess,
 };
 use serde_json::{Value, json};
-use std::{fs, path::PathBuf, process::Command, time::Duration};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+    time::Duration,
+};
 use tokio::{process::Command as TokioCommand, time::timeout};
 
 const WORK: &str = "work_items:\n- id: W\n  title: Prepare customer analysis\n  status: ready\n  owner: business-coordinator\n  next_action: Draft the analysis\n  depends_on: [D]\n  acceptance: [Deliver the reviewed analysis]\n  verification:\n    evidence_level: none\n  evidence: []\n- id: D\n  title: Required input\n  status: completed\n";
@@ -60,7 +65,7 @@ impl Fixture {
         .unwrap()
     }
     fn cli(&self, args: &[&str]) -> Value {
-        let awr = PathBuf::from(env!("CARGO_BIN_EXE_awr-mcp")).with_file_name("awr");
+        let awr = sibling_awr_binary(Path::new(env!("CARGO_BIN_EXE_awr-mcp")));
         assert!(
             awr.exists(),
             "sibling awr binary required for CLI/MCP parity: {}",
@@ -101,9 +106,36 @@ async fn call(client: &RunningService<RoleClient, ()>, name: &str, args: Value) 
     .unwrap()
 }
 
+/// Cargo's Windows test binary is `awr-mcp.exe`. Replacing the file name with
+/// `awr` drops `.exe` and the CLI parity check looks for a file that is not there.
+fn sibling_awr_binary(mcp_exe: &Path) -> PathBuf {
+    let awr_name = if mcp_exe.extension().is_some_and(|ext| ext == "exe") {
+        "awr.exe"
+    } else {
+        "awr"
+    };
+    mcp_exe.with_file_name(awr_name)
+}
+
 fn success(result: CallToolResult) -> Value {
     assert_eq!(result.is_error, Some(false), "{result:?}");
     result.structured_content.expect("structured")
+}
+
+#[test]
+fn windows_mcp_exe_resolves_to_awr_exe() {
+    let mcp = Path::new(r"D:\a\awr\awr\target\debug\awr-mcp.exe");
+    let awr = sibling_awr_binary(mcp);
+    assert_eq!(
+        awr.file_name().and_then(|name| name.to_str()),
+        Some("awr.exe")
+    );
+    assert_eq!(
+        sibling_awr_binary(Path::new("/tmp/target/debug/awr-mcp"))
+            .file_name()
+            .and_then(|name| name.to_str()),
+        Some("awr")
+    );
 }
 
 #[tokio::test]
