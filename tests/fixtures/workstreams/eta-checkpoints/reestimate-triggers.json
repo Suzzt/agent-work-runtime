@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "kind": "eta-reestimate-triggers",
+  "triggers": [
+    {"kind": "new_dependency", "detail": "added blocking edge"},
+    {"kind": "rework", "detail": "acceptance failed; redo implementation"},
+    {"kind": "executor_change", "detail": "named agent replaced"},
+    {"kind": "capacity_change", "detail": "concurrency limit reduced"}
+  ],
+  "required_fields": [
+    "supersedes_forecast_id",
+    "reestimate_reason_before",
+    "reestimate_reason_after"
+  ]
+}

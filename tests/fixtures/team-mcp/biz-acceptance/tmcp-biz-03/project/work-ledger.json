@@ -1,0 +1,99 @@
+{
+  "namespace": "team-mcp-v1/biz-member-handoff",
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "北岸项目成员交接 交付"
+    }
+  ],
+  "work_items": [
+    {
+      "id": "MH-TAKEOVER",
+      "title": "接手未完成接入说明",
+      "status": "ready",
+      "depends_on": [],
+      "owner": null,
+      "intended_person": "person.alex-chen",
+      "intended_role": "executor",
+      "acceptance": [
+        "接手未完成接入说明 完成并可复核"
+      ],
+      "next_action": "由 Alex Chen 推进"
+    },
+    {
+      "id": "MH-RETIRE",
+      "title": "退役旧客户端配置",
+      "status": "planned",
+      "depends_on": [
+        "MH-TAKEOVER"
+      ],
+      "owner": null,
+      "intended_person": "person.alex-chen",
+      "intended_role": "executor",
+      "acceptance": [
+        "退役旧客户端配置 完成并可复核"
+      ],
+      "next_action": "由 Alex Chen 推进"
+    },
+    {
+      "id": "MH-FIELD",
+      "title": "核验未知字段落点",
+      "status": "planned",
+      "depends_on": [
+        "MH-RETIRE"
+      ],
+      "owner": null,
+      "intended_person": "person.blair-nguyen",
+      "intended_role": "executor_peer",
+      "acceptance": [
+        "核验未知字段落点 完成并可复核"
+      ],
+      "next_action": "由 Blair Nguyen 推进"
+    },
+    {
+      "id": "MH-REWORK",
+      "title": "按复核意见返工",
+      "status": "planned",
+      "depends_on": [
+        "MH-FIELD"
+      ],
+      "owner": null,
+      "intended_person": "person.alex-chen",
+      "intended_role": "executor",
+      "acceptance": [
+        "按复核意见返工 完成并可复核"
+      ],
+      "next_action": "由 Alex Chen 推进"
+    },
+    {
+      "id": "MH-REVIEW",
+      "title": "独立复核交付",
+      "status": "planned",
+      "depends_on": [
+        "MH-REWORK"
+      ],
+      "owner": null,
+      "intended_person": "person.riley-park",
+      "intended_role": "reviewer",
+      "acceptance": [
+        "独立复核交付 完成并可复核"
+      ],
+      "next_action": "由 Riley Park 推进"
+    },
+    {
+      "id": "MH-DELIVER",
+      "title": "关联 PR 并完成交付",
+      "status": "planned",
+      "depends_on": [
+        "MH-REVIEW"
+      ],
+      "owner": null,
+      "intended_person": "person.alex-chen",
+      "intended_role": "executor",
+      "acceptance": [
+        "关联 PR 并完成交付 完成并可复核"
+      ],
+      "next_action": "由 Alex Chen 推进"
+    }
+  ]
+}

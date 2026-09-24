@@ -1,0 +1,120 @@
+{
+  "namespace": "awr-ws-r2-ws-biz-02",
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "跨线依赖发现与局部返工 交付"
+    }
+  ],
+  "work_items": [
+    {
+      "id": "D2-UP",
+      "title": "上游按确认接口推进",
+      "status": "ready",
+      "depends_on": [],
+      "owner": null,
+      "intended_person": "person.avery-chen",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "上游按确认接口推进 完成并可复核"
+      ],
+      "next_action": "由 Avery Chen 经 codex_cli 推进"
+    },
+    {
+      "id": "D2-DOWN",
+      "title": "下游并行对接接口",
+      "status": "planned",
+      "depends_on": [],
+      "owner": null,
+      "intended_person": "person.blake-ng",
+      "intended_role": "executor_peer",
+      "intended_client": "claude_code",
+      "acceptance": [
+        "下游并行对接接口 完成并可复核"
+      ],
+      "next_action": "由 Blake Ng 经 claude_code 推进"
+    },
+    {
+      "id": "D2-BLOCK",
+      "title": "记录遗漏前置能力阻塞",
+      "status": "planned",
+      "depends_on": [
+        "D2-UP",
+        "D2-DOWN"
+      ],
+      "owner": null,
+      "intended_person": "person.avery-chen",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "记录遗漏前置能力阻塞 完成并可复核"
+      ],
+      "next_action": "由 Avery Chen 经 codex_cli 推进"
+    },
+    {
+      "id": "D2-REPLAN",
+      "title": "Web 确认影响范围重规划",
+      "status": "planned",
+      "depends_on": [
+        "D2-BLOCK"
+      ],
+      "owner": null,
+      "intended_person": "person.skyler-park",
+      "intended_role": "web_operator",
+      "intended_client": "team_web",
+      "acceptance": [
+        "Web 确认影响范围重规划 完成并可复核"
+      ],
+      "next_action": "由 Skyler Park 经 team_web 推进"
+    },
+    {
+      "id": "D2-ADOPT",
+      "title": "下游重新采用并回归",
+      "status": "planned",
+      "depends_on": [
+        "D2-REPLAN"
+      ],
+      "owner": null,
+      "intended_person": "person.blake-ng",
+      "intended_role": "executor_peer",
+      "intended_client": "claude_code",
+      "acceptance": [
+        "下游重新采用并回归 完成并可复核"
+      ],
+      "next_action": "由 Blake Ng 经 claude_code 推进"
+    },
+    {
+      "id": "D2-REVIEW",
+      "title": "独立复核依赖返工",
+      "status": "planned",
+      "depends_on": [
+        "D2-ADOPT"
+      ],
+      "owner": null,
+      "intended_person": "person.skyler-park",
+      "intended_role": "reviewer",
+      "intended_client": "team_web",
+      "acceptance": [
+        "独立复核依赖返工 完成并可复核"
+      ],
+      "next_action": "由 Skyler Park 经 team_web 推进"
+    },
+    {
+      "id": "D2-DELIVER",
+      "title": "关联 PR 并完成交付",
+      "status": "planned",
+      "depends_on": [
+        "D2-REVIEW"
+      ],
+      "owner": null,
+      "intended_person": "person.avery-chen",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "关联 PR 并完成交付 完成并可复核"
+      ],
+      "next_action": "由 Avery Chen 经 codex_cli 推进"
+    }
+  ]
+}

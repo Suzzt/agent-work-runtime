@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "kind": "eta-estimate-request",
+  "work_id": "AWR-WS-043",
+  "project_id": "example-project",
+  "forecast_id": "forecast-fixture-1",
+  "generated_at_ms": 1700000000000,
+  "target": {
+    "kind": "stage_checkpoint",
+    "target_id": "cp-verified",
+    "work_id": "card-043",
+    "checkpoint_name": "verified"
+  },
+  "task_graph_version": "graph-fixture-v1",
+  "execution_strategy": "critical_path_concurrency_v1",
+  "capacity": {
+    "concurrency_limit": 2,
+    "available_executors": 2
+  },
+  "sample_policy": {
+    "policy_id": "eta-sample-default-v1",
+    "method_version": "awr-eta-v1",
+    "min_samples": 8,
+    "min_holdout": 3,
+    "frozen": true
+  },
+  "tasks": [
+    {
+      "work_id": "dep-a",
+      "effective_execution_ms": 100,
+      "wait_before_ms": 0,
+      "depends_on": [],
+      "mainline_id": "mainline-a",
+      "is_acceptance_checkpoint": false
+    },
+    {
+      "work_id": "dep-b",
+      "effective_execution_ms": 100,
+      "wait_before_ms": 0,
+      "depends_on": [],
+      "mainline_id": "mainline-b",
+      "is_acceptance_checkpoint": false
+    },
+    {
+      "work_id": "card-043",
+      "effective_execution_ms": 20,
+      "wait_before_ms": 5,
+      "depends_on": ["dep-a"],
+      "mainline_id": "mainline-a",
+      "is_acceptance_checkpoint": true
+    }
+  ],
+  "notes": [
+    "card-043 waits only on dep-a, not on unrelated mainline-b",
+    "parallel durations must not be summed into the acceptance ETA",
+    "network/model queue exclusions require observable evidence_ref"
+  ]
+}
