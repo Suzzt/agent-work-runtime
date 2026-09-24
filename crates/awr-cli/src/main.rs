@@ -3,6 +3,7 @@ mod runtime_snapshot;
 use awr_core::{Error, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 use std::path::PathBuf;
+mod assessment;
 mod batch;
 mod branch;
 mod capabilities;
@@ -149,6 +150,11 @@ enum Command {
         #[arg(long)]
         cached: bool,
     },
+    /// Offline assessment replay, shadow compare, and advice kill-switch (DEC-022).
+    Assessment {
+        #[command(subcommand)]
+        command: assessment::AssessmentCommand,
+    },
     /// Read one work item without expanding the full ledger or event history.
     Work {
         #[command(subcommand)]
@@ -283,6 +289,7 @@ fn run(cli: &Cli) -> Result<()> {
             branch,
             cached,
         }) => query::ready(&cli.project, *limit, branch.as_deref(), cli.json, *cached),
+        Some(Command::Assessment { command }) => assessment::run(command, cli.json),
         Some(Command::Work { command }) => query::work(&cli.project, command, cli.json),
         Some(Command::Session { command }) => session::run(&cli.project, command, cli.json),
         Some(Command::Evidence { command }) => records::evidence(&cli.project, command, cli.json),

@@ -114,3 +114,12 @@ python3 tests/benchmarks/assessment/compare.py \
 - Missing fields stay missing (never zero-filled); unknown ≠ false
 - Reuses DEC-010/011/012 AssessmentEnvelope + FactSnapshot; no second eval stack
 - EVO-000 / paid dual-host work is **not** started by this card
+
+## 9. DEC-022 shadow compare / kill-switch (developer)
+
+Offline shadow compare reuses this harness's same-input identity rules and adds
+rule-version-attributed diffs plus full retained failure samples. Advice
+`disabled` is the kill-switch (prior advice behavior restored; hard protections
+remain). See [`docs/reference/assessment.md`](../reference/assessment.md) §17 and
+`awr assessment compare` / `awr assessment advice-mode`.
+

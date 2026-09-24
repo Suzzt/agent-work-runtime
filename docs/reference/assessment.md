@@ -463,7 +463,41 @@ Machine tests: `crates/awr-cli/tests/assessment_explain_cli.rs`,
 Corpus marker: `tests/fixtures/assessment/counterexamples/manifest.json` sets
 `dec_021_started: true`.
 
-## 17. Related pages
+## 17. DEC-022 offline replay, shadow compare, and one-click disable
+
+Ships **developer** offline replay + shadow compare entry points and an advice
+delivery kill-switch on top of DEC-010..021 (`FactSnapshot`, `AssessmentEnvelope`,
+`explanation_chain`, optional explain). Reuses event/artifact-shaped snapshot
+JSON for bounded facts + rule hashes — **no separate state DB**. Assessment stays
+read-only: no model/network, missing fields stay missing, unknown ≠ false.
+
+| Item | Behavior |
+| --- | --- |
+| Snapshot schema | `awr-assessment-replay-snapshot-v1` (`ReplaySnapshot`) |
+| Replay entry | `awr_runtime::{capture_replay_snapshot,replay_assessment,replay_assessment_from_bytes}`; CLI `awr assessment replay [--snapshot PATH]` |
+| Missing snapshot | Status `not_replayable` with explicit reason — never silent/fake success |
+| Replay bounds | Recomputes fixed inputs only; `reread_production_state=false`, `reran_tools=false`, `model_or_network_requests=false` |
+| Shadow compare | `awr_runtime::shadow_compare`; CLI `awr assessment compare --baseline … --candidate …` |
+| Compare dimensions | Same-input reasons, advisory codes, hard rejects, costs; diffs cite rule/policy version hashes; divergent samples retained in full |
+| Shadow adoption | `execution_adoption=false`, `context_adoption=false` for shadow **and** enabled; this card does not adopt advice into execution or context; **no background daemon** |
+| Costs | Collect and judge samples stay absent until measured. Only serialized envelope bytes are recorded. A candidate that loosens a hard gate or drops a hard reject does not pass. |
+| Advice modes | `disabled` (kill-switch) / `shadow` / `enabled` via `AdviceDeliveryMode` |
+| Kill-switch | `disabled` restores prior advice behavior only (omit new explain); **does not** remove claim/completion/admission/source-freshness/stop-revoke hard protections |
+| Offline chain | prepare/explain → change source → `prior_explanation_still_valid=false` → reassess (see `assessment_offline` tests) |
+
+Capabilities: `assessment.replay`, `assessment.shadow_compare`, `assessment.advice_mode`.
+
+Machine tests: `crates/awr-runtime/tests/assessment_offline.rs`,
+`crates/awr-cli/tests/assessment_offline_cli.rs`,
+`crates/awr-runtime` unit tests under `assessment_replay` / `assessment_shadow`.
+
+Fixtures: `tests/fixtures/assessment/replay/`.
+
+Corpus marker: `tests/fixtures/assessment/counterexamples/manifest.json` sets
+`dec_022_started: true`.
+
+## 18. Related pages
+
 
 - [Management intensity](management.md) — classification rules hosts still follow
 - [Workflow prepare](workflow.md) — prepare / completion preflight
