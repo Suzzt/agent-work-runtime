@@ -147,6 +147,17 @@ Managed commands run through a separate local AWR supervisor with null stdin and
 
 External references remain unverified. Recording a PID, a URL or an asserted success does not produce a managed completion. There is no automatic takeover of arbitrary existing processes or client memory.
 
+## Migration drill and mainline takeover (WS-050)
+
+Before migrating this project's mainline, prove **backup → preview → migrate →
+restore** on the independent fixture under
+`tests/fixtures/workstreams/migration-takeover/`. Classification rules live in
+`awr_core::migration_takeover` and are summarized in
+[migration-takeover](reference/migration-takeover.md). Unprovable person→agent
+history stays `pending_confirmation`; Agents are never auto-promoted to owner or
+independent approver. Goal lines Team / EVO / DEC / AUTO, incomplete work,
+active sessions, and historical release evidence must remain.
+
 ## Recovery inspection
 
 ```sh

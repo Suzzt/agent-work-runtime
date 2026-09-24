@@ -1,0 +1,23 @@
+[project]
+name = "潮汐网关兼容修订"
+external_key = "team-mcp-v1/biz-pr-reconnect"
+
+[[sources]]
+domain = "goal"
+role = "primary"
+path = "GOALS.md"
+
+[[sources]]
+domain = "plan"
+role = "primary"
+path = "PLAN.md"
+
+[[sources]]
+domain = "rules"
+role = "primary"
+path = "RULES.md"
+
+[[sources]]
+domain = "ledger"
+role = "primary"
+path = "work-ledger.json"

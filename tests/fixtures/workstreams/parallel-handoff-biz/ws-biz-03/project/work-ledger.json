@@ -1,0 +1,121 @@
+{
+  "namespace": "awr-ws-r2-ws-biz-03",
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "跨人跨 Agent 接力恢复 交付"
+    }
+  ],
+  "work_items": [
+    {
+      "id": "H3-START",
+      "title": "原成员推进至中途检查点",
+      "status": "ready",
+      "depends_on": [],
+      "owner": null,
+      "intended_person": "person.jordan-hao",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "原成员推进至中途检查点 完成并可复核"
+      ],
+      "next_action": "由 Jordan Hao 经 codex_cli 推进"
+    },
+    {
+      "id": "H3-OFFER",
+      "title": "Web 发起正式交接",
+      "status": "planned",
+      "depends_on": [
+        "H3-START"
+      ],
+      "owner": null,
+      "intended_person": "person.reese-tan",
+      "intended_role": "web_operator",
+      "intended_client": "team_web",
+      "acceptance": [
+        "Web 发起正式交接 完成并可复核"
+      ],
+      "next_action": "由 Reese Tan 经 team_web 推进"
+    },
+    {
+      "id": "H3-ACCEPT",
+      "title": "接收方检查并指出缺口",
+      "status": "planned",
+      "depends_on": [
+        "H3-OFFER"
+      ],
+      "owner": null,
+      "intended_person": "person.quinn-xu",
+      "intended_role": "executor_peer",
+      "intended_client": "claude_code",
+      "acceptance": [
+        "接收方检查并指出缺口 完成并可复核"
+      ],
+      "next_action": "由 Quinn Xu 经 claude_code 推进"
+    },
+    {
+      "id": "H3-PACK",
+      "title": "原方补齐交接包",
+      "status": "planned",
+      "depends_on": [
+        "H3-ACCEPT"
+      ],
+      "owner": null,
+      "intended_person": "person.jordan-hao",
+      "intended_role": "executor",
+      "intended_client": "codex_cli",
+      "acceptance": [
+        "原方补齐交接包 完成并可复核"
+      ],
+      "next_action": "由 Jordan Hao 经 codex_cli 推进"
+    },
+    {
+      "id": "H3-CONT",
+      "title": "核对后换客户端继续实现",
+      "status": "planned",
+      "depends_on": [
+        "H3-PACK"
+      ],
+      "owner": null,
+      "intended_person": "person.quinn-xu",
+      "intended_role": "executor_peer",
+      "intended_client": "claude_code",
+      "acceptance": [
+        "核对后换客户端继续实现 完成并可复核"
+      ],
+      "next_action": "由 Quinn Xu 经 claude_code 推进"
+    },
+    {
+      "id": "H3-REVIEW",
+      "title": "独立复核交接恢复",
+      "status": "planned",
+      "depends_on": [
+        "H3-CONT"
+      ],
+      "owner": null,
+      "intended_person": "person.reese-tan",
+      "intended_role": "reviewer",
+      "intended_client": "team_web",
+      "acceptance": [
+        "独立复核交接恢复 完成并可复核"
+      ],
+      "next_action": "由 Reese Tan 经 team_web 推进"
+    },
+    {
+      "id": "H3-DELIVER",
+      "title": "关联 PR 并完成交付",
+      "status": "planned",
+      "depends_on": [
+        "H3-REVIEW"
+      ],
+      "owner": null,
+      "intended_person": "person.quinn-xu",
+      "intended_role": "executor_peer",
+      "intended_client": "claude_code",
+      "acceptance": [
+        "关联 PR 并完成交付 完成并可复核"
+      ],
+      "next_action": "由 Quinn Xu 经 claude_code 推进"
+    }
+  ]
+}

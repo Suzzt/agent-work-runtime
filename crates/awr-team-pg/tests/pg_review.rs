@@ -38,11 +38,11 @@ async fn setup(policy: &str) -> (MutexGuard<'static, ()>, Client, ReviewStore) {
                 ('tenant-a','runner-a','system','Runner','active');
              INSERT INTO awr_team.projects(tenant_id,id,key,mode,coordinator_epoch,status)
                 VALUES ('tenant-a','project-a','alpha','team','epoch-1','active');
-             INSERT INTO awr_team.project_memberships(tenant_id,project_id,actor_id,role) VALUES
-                ('tenant-a','project-a','actor-b','reviewer'),
-                ('tenant-a','project-a','actor-c','reviewer'),
-                ('tenant-a','project-a','actor-d','reviewer'),
-                ('tenant-a','project-a','actor-e','reader');
+             INSERT INTO awr_team.project_memberships(tenant_id,project_id,actor_id,role,independent_review) VALUES
+                ('tenant-a','project-a','actor-b','developer',true),
+                ('tenant-a','project-a','actor-c','developer',true),
+                ('tenant-a','project-a','actor-d','developer',true),
+                ('tenant-a','project-a','actor-e','reader',false);
              INSERT INTO awr_team.source_snapshots(
                 tenant_id, project_id, id, manifest_digest, source_ref_json, parser_version, created_by)
                 VALUES ('tenant-a','project-a','snap-1','digest','{{}}','p1','actor-a');
@@ -1400,8 +1400,8 @@ async fn driver_strict_chain_end_to_end() {
                 ('tenant-t13','runner-t13','system','Runner','active');
              INSERT INTO awr_team.projects(tenant_id,id,key,mode,coordinator_epoch,status)
                 VALUES ('tenant-t13','project-tc003','tc003','team','epoch-tc003','active');
-             INSERT INTO awr_team.project_memberships(tenant_id,project_id,actor_id,role)
-                VALUES ('tenant-t13','project-tc003','reviewer-human','reviewer');
+             INSERT INTO awr_team.project_memberships(tenant_id,project_id,actor_id,role,independent_review)
+                VALUES ('tenant-t13','project-tc003','reviewer-human','developer',true);
              INSERT INTO awr_team.work_scopes(tenant_id,project_id,id,name,status)
                 VALUES ('tenant-t13','project-tc003','main','main','active');
              INSERT INTO awr_team.work_items(tenant_id,project_id,id,external_key)

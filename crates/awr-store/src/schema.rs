@@ -1,7 +1,9 @@
 //! Validate the owned schema against the shipped migrations without repairing it.
 use crate::{
-    CATALOG_SQL, CONTENT_REVIEWS_SQL, DOMAIN_SQL, DRAFT_WORK_SQL, MigrationInfo, SCHEMA_VERSION,
-    SEARCH_SQL, WORKSTREAM_SESSIONS_SQL, WORKSTREAM_SQL, db_error,
+    AGENT_AUTHORIZATION_SQL, CATALOG_SQL, CONTENT_REVIEWS_SQL, DELIVERY_DEPS_SQL, DOMAIN_SQL,
+    DRAFT_WORK_SQL, ETA_CHECKPOINTS_SQL, MigrationInfo, OPERATION_READSET_RECEIPTS_SQL,
+    RESPONSIBILITY_SQL, SCHEMA_VERSION, SEARCH_SQL, TEAM_HANDOFF_SQL, USAGE_TIME_SQL,
+    WORKSTREAM_SESSIONS_SQL, WORKSTREAM_SQL, db_error,
 };
 use awr_core::{Error, Result};
 use rusqlite::Connection;
@@ -10,7 +12,7 @@ use std::{collections::BTreeMap, sync::OnceLock};
 type Definition = (String, String, String);
 type Objects = BTreeMap<String, Definition>;
 static EXPECTED: OnceLock<std::result::Result<Vec<Objects>, String>> = OnceLock::new();
-const MIGRATION_NAMES: [&str; 7] = [
+const MIGRATION_NAMES: [&str; 14] = [
     "catalog",
     "domain",
     "search",
@@ -18,6 +20,13 @@ const MIGRATION_NAMES: [&str; 7] = [
     "workstreams",
     "workstream_sessions",
     "content_reviews",
+    "responsibility",
+    "operation_readset_receipts",
+    "agent_authorization",
+    "team_handoff",
+    "delivery_deps",
+    "usage_time",
+    "eta_checkpoints",
 ];
 
 fn objects(conn: &Connection) -> rusqlite::Result<Objects> {
@@ -41,6 +50,13 @@ fn expected() -> Result<&'static Vec<Objects>> {
                     WORKSTREAM_SQL,
                     WORKSTREAM_SESSIONS_SQL,
                     CONTENT_REVIEWS_SQL,
+                    RESPONSIBILITY_SQL,
+                    OPERATION_READSET_RECEIPTS_SQL,
+                    AGENT_AUTHORIZATION_SQL,
+                    TEAM_HANDOFF_SQL,
+                    DELIVERY_DEPS_SQL,
+                    USAGE_TIME_SQL,
+                    ETA_CHECKPOINTS_SQL,
                 ] {
                     conn.execute_batch(sql)?;
                     versions.push(objects(&conn)?);

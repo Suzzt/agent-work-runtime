@@ -45,6 +45,8 @@ function parseArgs(argv) {
     demo: false,
     open: true,
     allowReindex: false,
+    teamUrl: null,
+    teamFixtureDir: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -53,6 +55,8 @@ function parseArgs(argv) {
     else if (a === '--demo') out.demo = true;
     else if (a === '--no-open') out.open = false;
     else if (a === '--allow-reindex') out.allowReindex = true;
+    else if (a === '--team-url') out.teamUrl = argv[++i] || null;
+    else if (a === '--team-fixture-dir') out.teamFixtureDir = path.resolve(argv[++i] || '.');
     else if (a === '--help' || a === '-h') {
       console.log([
         'Usage: node server.js [options]',
@@ -61,6 +65,8 @@ function parseArgs(argv) {
         '  --port <port>      Listening port (default: 7381)',
         '  --demo             Use demo mode without running real commands',
         '  --allow-reindex    Enable source reindex from the UI (disabled by default)',
+        '  --team-url <url>   Proxy Team Web to awr-server /v1/web entry (WS-044)',
+        '  --team-fixture-dir Use on-disk team-web-loop fixtures (demo/tests)',
         '  --no-open          Do not open the browser automatically',
       ].join('\n'));
       process.exit(0);
@@ -71,6 +77,8 @@ function parseArgs(argv) {
 
 const ARGS = parseArgs(process.argv.slice(2));
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const { createTeamBridge } = require('./team-bridge');
+const teamBridge = createTeamBridge({ teamUrl: ARGS.teamUrl, teamFixtureDir: ARGS.teamFixtureDir, port: ARGS.port });
 
 // awr executable resolution
 
@@ -227,6 +235,7 @@ const COMMANDS = {
   status: { argv: ['status'], write: false },
   ready: { argv: ['ready'], write: false },
   workShow: { argv: ['work', 'show'], write: false },
+  mainlineNav: { argv: ['nav'], write: false },
   search: { argv: ['search'], write: false },
   intakeInspect: { argv: ['intake', 'inspect'], write: false },
   contextCompile: { argv: ['context', 'compile'], write: false },
@@ -552,6 +561,19 @@ const routes = {
     return runCommand('status', extra);
   },
 
+
+  'GET /api/mainline-nav': async (url) => {
+    const extra = [];
+    const workstream = url.searchParams.get('workstream');
+    const goal = url.searchParams.get('goal');
+    const milestone = url.searchParams.get('milestone');
+    const works = url.searchParams.getAll('work');
+    if (workstream) extra.push('--workstream', workstream);
+    if (goal) extra.push('--goal', goal);
+    if (milestone) extra.push('--milestone', milestone);
+    for (const work of works) extra.push('--work', work);
+    return runCommand('mainlineNav', extra);
+  },
   'GET /api/work-page': async (url) => {
     const queue = url.searchParams.get('queue') || 'all';
     const offset = Number(url.searchParams.get('offset') || '0');
@@ -637,6 +659,8 @@ const routes = {
     return runCommand('sourceReindex', []);
   },
 };
+Object.assign(routes, teamBridge.routes);
+
 
 // ───────────────────────── HTTP ─────────────────────────
 
@@ -664,11 +688,14 @@ const CSP = [
 ].join('; ');
 
 function sendJson(res, status, payload) {
-  res.writeHead(status, {
+  const headers = {
     'content-type': 'application/json; charset=utf-8',
     'cache-control': 'no-store',
     'x-content-type-options': 'nosniff',
-  });
+  };
+  const cookie = res.getHeader('set-cookie');
+  if (cookie) headers['set-cookie'] = cookie;
+  res.writeHead(status, headers);
   res.end(JSON.stringify(payload));
 }
 
@@ -775,8 +802,12 @@ async function handleRequest(req, res) {
       });
     }
 
-    // In demo mode, only /api/health runs; the frontend supplies its built-in sample data.
-    if (runtime.mode === 'demo' && url.pathname !== '/api/health') {
+    // In demo mode, only /api/health and Team Web fixture routes run; other live CLI routes stay blocked.
+    if (
+      runtime.mode === 'demo' &&
+      url.pathname !== '/api/health' &&
+      !url.pathname.startsWith('/api/team/')
+    ) {
       return sendJson(res, 200, {
         ok: false,
         error: { code: 'DemoMode', message: runtime.reason || 'Demo mode is active; no live project is connected.' },
@@ -795,7 +826,7 @@ async function handleRequest(req, res) {
         }
         body = read.body;
       }
-      return sendJson(res, 200, await handler(url, body));
+      return sendJson(res, 200, await handler(url, body, req, res));
     } catch (err) {
       return sendJson(res, 200, {
         ok: false,

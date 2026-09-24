@@ -1,0 +1,198 @@
+{
+  "policy_id": "awr-team-mcp-permission-v1",
+  "policy_version": 1,
+  "cases": [
+    {
+      "id": "reader_read_verified",
+      "legacy_role": "reader",
+      "legacy_grant": "read",
+      "expect_template": "reader",
+      "expect_actions": [
+        "work.read"
+      ],
+      "expect_withheld_contains": [
+        "planning.propose",
+        "access.manage_project",
+        "review.decide"
+      ],
+      "person_link": "verified",
+      "expect_independent_review_granted": false
+    },
+    {
+      "id": "reviewer_no_auto_review",
+      "legacy_role": "reviewer",
+      "legacy_grant": null,
+      "expect_template": "reader",
+      "expect_actions": [
+        "work.read"
+      ],
+      "expect_withheld_contains": [
+        "review.decide"
+      ],
+      "person_link": "verified",
+      "expect_independent_review_granted": false
+    },
+    {
+      "id": "worker_write_withholds_new",
+      "legacy_role": "worker",
+      "legacy_grant": "write",
+      "expect_template": "developer",
+      "expect_actions_contains": [
+        "work.read",
+        "claim.manage_own",
+        "delivery.submit_and_request_review"
+      ],
+      "expect_actions_excludes": [
+        "planning.propose",
+        "planning.edit_draft",
+        "access.manage_project",
+        "review.decide"
+      ],
+      "person_link": "verified",
+      "expect_independent_review_granted": false
+    },
+    {
+      "id": "admin_manage_withholds_new",
+      "legacy_role": "admin",
+      "legacy_grant": "manage",
+      "expect_template": "project_admin",
+      "expect_actions_contains": [
+        "work.read",
+        "delivery.finalize",
+        "audit.read_project"
+      ],
+      "expect_actions_excludes": [
+        "planning.publish",
+        "access.manage_project",
+        "review.decide"
+      ],
+      "person_link": "verified",
+      "expect_independent_review_granted": false
+    },
+    {
+      "id": "unknown_person_no_grants",
+      "legacy_role": "admin",
+      "legacy_grant": "manage",
+      "expect_template": null,
+      "expect_actions": [],
+      "person_link": "unknown",
+      "expect_independent_review_granted": false
+    },
+    {
+      "id": "reader_write_intersects_no_claim",
+      "legacy_role": "reader",
+      "legacy_grant": "write",
+      "expect_template": "reader",
+      "expect_actions": [
+        "work.read"
+      ],
+      "expect_actions_excludes": [
+        "claim.manage_own",
+        "execution.request_and_report_own",
+        "delivery.submit_and_request_review",
+        "planning.propose"
+      ],
+      "expect_withheld_contains": [
+        "planning.propose",
+        "access.manage_project",
+        "review.decide"
+      ],
+      "person_link": "verified",
+      "expect_independent_review_granted": false
+    },
+    {
+      "id": "admin_read_intersects_no_planning_access",
+      "legacy_role": "admin",
+      "legacy_grant": "read",
+      "expect_template": "project_admin",
+      "expect_actions": [
+        "work.read"
+      ],
+      "expect_actions_excludes": [
+        "planning.publish",
+        "planning.approve",
+        "access.manage_project",
+        "audit.read_project",
+        "claim.manage_own"
+      ],
+      "expect_withheld_contains": [
+        "planning.publish",
+        "access.manage_project",
+        "review.decide"
+      ],
+      "person_link": "verified",
+      "expect_independent_review_granted": false
+    },
+    {
+      "id": "role_only_worker_withholds_new",
+      "legacy_role": "worker",
+      "legacy_grant": null,
+      "expect_template": "developer",
+      "expect_actions_contains": [
+        "work.read",
+        "claim.manage_own",
+        "delivery.submit_and_request_review"
+      ],
+      "expect_actions_excludes": [
+        "planning.propose",
+        "access.manage_project",
+        "review.decide"
+      ],
+      "person_link": "verified",
+      "expect_independent_review_granted": false
+    },
+    {
+      "id": "grant_only_write_withholds_new",
+      "legacy_role": null,
+      "legacy_grant": "write",
+      "expect_template": "developer",
+      "expect_actions_contains": [
+        "work.read",
+        "claim.manage_own",
+        "delivery.submit_and_request_review"
+      ],
+      "expect_actions_excludes": [
+        "planning.propose",
+        "access.manage_project",
+        "review.decide"
+      ],
+      "person_link": "verified",
+      "expect_independent_review_granted": false
+    },
+    {
+      "id": "missing_role_and_grant_no_actions",
+      "legacy_role": null,
+      "legacy_grant": null,
+      "expect_template": null,
+      "expect_actions": [],
+      "expect_withheld_contains": [
+        "planning.propose",
+        "access.manage_project",
+        "review.decide"
+      ],
+      "person_link": "verified",
+      "expect_independent_review_granted": false
+    },
+    {
+      "id": "admin_write_intersects_withholds_new",
+      "legacy_role": "admin",
+      "legacy_grant": "write",
+      "expect_template": "project_admin",
+      "expect_actions_contains": [
+        "work.read",
+        "claim.manage_own",
+        "delivery.submit_and_request_review"
+      ],
+      "expect_actions_excludes": [
+        "planning.publish",
+        "planning.edit_draft",
+        "access.manage_project",
+        "audit.read_project",
+        "delivery.finalize",
+        "review.decide"
+      ],
+      "person_link": "verified",
+      "expect_independent_review_granted": false
+    }
+  ]
+}
