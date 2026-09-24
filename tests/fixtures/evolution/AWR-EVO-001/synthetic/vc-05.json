@@ -1,0 +1,13 @@
+{
+  "id": "VC-05",
+  "title": "acceptance_after_supplemental_evidence",
+  "synthetic": true,
+  "expected_axes": [
+    "AX-CORRECTNESS",
+    "AX-PERF",
+    "AX-VALUE"
+  ],
+  "axes_may_substitute": false,
+  "paid_run_status": "blocked_until_authorization",
+  "native_run_status": "blocked_until_authorization"
+}

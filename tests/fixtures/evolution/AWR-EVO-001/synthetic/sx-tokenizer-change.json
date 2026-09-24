@@ -1,0 +1,12 @@
+{
+  "id": "SX-TOK-01",
+  "class": "tokenizer_change",
+  "synthetic": true,
+  "expect": {
+    "tokenizer_id_declared": true,
+    "cross_tokenizer_compare": false
+  },
+  "forbidden": {
+    "silent_retokenize_and_claim_savings": true
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "REF-VALUE-RUBRIC",
+  "enters_subject_context": false,
+  "axes": {
+    "AX-CORRECTNESS": "Score protocol/hard-constraint outcomes only",
+    "AX-PERF": "Score pre-registered perf metrics only; no post-hoc threshold edits",
+    "AX-VALUE": "Score paired full-workflow outcomes with full denominator"
+  },
+  "forbidden": [
+    "mix_axes_into_single_score_that_hides_failure"
+  ]
+}
