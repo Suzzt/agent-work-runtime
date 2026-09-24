@@ -378,7 +378,9 @@ fn validate_fixture(fixture: &MigrationFixture) -> Result<(), MigrationError> {
     if fixture.schema != FIXTURE_SCHEMA {
         return Err(MigrationError::InvalidFixture("schema"));
     }
-    if fixture.fixture_id.is_empty() || fixture.project_id.is_empty() || fixture.tenant_id.is_empty()
+    if fixture.fixture_id.is_empty()
+        || fixture.project_id.is_empty()
+        || fixture.tenant_id.is_empty()
     {
         return Err(MigrationError::InvalidFixture("ids"));
     }
@@ -559,11 +561,7 @@ pub fn migrate(
     if prev.backup_digest != backed.snapshot_digest {
         return Err(MigrationError::DigestMismatch);
     }
-    if prev
-        .history
-        .iter()
-        .any(|h| h.promoted_to_owner_or_approver)
-    {
+    if prev.history.iter().any(|h| h.promoted_to_owner_or_approver) {
         return Err(MigrationError::PreviewRefused(vec![
             "agent_auto_promoted".into(),
         ]));
@@ -985,7 +983,11 @@ mod tests {
         assert_eq!(rev.disposition, HistoryDisposition::PendingConfirmation);
         assert!(rev.person_delegation_proven);
         assert!(!rev.promoted_to_owner_or_approver);
-        assert!(prev.history.iter().all(|h| !h.promoted_to_owner_or_approver));
+        assert!(
+            prev.history
+                .iter()
+                .all(|h| !h.promoted_to_owner_or_approver)
+        );
     }
 
     #[test]

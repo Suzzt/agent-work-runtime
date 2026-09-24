@@ -241,9 +241,8 @@ fn set_session_cookie(response: &mut Response, session_id: &str, max_age: u64, s
 
 fn clear_session_cookie(response: &mut Response, secure: bool) {
     let secure_flag = if secure { "; Secure" } else { "" };
-    let value = format!(
-        "{COOKIE_NAME}=; HttpOnly; Path=/v1/web; SameSite=Strict; Max-Age=0{secure_flag}"
-    );
+    let value =
+        format!("{COOKIE_NAME}=; HttpOnly; Path=/v1/web; SameSite=Strict; Max-Age=0{secure_flag}");
     if let Ok(v) = HeaderValue::from_str(&value) {
         response.headers_mut().append(header::SET_COOKIE, v);
     }
@@ -269,9 +268,10 @@ fn cookie_session_id(headers: &HeaderMap) -> Option<String> {
 }
 
 fn secure_cookie(state: &StateData) -> bool {
-    !state.hosts.iter().all(|h| {
-        h.starts_with("127.0.0.1") || h.starts_with("localhost") || h.starts_with("[::1]")
-    })
+    !state
+        .hosts
+        .iter()
+        .all(|h| h.starts_with("127.0.0.1") || h.starts_with("localhost") || h.starts_with("[::1]"))
 }
 
 fn capabilities_query() -> WorkstreamQuery {
@@ -288,11 +288,7 @@ struct LoginBody {
     bearer: String,
 }
 
-async fn login(
-    State(state): State<Arc<StateData>>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Response {
+async fn login(State(state): State<Arc<StateData>>, headers: HeaderMap, body: Bytes) -> Response {
     let origin = match require_web_entry(&state, &headers) {
         Ok(o) => o,
         Err(r) => return r,
