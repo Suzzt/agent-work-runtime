@@ -70,7 +70,7 @@ as `not_evaluated` or field `state=unsupported` until implemented):
   `awr_core::assessment_envelope` (`compose_assessment_envelope` /
   `evaluate_assessment`); fixtures under `tests/fixtures/assessment/envelope/`.
 - Counterexample corpus (DEC-013)
-- Composition pipeline (DEC-020) — `awr_runtime::explanation_chain` (`compose_explanation_chain`); binds five-layer explanations + advisories on existing prepare/assess judgments without a second adjudicator. CLI/MCP field injection remains DEC-021.
+- Composition pipeline (DEC-020) — `awr_runtime::explanation_chain` (`compose_explanation_chain`); binds five-layer explanations + advisories on existing prepare/assess judgments without a second adjudicator. CLI/MCP field injection is DEC-021 (`assessment.explain` on existing prepare/assess).
 - Context packing / retention explain (DEC-030+)
 - AUTO / model routing (never core)
 
@@ -318,9 +318,10 @@ operation must re-check permissions, claims, and source versions.
 | `decision show` / `object show` | **Not used** for assessment explain. Capability negotiation must not overload those commands. |
 | MCP grouped tool contracts | New explain fields appear only when the client negotiates the capability / view; unnegotiated clients keep prior shapes. |
 
-Prefer capability id `assessment.explain` (documented; wired in DEC-021) attached
-to existing prepare/assess commands via an explain field or `response_view`
-extension. Do **not** invent `work assess-explain` or similar for first batch.
+Capability id `assessment.explain` is wired in DEC-021 as an optional `--explain` /
+`explain` boolean on existing prepare/assess commands (orthogonal to
+`response_view` full/summary/action). Do **not** invent `work assess-explain`
+or similar for first batch.
 
 ## 9. Two read consumers
 
@@ -435,10 +436,34 @@ Machine tests: `crates/awr-runtime/tests/explanation_chain.rs` (acceptance + C01
 Corpus marker: `tests/fixtures/assessment/counterexamples/manifest.json` sets
 `dec_020_started: true`.
 
-## 16. Related pages
+## 16. DEC-021 optional CLI/MCP explanation delivery
 
+Wires capability `assessment.explain` onto **existing** `work prepare` /
+`work assess` and MCP `awr_work_prepare` / `awr_work_assess` paths. Reuses
+DEC-020 `explanation_chain` / `AssessmentEnvelope` — no second adjudicator,
+no new top-level tool, and `decision show` remains unoccupied.
 
+| Item | Behavior |
+| --- | --- |
+| Capability | `assessment.explain` in CLI `capabilities` (negotiable via `--require`) |
+| CLI flag | `work prepare --explain`, `work assess --explain` (default **off**) |
+| MCP arg | optional boolean `explain` (default false); `response_view` enum stays `full`/`summary`/`action` |
+| Field | `assessment_explanation` on the same prepare/assess receipt |
+| Shared result | CLI and MCP attach via `awr_runtime::attach_assessment_explanation`; identical inputs → identical `assessment_hash` |
+| Default cost | No extra tool round-trip; explanation is derived from the prepare/assess body already returned |
+| No duplication | Envelope cites `basis_refs`; must not re-embed `rendered_context` (`prepare_context_duplicated=false`) |
+| Metrics | Reports both full wire bytes (`wire_bytes`) and `rendered_context_bytes` separately |
+| Side effects | `claimed_work` / `updated_completion` / `auto_invoked_tools` / `model_or_network` all false |
+| Capability off | Omit `--explain` / `explain:true` → legacy shapes unchanged (C20) |
 
+Machine tests: `crates/awr-cli/tests/assessment_explain_cli.rs`,
+`crates/awr-mcp/tests/assessment_explain_mcp.rs`,
+`awr_runtime::assessment_explain` unit tests.
+
+Corpus marker: `tests/fixtures/assessment/counterexamples/manifest.json` sets
+`dec_021_started: true`.
+
+## 17. Related pages
 
 - [Management intensity](management.md) — classification rules hosts still follow
 - [Workflow prepare](workflow.md) — prepare / completion preflight

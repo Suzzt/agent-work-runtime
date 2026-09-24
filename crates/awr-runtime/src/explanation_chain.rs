@@ -391,6 +391,7 @@ fn map_context_completeness(
             )
         }
         Some(false) => {
+            // Known incomplete: support=Supported with conclusion=false (unknown≠false).
             let mut basis = vec!["context.completeness.complete".into()];
             let mut codes = Vec::new();
             for issue in &view.context_issues {
@@ -399,13 +400,13 @@ fn map_context_completeness(
             }
             (
                 layer_result(
-                    LayerStatus::Unknown,
+                    LayerStatus::Supported,
                     Some("incomplete".into()),
                     basis.clone(),
                 ),
                 Some(AssessmentItem {
                     id: "context_completeness".into(),
-                    support: AssessmentSupport::Unknown,
+                    support: AssessmentSupport::Supported,
                     conclusion: Some(json!(false)),
                     reason_codes: codes,
                     basis_refs: basis,

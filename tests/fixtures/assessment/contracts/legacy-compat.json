@@ -14,7 +14,10 @@
       "awr_work_assess",
       "awr_work_prepare"
     ],
-    "mechanism": "capability_negotiated_explain_field_or_response_view_extension",
+    "mechanism": "capability_negotiated_explain_boolean_field",
+    "cli_flag": "--explain",
+    "mcp_arg": "explain",
+    "response_field": "assessment_explanation",
     "default_without_negotiation": "existing_full_summary_action_shapes_unchanged"
   },
   "mappings": [

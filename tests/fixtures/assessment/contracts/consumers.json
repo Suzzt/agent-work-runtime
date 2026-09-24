@@ -11,7 +11,8 @@
         "awr capabilities"
       ],
       "capability_catalog_id": "work.management",
-      "planned_explain_capability": "assessment.explain",
+      "explain_capability": "assessment.explain",
+      "explain_default": "off",
       "read_only_assessment": true
     },
     {
@@ -25,7 +26,8 @@
         "summary",
         "action"
       ],
-      "planned_explain_capability": "assessment.explain",
+      "explain_capability": "assessment.explain",
+      "explain_default": "off",
       "read_only_assessment": true,
       "persists_on_read": false
     }
