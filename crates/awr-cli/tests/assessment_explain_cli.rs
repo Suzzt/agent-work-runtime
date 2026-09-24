@@ -40,11 +40,7 @@ impl Fixture {
     }
     fn ok(&self, args: &[&str]) -> Value {
         let r = self.run(args);
-        assert!(
-            r.status.success(),
-            "{}",
-            String::from_utf8_lossy(&r.stderr)
-        );
+        assert!(r.status.success(), "{}", String::from_utf8_lossy(&r.stderr));
         serde_json::from_slice(&r.stdout).unwrap()
     }
 }
@@ -104,7 +100,11 @@ fn prepare_explain_off_preserves_full_summary_action_and_on_attaches_same_chain(
     assert_eq!(action["response_view"]["view"], "action");
 
     let explained = f.ok(&["work", "prepare", "W", "--explain"]);
-    assert!(explained.get(awr_runtime::ASSESSMENT_EXPLAIN_FIELD).is_some());
+    assert!(
+        explained
+            .get(awr_runtime::ASSESSMENT_EXPLAIN_FIELD)
+            .is_some()
+    );
     let legacy = strip_explain(explained.clone());
     assert_eq!(legacy["ready"], full["ready"]);
     assert_eq!(

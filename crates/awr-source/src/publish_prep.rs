@@ -1,0 +1,977 @@
+//! First-round Team publish preparation (AWR-TMCP-020).
+//!
+//! Maps a server-held YAML workstream ledger plus referenced Markdown/JSON
+//! specs into a `workstreams.json` candidate. Preview identity, dependency,
+//! acceptance and source diffs before ingest. Missing fields and unsupported
+//! formats hard-reject. Source status / historical `done` stay source notes
+//! only and never become completion receipts. Role or membership fields are
+//! never invented from the ledger.
+use crate::locator::fingerprint;
+use awr_core::{
+    Error, Id, Result, WORKSTREAM_CATALOG_VERSION, Workstream, WorkstreamCatalog, WorkstreamState,
+};
+use awr_team::{WorkContract, WorkId, WorkstreamBundle, WorkstreamContract};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::path::{Component, Path};
+
+/// First-round supported ledger adapter id for Team publish preparation.
+pub const SUPPORTED_LEDGER_ADAPTER: &str = "yaml-workstream-ledger-v1";
+
+/// Mapping-default completion policy when the ledger omits one. This is a
+/// contract field default, not a role or membership grant.
+pub const DEFAULT_COMPLETION_POLICY: &str = "independent_review";
+
+pub const SOURCE_BINDING_FILE: &str = "source_binding.json";
+pub const WORKSTREAMS_FILE: &str = "workstreams.json";
+pub const SOURCE_PROVENANCE_FILE: &str = "source_provenance.json";
+pub const PARSER_VERSION: &str = "awr-team-workstreams/1";
+
+const SUPPORTED_SPEC_EXTENSIONS: &[&str] = &["json", "md", "markdown"];
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "snake_case")]
+pub enum SoleSourceKind {
+    ServerDirectory,
+    PrivateManagementRepo,
+}
+
+/// Team project's sole authoritative source location. Developers do not need
+/// author-laptop paths or ledger directory write access.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SoleSourceLocation {
+    pub kind: SoleSourceKind,
+    /// Absolute server directory, or private management-repo URL with pinned rev.
+    pub locator: String,
+    /// Subdirectory inside the bound location that holds the ledger.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ledger_relative_path: Option<String>,
+}
+
+impl SoleSourceLocation {
+    pub fn server_directory(root: impl AsRef<Path>, ledger_relative_path: &str) -> Result<Self> {
+        let root = root.as_ref();
+        if !root.is_absolute() {
+            return Err(Error::InvalidInput(
+                "sole source server directory must be an absolute path".into(),
+            ));
+        }
+        validate_relative_path(ledger_relative_path, "ledger")?;
+        Ok(Self {
+            kind: SoleSourceKind::ServerDirectory,
+            locator: root.to_string_lossy().into_owned(),
+            ledger_relative_path: Some(ledger_relative_path.into()),
+        })
+    }
+
+    pub fn private_management_repo(
+        locator: impl Into<String>,
+        ledger_relative_path: &str,
+    ) -> Result<Self> {
+        let locator = locator.into();
+        if locator.trim().is_empty() || locator.contains('\0') {
+            return Err(Error::InvalidInput(
+                "private management repo locator required".into(),
+            ));
+        }
+        if !(locator.starts_with("git://")
+            || locator.starts_with("https://")
+            || locator.starts_with("ssh://"))
+        {
+            return Err(Error::InvalidInput(
+                "private management repo locator must be git://, https://, or ssh://".into(),
+            ));
+        }
+        validate_relative_path(ledger_relative_path, "ledger")?;
+        Ok(Self {
+            kind: SoleSourceKind::PrivateManagementRepo,
+            locator,
+            ledger_relative_path: Some(ledger_relative_path.into()),
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceStatusNote {
+    pub work_external_key: String,
+    pub raw_status: String,
+    /// Source meaning only. Never a PG completion receipt.
+    pub meaning: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct FieldDiff {
+    pub external_key: String,
+    pub before: Option<Value>,
+    pub after: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct PublishPreview {
+    pub identity_added: Vec<String>,
+    pub identity_removed: Vec<String>,
+    pub identity_unchanged: Vec<String>,
+    pub dependency_diffs: Vec<FieldDiff>,
+    pub acceptance_diffs: Vec<FieldDiff>,
+    pub source_diffs: Vec<FieldDiff>,
+    pub workstream_identity_added: Vec<String>,
+    pub workstream_identity_removed: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReferencedSpec {
+    pub path: String,
+    pub digest: String,
+    pub bytes: usize,
+    /// Exact bytes observed through the root-confined open used for validation.
+    #[serde(skip)]
+    pub content: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublishPackageFile {
+    pub path: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Immutable original-source provenance persisted beside the generated candidate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceProvenance {
+    pub source_version_digest: String,
+    pub ledger_relative_path: String,
+    pub source_status_notes: Vec<SourceStatusNote>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TeamPublishPackage {
+    pub project_id: String,
+    pub source_location: SoleSourceLocation,
+    pub source_version_digest: String,
+    pub ledger_identity_digest: String,
+    pub bundle_digest: String,
+    pub graph_digest: String,
+    pub preview: PublishPreview,
+    pub source_status_notes: Vec<SourceStatusNote>,
+    pub referenced_specs: Vec<ReferencedSpec>,
+    pub files: Vec<PublishPackageFile>,
+    pub parser_version: String,
+}
+
+impl TeamPublishPackage {
+    pub fn workstreams_bytes(&self) -> Result<&[u8]> {
+        self.files
+            .iter()
+            .find(|f| f.path == WORKSTREAMS_FILE)
+            .map(|f| f.bytes.as_slice())
+            .ok_or_else(|| Error::InvalidInput("publish package missing workstreams.json".into()))
+    }
+
+    pub fn bundle(&self) -> Result<WorkstreamBundle> {
+        serde_json::from_slice(self.workstreams_bytes()?)
+            .map_err(|e| Error::InvalidInput(format!("invalid workstreams.json candidate: {e}")))
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PublishPrepOptions {
+    /// Optional previously activated bundle for preview diffs. First publish
+    /// passes `None`.
+    pub baseline: Option<WorkstreamBundle>,
+    /// Override mapping-default completion policy. Empty rejects.
+    pub completion_policy: Option<String>,
+}
+
+/// Prepare a Team publish candidate from a bound server directory.
+pub fn prepare_publish_from_server_directory(
+    root: &Path,
+    ledger_relative_path: &str,
+    project_id: &str,
+    options: &PublishPrepOptions,
+) -> Result<TeamPublishPackage> {
+    let location = SoleSourceLocation::server_directory(root, ledger_relative_path)?;
+    let bytes = crate::read_under_root(root, ledger_relative_path).map_err(|e| {
+        Error::InvalidInput(format!(
+            "cannot read sole-source ledger {ledger_relative_path} under bound root: {e}"
+        ))
+    })?;
+    prepare_publish_from_ledger_bytes(&location, root, &bytes, project_id, options)
+}
+
+/// Prepare a candidate from already-loaded ledger bytes under a bound root
+/// (server directory or materialized private management repo checkout).
+pub fn prepare_publish_from_ledger_bytes(
+    location: &SoleSourceLocation,
+    content_root: &Path,
+    ledger_bytes: &[u8],
+    project_id: &str,
+    options: &PublishPrepOptions,
+) -> Result<TeamPublishPackage> {
+    if project_id.trim().is_empty() || project_id.len() > 128 {
+        return Err(Error::InvalidInput(
+            "project_id required for publish prep".into(),
+        ));
+    }
+    let relative = location
+        .ledger_relative_path
+        .as_deref()
+        .ok_or_else(|| Error::InvalidInput("ledger_relative_path required".into()))?;
+    validate_relative_path(relative, "ledger")?;
+    if !relative.ends_with(".yaml") && !relative.ends_with(".yml") {
+        return Err(Error::InvalidInput(format!(
+            "unsupported ledger format for first-round Team publish: {relative}; only YAML workstream ledgers are supported"
+        )));
+    }
+
+    let document: Value = serde_yaml_ng::from_slice(ledger_bytes).map_err(|e| {
+        Error::InvalidInput(format!(
+            "unsupported or invalid YAML ledger for Team publish: {e}"
+        ))
+    })?;
+    reject_role_invention(&document)?;
+
+    let (catalog, key_to_id) = map_catalog(&document, project_id)?;
+    let (contracts, status_notes) = map_contracts(&document, &key_to_id, options)?;
+    let bundle = WorkstreamBundle {
+        codec: WorkstreamBundle::CODEC.into(),
+        catalog,
+        contracts,
+    };
+    bundle
+        .validate(project_id)
+        .map_err(|e| Error::InvalidInput(e.to_string()))?;
+
+    let referenced = load_referenced_specs(content_root, &bundle)?;
+    let preview = preview_against_baseline(&bundle, options.baseline.as_ref(), location);
+
+    let workstreams_bytes =
+        serde_json::to_vec_pretty(&bundle).map_err(|e| Error::InvalidInput(e.to_string()))?;
+    let binding_bytes =
+        serde_json::to_vec_pretty(location).map_err(|e| Error::InvalidInput(e.to_string()))?;
+
+    let source_version_digest = fingerprint(ledger_bytes);
+    let provenance = SourceProvenance {
+        source_version_digest: source_version_digest.clone(),
+        ledger_relative_path: relative.into(),
+        source_status_notes: status_notes.clone(),
+    };
+    let provenance_bytes =
+        serde_json::to_vec_pretty(&provenance).map_err(|e| Error::InvalidInput(e.to_string()))?;
+
+    let mut files = vec![
+        PublishPackageFile {
+            path: WORKSTREAMS_FILE.into(),
+            bytes: workstreams_bytes,
+        },
+        PublishPackageFile {
+            path: SOURCE_BINDING_FILE.into(),
+            bytes: binding_bytes,
+        },
+        PublishPackageFile {
+            path: SOURCE_PROVENANCE_FILE.into(),
+            bytes: provenance_bytes,
+        },
+        PublishPackageFile {
+            // Persist the exact original ledger bytes so distinct source revisions
+            // remain distinguishable after ingest (TMCP-020).
+            path: relative.into(),
+            bytes: ledger_bytes.to_vec(),
+        },
+    ];
+    for spec in &referenced {
+        files.push(PublishPackageFile {
+            path: spec.path.clone(),
+            bytes: spec.content.clone(),
+        });
+    }
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+
+    Ok(TeamPublishPackage {
+        project_id: project_id.into(),
+        source_location: location.clone(),
+        source_version_digest,
+        ledger_identity_digest: identity_digest(&bundle)?,
+        bundle_digest: bundle
+            .hash()
+            .map_err(|e| Error::InvalidInput(e.to_string()))?,
+        graph_digest: graph_digest(&bundle)?,
+        preview,
+        source_status_notes: status_notes,
+        referenced_specs: referenced,
+        files,
+        parser_version: PARSER_VERSION.into(),
+    })
+}
+
+fn validate_relative_path(path: &str, label: &str) -> Result<()> {
+    if path.is_empty() || path.starts_with('/') || path.contains('\0') {
+        return Err(Error::InvalidInput(format!(
+            "{label} path must be a non-empty relative path"
+        )));
+    }
+    if Path::new(path)
+        .components()
+        .any(|c| !matches!(c, Component::Normal(_)))
+    {
+        return Err(Error::InvalidInput(format!(
+            "{label} path must stay within the bound source location"
+        )));
+    }
+    Ok(())
+}
+
+fn reject_role_invention(document: &Value) -> Result<()> {
+    for key in ["members", "memberships", "grants", "permissions", "roles"] {
+        if document.get(key).is_some() {
+            return Err(Error::InvalidInput(format!(
+                "ledger field `{key}` cannot be mapped into Team publish; do not invent role relationships from source"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn map_catalog(
+    document: &Value,
+    project_id: &str,
+) -> Result<(WorkstreamCatalog, BTreeMap<String, Id>)> {
+    let workstreams = document.get("workstreams").ok_or_else(|| {
+        Error::InvalidInput(
+            "YAML ledger missing workstreams; first-round Team publish requires yaml-workstream-ledger-v1".into(),
+        )
+    })?;
+    let version = workstreams
+        .get("version")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| Error::InvalidInput("workstreams.version required".into()))?;
+    if version != u64::from(WORKSTREAM_CATALOG_VERSION) {
+        return Err(Error::InvalidInput(format!(
+            "unsupported workstreams.version {version}"
+        )));
+    }
+    let definitions = workstreams
+        .get("definitions")
+        .and_then(Value::as_array)
+        .ok_or_else(|| Error::InvalidInput("workstreams.definitions required".into()))?;
+    if definitions.is_empty() {
+        return Err(Error::InvalidInput(
+            "workstreams.definitions must not be empty".into(),
+        ));
+    }
+    let legacy_default = match workstreams.get("legacy_default") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(raw)) => Some(parse_id(raw, "workstreams.legacy_default")?),
+        Some(_) => {
+            return Err(Error::InvalidInput(
+                "workstreams.legacy_default must be a ULID string".into(),
+            ));
+        }
+    };
+
+    let mut streams = Vec::new();
+    let mut key_to_id = BTreeMap::new();
+    for (index, def) in definitions.iter().enumerate() {
+        let pointer = format!("/workstreams/definitions/{index}");
+        let id_raw = required_string(def, "id", &pointer)?;
+        let external_key = required_string(def, "external_key", &pointer)?;
+        let title = required_string(def, "title", &pointer)?;
+        let state_raw = required_string(def, "state", &pointer)?;
+        let state: WorkstreamState = serde_json::from_value(Value::String(state_raw.clone()))
+            .map_err(|_| {
+                Error::InvalidInput(format!("{pointer}/state: unsupported state {state_raw}"))
+            })?;
+        let authority_version = def
+            .get("authority_version")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| Error::InvalidInput(format!("{pointer}/authority_version required")))?;
+        if authority_version == 0 {
+            return Err(Error::InvalidInput(format!(
+                "{pointer}/authority_version must be > 0"
+            )));
+        }
+        let goal_keys = string_list(def, "goal_keys", &pointer)?;
+        let acceptance_contracts = string_list(def, "acceptance_contracts", &pointer)?;
+        let id = parse_id(&id_raw, &format!("{pointer}/id"))?;
+        if key_to_id.insert(external_key.clone(), id).is_some() {
+            return Err(Error::InvalidInput(format!(
+                "duplicate workstream external_key {external_key}"
+            )));
+        }
+        streams.push(Workstream {
+            id,
+            project_id: project_id.into(),
+            external_key,
+            title,
+            state,
+            authority_version,
+            goal_keys,
+            acceptance_contracts,
+        });
+    }
+    let catalog = WorkstreamCatalog {
+        version: WORKSTREAM_CATALOG_VERSION,
+        project_id: project_id.into(),
+        legacy_default,
+        workstreams: streams,
+    };
+    catalog
+        .validate()
+        .map_err(|e| Error::InvalidInput(e.to_string()))?;
+    Ok((catalog, key_to_id))
+}
+
+fn map_contracts(
+    document: &Value,
+    key_to_id: &BTreeMap<String, Id>,
+    options: &PublishPrepOptions,
+) -> Result<(Vec<WorkstreamContract>, Vec<SourceStatusNote>)> {
+    let items = document
+        .get("work_items")
+        .and_then(Value::as_array)
+        .ok_or_else(|| Error::InvalidInput("work_items required for Team publish".into()))?;
+    if items.is_empty() {
+        return Err(Error::InvalidInput("work_items must not be empty".into()));
+    }
+    let completion_policy = options
+        .completion_policy
+        .clone()
+        .unwrap_or_else(|| DEFAULT_COMPLETION_POLICY.into());
+    if completion_policy.trim().is_empty() {
+        return Err(Error::InvalidInput("completion_policy required".into()));
+    }
+
+    let mut contracts = Vec::new();
+    let mut notes = Vec::new();
+    let mut seen = BTreeSet::new();
+    for (index, item) in items.iter().enumerate() {
+        let pointer = format!("/work_items/{index}");
+        let external_key = required_string(item, "id", &pointer)?;
+        if !seen.insert(external_key.clone()) {
+            return Err(Error::InvalidInput(format!(
+                "duplicate work id {external_key}"
+            )));
+        }
+        let _title = required_string(item, "title", &pointer)?;
+        let workstream_key = required_string(item, "workstream", &pointer)?;
+        let workstream_id = *key_to_id.get(&workstream_key).ok_or_else(|| {
+            Error::InvalidInput(format!(
+                "{pointer}/workstream: unknown workstream key {workstream_key}"
+            ))
+        })?;
+        let acceptance = string_list(item, "acceptance", &pointer)?;
+        if acceptance.is_empty() {
+            return Err(Error::InvalidInput(format!(
+                "{pointer}/acceptance required for Team contract candidates"
+            )));
+        }
+        let goals = optional_string_list(item, &["goals", "goal"], &pointer)?;
+        let scope_paths = optional_string_list(item, &["paths", "deliverables"], &pointer)?;
+        let required_dependencies =
+            optional_string_list(item, &["depends_on", "dependencies"], &pointer)?;
+        let hard_rules = optional_string_list(item, &["hard_rules"], &pointer)?;
+        let verification_requirements =
+            optional_string_list(item, &["verification_requirements"], &pointer)?;
+        let item_policy = item
+            .get("completion_policy")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| completion_policy.clone());
+
+        if let Some(raw_status) = item.get("status").and_then(Value::as_str) {
+            notes.push(SourceStatusNote {
+                work_external_key: external_key.clone(),
+                raw_status: raw_status.into(),
+                meaning: "source_only".into(),
+            });
+        }
+
+        let work_id = WorkId::new(&external_key)
+            .map_err(|e| Error::InvalidInput(format!("{pointer}/id: {e}")))?;
+        let contract = WorkContract {
+            codec: WorkContract::CODEC.into(),
+            work_id,
+            external_key: external_key.clone(),
+            goals,
+            hard_rules,
+            scope_paths,
+            acceptance,
+            required_dependencies,
+            completion_policy: item_policy,
+            verification_requirements,
+        };
+        contract
+            .validate()
+            .map_err(|e| Error::InvalidInput(format!("{pointer}: {e}")))?;
+        contracts.push(WorkstreamContract {
+            workstream_id,
+            contract,
+        });
+    }
+    Ok((contracts, notes))
+}
+
+fn load_referenced_specs(root: &Path, bundle: &WorkstreamBundle) -> Result<Vec<ReferencedSpec>> {
+    let mut paths = BTreeSet::new();
+    for stream in &bundle.catalog.workstreams {
+        for path in &stream.acceptance_contracts {
+            paths.insert(path.clone());
+        }
+    }
+    let mut specs = Vec::new();
+    for path in paths {
+        validate_relative_path(&path, "referenced spec")?;
+        let ext = Path::new(&path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if !SUPPORTED_SPEC_EXTENSIONS.contains(&ext.as_str()) {
+            return Err(Error::InvalidInput(format!(
+                "unsupported referenced spec format `{path}`; first-round supports Markdown/JSON only"
+            )));
+        }
+        let bytes = crate::read_under_root(root, &path).map_err(|e| {
+            Error::InvalidInput(format!("missing or unsafe referenced spec `{path}`: {e}"))
+        })?;
+        if ext == "json" {
+            let _: Value = serde_json::from_slice(&bytes).map_err(|e| {
+                Error::InvalidInput(format!("referenced JSON spec `{path}` is invalid: {e}"))
+            })?;
+        }
+        specs.push(ReferencedSpec {
+            path,
+            digest: fingerprint(&bytes),
+            bytes: bytes.len(),
+            content: bytes,
+        });
+    }
+    Ok(specs)
+}
+
+fn preview_against_baseline(
+    candidate: &WorkstreamBundle,
+    baseline: Option<&WorkstreamBundle>,
+    location: &SoleSourceLocation,
+) -> PublishPreview {
+    let mut preview = PublishPreview::default();
+    let after_keys: BTreeSet<_> = candidate
+        .contracts
+        .iter()
+        .map(|c| c.contract.external_key.clone())
+        .collect();
+    let after_streams: BTreeSet<_> = candidate
+        .catalog
+        .workstreams
+        .iter()
+        .map(|s| s.external_key.clone())
+        .collect();
+    let Some(baseline) = baseline else {
+        preview.identity_added = after_keys.into_iter().collect();
+        preview.workstream_identity_added = after_streams.into_iter().collect();
+        preview.source_diffs.push(FieldDiff {
+            external_key: "*".into(),
+            before: None,
+            after: Some(serde_json::json!({
+                "kind": location.kind,
+                "locator": location.locator,
+                "ledger_relative_path": location.ledger_relative_path,
+            })),
+        });
+        return preview;
+    };
+
+    let before_map: BTreeMap<_, _> = baseline
+        .contracts
+        .iter()
+        .map(|c| (c.contract.external_key.clone(), &c.contract))
+        .collect();
+    let after_map: BTreeMap<_, _> = candidate
+        .contracts
+        .iter()
+        .map(|c| (c.contract.external_key.clone(), &c.contract))
+        .collect();
+    for key in after_map.keys() {
+        if before_map.contains_key(key) {
+            preview.identity_unchanged.push(key.clone());
+        } else {
+            preview.identity_added.push(key.clone());
+        }
+    }
+    for key in before_map.keys() {
+        if !after_map.contains_key(key) {
+            preview.identity_removed.push(key.clone());
+        }
+    }
+    for (key, after) in &after_map {
+        let Some(before) = before_map.get(key) else {
+            continue;
+        };
+        if before.required_dependencies != after.required_dependencies {
+            preview.dependency_diffs.push(FieldDiff {
+                external_key: key.clone(),
+                before: Some(serde_json::json!(before.required_dependencies)),
+                after: Some(serde_json::json!(after.required_dependencies)),
+            });
+        }
+        if before.acceptance != after.acceptance {
+            preview.acceptance_diffs.push(FieldDiff {
+                external_key: key.clone(),
+                before: Some(serde_json::json!(before.acceptance)),
+                after: Some(serde_json::json!(after.acceptance)),
+            });
+        }
+    }
+    let before_streams: BTreeSet<_> = baseline
+        .catalog
+        .workstreams
+        .iter()
+        .map(|s| s.external_key.clone())
+        .collect();
+    for key in &after_streams {
+        if !before_streams.contains(key) {
+            preview.workstream_identity_added.push(key.clone());
+        }
+    }
+    for key in &before_streams {
+        if !after_streams.contains(key) {
+            preview.workstream_identity_removed.push(key.clone());
+        }
+    }
+    preview.source_diffs.push(FieldDiff {
+        external_key: "*".into(),
+        before: Some(serde_json::json!({"baseline_codec": baseline.codec})),
+        after: Some(serde_json::json!({
+            "kind": location.kind,
+            "locator": location.locator,
+            "ledger_relative_path": location.ledger_relative_path,
+            "candidate_codec": candidate.codec,
+        })),
+    });
+    preview
+}
+
+fn identity_digest(bundle: &WorkstreamBundle) -> Result<String> {
+    let mut identities = bundle
+        .contracts
+        .iter()
+        .map(|c| {
+            (
+                c.contract.work_id.as_str().to_owned(),
+                c.contract.external_key.clone(),
+                c.workstream_id.to_string(),
+            )
+        })
+        .collect::<Vec<_>>();
+    identities.sort();
+    let bytes = serde_json::to_vec(&identities).map_err(|e| Error::InvalidInput(e.to_string()))?;
+    Ok(fingerprint(&bytes))
+}
+
+fn graph_digest(bundle: &WorkstreamBundle) -> Result<String> {
+    let mut edges = Vec::new();
+    for entry in &bundle.contracts {
+        for dep in &entry.contract.required_dependencies {
+            edges.push((entry.contract.work_id.as_str().to_owned(), dep.clone()));
+        }
+    }
+    edges.sort();
+    let bytes = serde_json::to_vec(&edges).map_err(|e| Error::InvalidInput(e.to_string()))?;
+    Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
+}
+
+fn parse_id(raw: &str, pointer: &str) -> Result<Id> {
+    raw.parse::<Id>()
+        .map_err(|_| Error::InvalidInput(format!("{pointer}: invalid ULID `{raw}`")))
+}
+
+fn required_string(value: &Value, field: &str, pointer: &str) -> Result<String> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| Error::InvalidInput(format!("{pointer}/{field} required")))
+}
+
+fn string_list(value: &Value, field: &str, pointer: &str) -> Result<Vec<String>> {
+    match value.get(field) {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Array(items)) => items
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                item.as_str()
+                    .map(str::to_owned)
+                    .filter(|s| !s.trim().is_empty())
+                    .ok_or_else(|| {
+                        Error::InvalidInput(format!("{pointer}/{field}/{i} must be a string"))
+                    })
+            })
+            .collect(),
+        Some(Value::String(s)) if !s.trim().is_empty() => Ok(vec![s.clone()]),
+        Some(_) => Err(Error::InvalidInput(format!(
+            "{pointer}/{field} must be a string list"
+        ))),
+    }
+}
+
+fn optional_string_list(value: &Value, fields: &[&str], pointer: &str) -> Result<Vec<String>> {
+    for field in fields {
+        if value.get(*field).is_some() {
+            return string_list(value, field, pointer);
+        }
+    }
+    Ok(Vec::new())
+}
+
+/// Source status notes never authorize completion receipt writes.
+pub fn source_status_notes_are_completion_receipts() -> bool {
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn fixture_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/team-mcp/publish-prep")
+    }
+
+    #[test]
+    fn happy_path_yaml_maps_to_workstreams_candidate_with_preview() {
+        let root = fixture_root();
+        let baseline: WorkstreamBundle = serde_json::from_str(
+            &fs::read_to_string(root.join("baseline-workstreams.json")).unwrap(),
+        )
+        .unwrap();
+        let package = prepare_publish_from_server_directory(
+            &root,
+            "ledger.yaml",
+            "demo-project",
+            &PublishPrepOptions {
+                baseline: Some(baseline),
+                completion_policy: None,
+            },
+        )
+        .unwrap();
+        let bundle = package.bundle().unwrap();
+        assert_eq!(bundle.codec, WorkstreamBundle::CODEC);
+        assert_eq!(bundle.contracts.len(), 2);
+        assert_eq!(bundle.contracts[0].contract.external_key, "API-1");
+        assert_eq!(
+            bundle.contracts[1].contract.required_dependencies,
+            vec!["API-1".to_string()]
+        );
+        assert!(
+            package
+                .preview
+                .acceptance_diffs
+                .iter()
+                .any(|d| d.external_key == "API-1")
+        );
+        assert!(
+            package
+                .source_status_notes
+                .iter()
+                .any(|n| n.work_external_key == "API-1"
+                    && n.raw_status == "completed"
+                    && n.meaning == "source_only")
+        );
+        assert!(!source_status_notes_are_completion_receipts());
+        assert!(
+            package
+                .files
+                .iter()
+                .any(|f| f.path == "contracts/api-v1.json")
+        );
+        assert!(
+            package
+                .files
+                .iter()
+                .any(|f| f.path == "contracts/client-v1.md")
+        );
+        assert_eq!(
+            package.source_location.kind,
+            SoleSourceKind::ServerDirectory
+        );
+        assert!(!package.bundle_digest.is_empty());
+        assert!(!package.graph_digest.is_empty());
+    }
+
+    #[test]
+    fn missing_acceptance_hard_rejects() {
+        let root = fixture_root();
+        let err = prepare_publish_from_server_directory(
+            &root,
+            "missing-acceptance.yaml",
+            "demo-project",
+            &PublishPrepOptions::default(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("acceptance required"), "{err}");
+    }
+
+    #[test]
+    fn unsupported_format_hard_rejects() {
+        let root = fixture_root();
+        let err = prepare_publish_from_server_directory(
+            &root,
+            "unsupported.xml",
+            "demo-project",
+            &PublishPrepOptions::default(),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("unsupported ledger format"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn role_collections_are_not_invented_into_permissions() {
+        let root = fixture_root();
+        let mut doc: Value =
+            serde_yaml_ng::from_slice(&fs::read(root.join("ledger.yaml")).unwrap()).unwrap();
+        doc.as_object_mut()
+            .unwrap()
+            .insert("roles".into(), serde_json::json!([{"name":"admin"}]));
+        let location = SoleSourceLocation::server_directory(&root, "ledger.yaml").unwrap();
+        let bytes = serde_yaml_ng::to_string(&doc).unwrap().into_bytes();
+        let err = prepare_publish_from_ledger_bytes(
+            &location,
+            &root,
+            &bytes,
+            "demo-project",
+            &PublishPrepOptions::default(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("roles"), "{err}");
+    }
+
+    #[test]
+    fn private_repo_locator_requires_safe_scheme() {
+        assert!(
+            SoleSourceLocation::private_management_repo(
+                "https://git.example/team/awr-ledger.git#rev",
+                "ledger/work-ledger.yaml"
+            )
+            .is_ok()
+        );
+        assert!(
+            SoleSourceLocation::private_management_repo("/tmp/not-a-repo", "ledger.yaml").is_err()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn root_confined_open_accepts_in_root_files_and_refuses_escaping_symlinks() {
+        let root = fixture_root();
+        let package = prepare_publish_from_server_directory(
+            &root,
+            "ledger.yaml",
+            "demo",
+            &PublishPrepOptions::default(),
+        )
+        .unwrap();
+        assert!(
+            package
+                .files
+                .iter()
+                .any(|f| f.path == "contracts/api-v1.json" && !f.bytes.is_empty())
+        );
+
+        let tmp = std::env::temp_dir().join(format!("awr-tmcp020-symlink-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("contracts")).unwrap();
+        // Copy fixture into disposable tree.
+        fs::copy(root.join("ledger.yaml"), tmp.join("ledger.yaml")).unwrap();
+        fs::copy(
+            root.join("contracts/api-v1.json"),
+            tmp.join("contracts/api-v1.json"),
+        )
+        .unwrap();
+        fs::copy(
+            root.join("contracts/client-v1.md"),
+            tmp.join("contracts/client-v1.md"),
+        )
+        .unwrap();
+        let outside = tmp.join("outside-secret.json");
+        fs::write(&outside, br#"{"secret":"OUTSIDE_SENTINEL"}"#).unwrap();
+        fs::remove_file(tmp.join("contracts/api-v1.json")).unwrap();
+        std::os::unix::fs::symlink(&outside, tmp.join("contracts/api-v1.json")).unwrap();
+
+        let err = prepare_publish_from_server_directory(
+            &tmp,
+            "ledger.yaml",
+            "demo",
+            &PublishPrepOptions::default(),
+        )
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("contracts/api-v1.json")
+                || msg.contains("refused")
+                || msg.contains("symlink")
+                || msg.contains("RuleViolation")
+                || msg.contains("unsafe"),
+            "escaping symlink must fail: {msg}"
+        );
+        // Ensure outside sentinel never packages.
+        assert!(!msg.contains("OUTSIDE_SENTINEL"));
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn distinct_original_yaml_revisions_differ_in_persisted_package() {
+        let root = fixture_root();
+        let location = SoleSourceLocation::server_directory(&root, "ledger.yaml").unwrap();
+        let original = fs::read(root.join("ledger.yaml")).unwrap();
+        let mut revised = original.clone();
+        revised.extend_from_slice(b"\n# revision-marker-2\n");
+        let options = PublishPrepOptions::default();
+        let a = prepare_publish_from_ledger_bytes(&location, &root, &original, "demo", &options)
+            .unwrap();
+        let b = prepare_publish_from_ledger_bytes(&location, &root, &revised, "demo", &options)
+            .unwrap();
+        assert_ne!(a.source_version_digest, b.source_version_digest);
+        let a_ledger = a
+            .files
+            .iter()
+            .find(|f| f.path == "ledger.yaml")
+            .expect("original ledger bytes");
+        let b_ledger = b
+            .files
+            .iter()
+            .find(|f| f.path == "ledger.yaml")
+            .expect("original ledger bytes");
+        assert_ne!(a_ledger.bytes, b_ledger.bytes);
+        assert_eq!(a_ledger.bytes, original);
+        assert_eq!(b_ledger.bytes, revised);
+        let a_prov = a
+            .files
+            .iter()
+            .find(|f| f.path == SOURCE_PROVENANCE_FILE)
+            .expect("provenance");
+        let b_prov = b
+            .files
+            .iter()
+            .find(|f| f.path == SOURCE_PROVENANCE_FILE)
+            .expect("provenance");
+        assert_ne!(a_prov.bytes, b_prov.bytes);
+        let a_meta: SourceProvenance = serde_json::from_slice(&a_prov.bytes).unwrap();
+        assert_eq!(a_meta.source_version_digest, a.source_version_digest);
+        assert_eq!(a_meta.ledger_relative_path, "ledger.yaml");
+    }
+}

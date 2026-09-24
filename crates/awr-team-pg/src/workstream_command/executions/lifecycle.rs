@@ -189,8 +189,11 @@ pub(super) async fn start(
         EXISTS(SELECT 1 FROM awr_team.execution_receipts WHERE tenant_id=$1 AND project_id=$2 AND execution_id=$3)",
         &[&tenant,&project,&a.execution_id]).await?.get(0);
     if exposed {
+        // Effects already exposed keep recovery handling even if a planning
+        // block arrives later; do not convert that into a fresh denial here.
         return Err(PgError::RecoveryBlocked);
     }
+    require_clear_of_selective_blocks(tx, tenant, project, &command.work_id).await?;
     // Cross-stream receipts need explicit export/adoption. A grant to both
     // streams does not implicitly create such a delivery contract.
     for upstream in &contract.required_dependencies {
@@ -213,39 +216,87 @@ pub(super) async fn start(
     if !covered {
         return Err(PgError::BindingInvalid);
     }
-    let paths: Vec<String> = serde_json::from_value(r.get("declared_scope_json"))
+    let declared: Vec<String> = serde_json::from_value(r.get("declared_scope_json"))
         .map_err(|_| PgError::SourceDivergence)?;
-    if paths.len() > 128 {
+    if declared.len() > 128 {
         return Err(PgError::SourceDivergence);
     }
-    require_paths(contract, &paths)?;
-    // Existing project locking serializes check+reserve+start. Prefixes are
-    // conservative within this project's lexical namespace, not OS locks.
+    require_paths(contract, &declared)?;
+    // Store the same canonical key reserve_bound would. Parent segments are
+    // rejected here, not only on the graph reserve entry.
+    let paths = declared
+        .iter()
+        .map(|path| crate::graph::normalize_resource_key("dir", path))
+        .collect::<PgResult<Vec<_>>>()?;
+    // Existing project locking serializes check+reserve+start. Directory
+    // bounds are conservative within a worktree's lexical namespace, not OS
+    // locks; shared external/integration identities remain project-global
+    // (WS-021).
     let existing = tx
         .query(
-            "SELECT resource_kind,canonical_key FROM awr_team.resource_reservations
+            "SELECT resource_kind,canonical_key,worktree_id FROM awr_team.resource_reservations
         WHERE tenant_id=$1 AND project_id=$2 AND state IN ('reserved','unknown')",
             &[&tenant, &project],
         )
         .await?;
+    let worktree_id = String::new(); // caller-managed admission has no physical worktree yet
     if paths.iter().any(|p| {
+        let candidate = crate::graph::ResourceBound {
+            kind: "dir".into(),
+            key: p.clone(),
+            worktree_id: worktree_id.clone(),
+        };
         existing.iter().any(|r| {
-            crate::graph::paths_conflict(
-                "prefix",
-                p,
-                &r.get::<_, String>(0),
-                &r.get::<_, String>(1),
+            crate::graph::resources_conflict(
+                &candidate,
+                &crate::graph::ResourceBound {
+                    kind: r.get::<_, String>(0),
+                    key: r.get::<_, String>(1),
+                    worktree_id: r.get::<_, String>(2),
+                },
             )
         })
     }) {
         return Err(PgError::ResourceConflict);
     }
+    let fence: i64 = a
+        .expected_fence
+        .parse()
+        .map_err(|_| PgError::Protocol("invalid fence".into()))?;
+    let lease_generation: i64 = a
+        .expected_lease_version
+        .parse()
+        .map_err(|_| PgError::Protocol("invalid lease generation".into()))?;
     let mut resources = vec![];
     for path in &paths {
         let id = crate::tx::new_id();
-        tx.execute("INSERT INTO awr_team.resource_reservations(tenant_id,project_id,id,work_id,resource_kind,canonical_key,state,execution_id)
-            VALUES($1,$2,$3,$4,'prefix',$5,'reserved',$6)", &[&tenant,&project,&id,&command.work_id,path,&a.execution_id]).await?;
-        resources.push(json!({"reservation_id":id,"kind":"prefix","key":path}));
+        tx.execute(
+            "INSERT INTO awr_team.resource_reservations(
+                tenant_id,project_id,id,work_id,resource_kind,canonical_key,state,
+                execution_id,worktree_id,lease_generation,fence)
+            VALUES($1,$2,$3,$4,'dir',$5,'reserved',$6,$7,$8,$9)",
+            &[
+                &tenant,
+                &project,
+                &id,
+                &command.work_id,
+                path,
+                &a.execution_id,
+                &worktree_id,
+                &lease_generation,
+                &fence,
+            ],
+        )
+        .await?;
+        resources.push(json!({
+            "reservation_id": id,
+            "kind": "dir",
+            "key": path,
+            "worktree_id": worktree_id,
+            "lease_generation": lease_generation.to_string(),
+            "fence": fence.to_string(),
+            "isolation": "lexical_worktree_bound_not_os_sandbox",
+        }));
     }
     // Time advances during dependency/resource checks even while rows are locked.
     claims::require_live(
@@ -292,9 +343,10 @@ pub(super) async fn start(
         "input_digest":r.get::<_,Option<String>>("input_digest"),"declared_scope":paths,
         "lease_remaining_ms":remaining.to_string(),
         "fencing_class":"uncontrolled","exactly_once_supported":false,"scope_validation":"lexical_contract_only",
+        "physical_isolation":"unverified_without_host_capability",
         "dependency_receipts":dependencies,"resources":resources,
         "result_authority":if attestation_grant.is_some() {"trusted_executor"} else {"caller_asserted"},
-        "next_action":"Execute once under the current lease; report observations. A replay or unknown response never authorizes another start."}),
+        "next_action":"Execute once under the current lease; report observations. A replay or unknown response never authorizes another start. Do not claim OS/sandbox isolation from AWR metadata alone."}),
     )
 }
 

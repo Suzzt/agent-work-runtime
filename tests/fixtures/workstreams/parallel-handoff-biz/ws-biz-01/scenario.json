@@ -1,0 +1,144 @@
+{
+  "scenario_id": "WS-BIZ-01",
+  "fixture_version": "1.0.0",
+  "scope_revision": 2,
+  "namespace": "awr-ws-r2-ws-biz-01",
+  "business_title": "同迭代三线并行交付",
+  "purpose": "前端、后端、测试同迭代并行交付",
+  "hard_gate": "three_way_parallel",
+  "summary": "同一迭代内前端、后端与测试三线并行推进可用功能；试用后调整流程，再处理跨模块问题并独立复核。",
+  "project_directory": "project",
+  "work_graph": "work-graph.json",
+  "identities": "identities.json",
+  "delegations": "delegations.json",
+  "entry_work": "P1-FE",
+  "participants": {
+    "executor": {
+      "person_ref": "executor",
+      "purpose": "主执行开发者，经命名客户端推进"
+    },
+    "executor_peer": {
+      "person_ref": "peer",
+      "purpose": "同伴开发者或同人第二 Agent"
+    },
+    "reviewer": {
+      "person_ref": "reviewer",
+      "purpose": "与执行者独立的复核 person"
+    },
+    "web_operator": {
+      "person_ref": "web_operator",
+      "purpose": "真实 Team Web 操作者"
+    }
+  },
+  "person_bindings": {
+    "executor": "person.morgan-lee",
+    "peer": "person.casey-wu",
+    "reviewer": "person.drew-kim",
+    "web_operator": "person.drew-kim"
+  },
+  "named_clients": [
+    "codex_cli",
+    "claude_code"
+  ],
+  "required_surfaces": [
+    "codex_cli",
+    "claude_code",
+    "team_web"
+  ],
+  "reviewer_distinct_from": [
+    "executor",
+    "executor_peer"
+  ],
+  "same_person_dual_agent": false,
+  "initial_request": "在同一迭代实现一个可用功能，前后端和测试各自负责并同时推进。请先认领各自任务区间，约定联调节点后开工。",
+  "natural_initiation_contract": "在同一迭代实现一个可用功能，前后端和测试各自负责并同时推进。",
+  "prelude": null,
+  "followups": [
+    {
+      "number": 1,
+      "request": "试用反馈：注册完成后跳转过早，请只改前端引导与对应联调脚本，后端契约先不动。",
+      "contract_followup": "首版试用后调整一处用户流程，各组只修改自己的相关任务。",
+      "publish": [
+        {
+          "source": "updates/round-1/materials/flow-tweak.md",
+          "target": "materials/flow-tweak.md",
+          "expected_previous_sha256": null
+        }
+      ],
+      "required_observation": "试用反馈：注册完成后跳转过早，请只改前端引导与对应联调脚本，后端契约先不动。"
+    },
+    {
+      "number": 2,
+      "request": "跨模块：列表页在无数据时仍请求旧过滤参数。请前后端对齐空态约定，测试补一条回归。",
+      "contract_followup": "第二轮验收提出一个跨模块问题，完成协作修订并独立复核。",
+      "publish": [
+        {
+          "source": "updates/round-2/materials/empty-state-contract.md",
+          "target": "materials/empty-state-contract.md",
+          "expected_previous_sha256": null
+        }
+      ],
+      "required_observation": "跨模块：列表页在无数据时仍请求旧过滤参数。请前后端对齐空态约定，测试补一条回归。"
+    }
+  ],
+  "artifacts": [
+    {
+      "title": "三线并行执行说明",
+      "path": "deliverables/parallel-lanes.md",
+      "producer": "executor"
+    },
+    {
+      "title": "流程局部调整说明",
+      "path": "deliverables/flow-tweak.md",
+      "producer": "executor"
+    },
+    {
+      "title": "跨模块空态修订",
+      "path": "deliverables/empty-state-fix.md",
+      "producer": "executor_peer"
+    },
+    {
+      "title": "独立复核记录",
+      "path": "deliverables/independent-review.md",
+      "producer": "reviewer"
+    },
+    {
+      "title": "最终交付回执说明",
+      "path": "deliverables/delivery.md",
+      "producer": "executor"
+    }
+  ],
+  "review_rubric": [
+    "前端、后端、测试工作区间有真实重叠且不重复计数共享成果。",
+    "必要成果节点满足后才联调，其他任务可继续推进。",
+    "两轮追问可追溯；复核人与执行人不是同一 person；含真实 Web 操作证据。"
+  ],
+  "required_gates": [
+    "natural_client_initiation",
+    "actual_tool_or_role_execution",
+    "real_artifact",
+    "business_followup_1",
+    "business_followup_2",
+    "independent_review",
+    "delivery",
+    "traceable_receipt"
+  ],
+  "dimensions": [
+    "daily",
+    "parallel",
+    "scope",
+    "accounting",
+    "team"
+  ],
+  "artifact_directory": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-01/artifacts",
+  "fixture_materialize_to": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-01/fixture",
+  "work_graph_materialize_to": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-01/work-graph.json",
+  "evidence_report": ".local/awr-workstream-implementation-20260921/business/scope-r2/ws-biz-01/report.json",
+  "minimum_real_clients": 2,
+  "minimum_developer_persons": 2,
+  "team_web_required": true,
+  "native_client_required": true,
+  "independent_reviewer_required": true,
+  "runtime_seed_policy": "Never seed sessions, claims, events, checkpoints, completed work or receipts. Do not mutate business state via SQL for acceptance.",
+  "api_db_evidence_policy": "read_only"
+}

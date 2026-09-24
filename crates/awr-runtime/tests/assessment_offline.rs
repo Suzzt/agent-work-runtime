@@ -2,11 +2,10 @@
 use awr_core::*;
 use awr_runtime::{
     AdviceDeliveryMode, AttachExplanationOptions, CompletionExplanationInput,
-    DeliveryExplanationInput, EXPLANATION_CHAIN_PROFILE, ExplanationAuthority,
-    PreparedFactView, ReplayStatus, apply_advice_delivery_mode,
-    attach_according_to_advice_mode, capture_replay_snapshot, hard_protections_after_disable,
-    parse_replay_snapshot, prior_explanation_still_valid, replay_assessment,
-    replay_assessment_from_bytes, shadow_compare,
+    DeliveryExplanationInput, EXPLANATION_CHAIN_PROFILE, ExplanationAuthority, PreparedFactView,
+    ReplayStatus, apply_advice_delivery_mode, attach_according_to_advice_mode,
+    capture_replay_snapshot, hard_protections_after_disable, parse_replay_snapshot,
+    prior_explanation_still_valid, replay_assessment, replay_assessment_from_bytes, shadow_compare,
 };
 use serde_json::json;
 use std::fs;
@@ -169,7 +168,9 @@ fn ac2_shadow_compare_same_inputs_rule_version_and_retained_failures() {
     for diff in &report.differences {
         assert!(
             diff.explained_by_rule_version.contains(&baseline.rule_hash)
-                && diff.explained_by_rule_version.contains(&candidate.rule_hash),
+                && diff
+                    .explained_by_rule_version
+                    .contains(&candidate.rule_hash),
             "diff must cite rule versions: {diff:?}"
         );
     }
@@ -245,8 +246,14 @@ fn ac3_shadow_and_killswitch_preserve_hard_protections() {
         },
     )
     .unwrap();
-    assert_eq!(shadowed["assessment_explanation"]["execution_adoption"], false);
-    assert_eq!(shadowed["assessment_explanation"]["context_adoption"], false);
+    assert_eq!(
+        shadowed["assessment_explanation"]["execution_adoption"],
+        false
+    );
+    assert_eq!(
+        shadowed["assessment_explanation"]["context_adoption"],
+        false
+    );
     assert_eq!(shadowed["assessment_explanation"]["shadow"], true);
 
     let killed = attach_according_to_advice_mode(

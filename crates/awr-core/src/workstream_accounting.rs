@@ -4,12 +4,14 @@
 //! calling this module. Structural consistency here is not evidence verification
 //! or authorization. Nothing is loaded, persisted, or promoted by this module.
 use crate::{Id, WorkstreamWorkBinding};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use thiserror::Error;
 
 pub const WORKSTREAM_ACCOUNTING_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AccountingContractIdentity {
     pub project_id: String,
     pub workstream_id: Id,
@@ -20,7 +22,8 @@ pub struct AccountingContractIdentity {
 
 /// Membership and ownership are frozen at this contract version. A later move
 /// requires another approved snapshot; current ownership cannot rewrite history.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorkstreamAccountingContract {
     pub version: u32,
     pub identity: AccountingContractIdentity,
@@ -29,7 +32,8 @@ pub struct WorkstreamAccountingContract {
     pub shared_references: Vec<WorkstreamWorkBinding>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AccountingEvidence {
     pub reference: String,
     pub source_version: String,
@@ -41,7 +45,8 @@ pub struct AccountingEvidence {
 
 /// Recorded means the adapter supplied a record, not that this module checked
 /// its contents. A source 'done' flag alone cannot create a Recorded stage.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AccountingStage {
     #[default]
     Unknown,
@@ -49,7 +54,8 @@ pub enum AccountingStage {
     Recorded(AccountingEvidence),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AccountingStages {
     pub planned: AccountingStage,
     pub implemented: AccountingStage,
@@ -70,7 +76,8 @@ impl AccountingStages {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AccountingWork {
     pub binding: WorkstreamWorkBinding,
     pub contract: AccountingContractIdentity,
@@ -79,14 +86,16 @@ pub struct AccountingWork {
     pub stages: AccountingStages,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AccountingStageCount {
     pub recorded: usize,
     pub not_met: usize,
     pub unknown: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorkstreamAccounting {
     pub contract: AccountingContractIdentity,
     pub required_count: usize,

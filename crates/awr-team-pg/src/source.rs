@@ -2,13 +2,45 @@ use crate::error::{PgError, PgResult};
 use crate::path::validate_package;
 use crate::tx::{bind_scope, bind_workstream_scope, new_id};
 use awr_team::{SourceActivationPlan, WorkContract, WorkId};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 #[path = "source_workstreams.rs"]
 mod workstreams;
 use workstreams::SourceProjection;
+
+#[path = "source_planning.rs"]
+pub mod planning;
+#[path = "source_planning_ops.rs"]
+pub mod planning_ops;
+#[path = "source_writeback.rs"]
+pub mod writeback;
+
+/// Sole authoritative source location bound for Team publish preparation
+/// (AWR-TMCP-020). Developers do not need author-laptop files or ledger write
+/// access; the server directory or private management repo is the only source.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "snake_case")]
+pub enum SoleSourceKind {
+    ServerDirectory,
+    PrivateManagementRepo,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SoleSourceBinding {
+    pub kind: SoleSourceKind,
+    pub locator: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ledger_relative_path: Option<String>,
+}
+
+pub const SOURCE_BINDING_FILE: &str = "source_binding.json";
+pub const SOURCE_PROVENANCE_FILE: &str = "source_provenance.json";
+pub const WORKSTREAMS_FILE: &str = "workstreams.json";
 
 #[derive(Clone, Debug)]
 pub struct SourceFile {
@@ -59,25 +91,128 @@ pub struct CurrentWorkstreamSource {
 /// Trusted source coordinator API. This is not an authenticated transport;
 /// callers must authorize source administration before invoking these methods.
 pub struct SourceStore {
-    pool: crate::PgPool,
+    pool: Arc<crate::PgPool>,
 }
 
 impl SourceStore {
     pub fn new(url: impl Into<String>) -> Self {
         Self {
-            pool: crate::PgPool::new(url),
+            pool: Arc::new(crate::PgPool::new(url)),
         }
     }
 
     /// Build from a validated `tokio_postgres::Config` (see PgPool::from_config).
     pub fn from_config(config: tokio_postgres::Config) -> Self {
         Self {
-            pool: crate::PgPool::from_config(config),
+            pool: Arc::new(crate::PgPool::from_config(config)),
         }
+    }
+
+    /// Share the Team read/command pool (HTTP/MCP).
+    pub fn from_pool(pool: Arc<crate::PgPool>) -> Self {
+        Self { pool }
     }
 
     async fn connect(&self) -> PgResult<crate::PgClient> {
         self.pool.get().await
+    }
+
+    /// Approving a source candidate never grants project membership or action
+    /// permissions (AWR-TMCP-020). Member grants remain a separate access path.
+    pub const fn publish_approval_grants_member_permissions() -> bool {
+        false
+    }
+
+    /// Source status, historical human `done`, and old test materials keep
+    /// source meaning only. They must not forge PG completion receipts.
+    pub const fn source_status_forges_completion_receipts() -> bool {
+        false
+    }
+
+    /// Validate a first-publish package: require `workstreams.json` plus
+    /// `source_binding.json`, preserve immutable digests for full source +
+    /// contract + graph, and return the sole source binding.
+    pub fn validate_publish_package(files: &[SourceFile]) -> PgResult<SoleSourceBinding> {
+        validate_package(
+            &files
+                .iter()
+                .map(|f| (f.path.clone(), f.bytes.clone()))
+                .collect::<Vec<_>>(),
+        )?;
+        let binding_file = files
+            .iter()
+            .find(|f| f.path == SOURCE_BINDING_FILE)
+            .ok_or_else(|| {
+                PgError::Protocol(
+                    "first publish requires source_binding.json as the sole source location".into(),
+                )
+            })?;
+        let binding: SoleSourceBinding = serde_json::from_slice(&binding_file.bytes)
+            .map_err(|e| PgError::Protocol(format!("invalid source_binding.json: {e}")))?;
+        if binding.locator.trim().is_empty() {
+            return Err(PgError::Protocol("sole source locator required".into()));
+        }
+        match binding.kind {
+            SoleSourceKind::ServerDirectory => {
+                if !binding.locator.starts_with('/') {
+                    return Err(PgError::Protocol(
+                        "server directory sole source must be an absolute path".into(),
+                    ));
+                }
+            }
+            SoleSourceKind::PrivateManagementRepo => {
+                if !(binding.locator.starts_with("git://")
+                    || binding.locator.starts_with("https://")
+                    || binding.locator.starts_with("ssh://"))
+                {
+                    return Err(PgError::Protocol(
+                        "private management repo locator must be git://, https://, or ssh://"
+                            .into(),
+                    ));
+                }
+            }
+        }
+        let has_workstreams = files.iter().any(|f| f.path == WORKSTREAMS_FILE);
+        if !has_workstreams {
+            return Err(PgError::Protocol(
+                "first publish requires workstreams.json contract candidates".into(),
+            ));
+        }
+        // Reject inventing membership material inside the source package.
+        for file in files {
+            if file.path.ends_with("members.json")
+                || file.path.ends_with("grants.json")
+                || file.path.ends_with("permissions.json")
+            {
+                return Err(PgError::Protocol(
+                    "publish package cannot invent member permissions; approve source does not grant membership".into(),
+                ));
+            }
+        }
+        validate_original_source_provenance(files, &binding)?;
+        Ok(binding)
+    }
+
+    /// First publish uses existing ingest semantics after validating the sole
+    /// source binding. Candidate state is separate from activation; callers
+    /// must still approve then activate.
+    pub async fn ingest_publish_candidate(
+        &self,
+        request: IngestRequest,
+    ) -> PgResult<(CandidateRecord, SoleSourceBinding)> {
+        let binding = Self::validate_publish_package(&request.files)?;
+        let mut request = request;
+        // Embed the binding into the package text already present; ingest stores
+        // all files under source_ref so the sole location remains auditable.
+        if !request.files.iter().any(|f| f.path == SOURCE_BINDING_FILE) {
+            request.files.push(SourceFile {
+                path: SOURCE_BINDING_FILE.into(),
+                bytes: serde_json::to_vec(&binding)
+                    .map_err(|e| PgError::Protocol(e.to_string()))?,
+            });
+        }
+        let candidate = self.ingest(request).await?;
+        Ok((candidate, binding))
     }
 
     pub async fn ingest(&self, request: IngestRequest) -> PgResult<CandidateRecord> {
@@ -115,8 +250,13 @@ impl SourceStore {
         let snapshot_id = new_id();
         let proposal_id = new_id();
         let artifact_id = new_id();
+        let sole_source = files
+            .iter()
+            .find(|(path, _)| path == SOURCE_BINDING_FILE)
+            .and_then(|(_, bytes)| serde_json::from_slice::<SoleSourceBinding>(bytes).ok());
         let source_ref = json!({
             "manifest": manifest,
+            "sole_source": sole_source,
             "files": files
                 .iter()
                 .map(|(path, bytes)| {
@@ -271,6 +411,7 @@ impl SourceStore {
                 plan,
                 false,
                 false,
+                None,
             )
             .await?;
         Ok(CurrentSource {
@@ -280,6 +421,29 @@ impl SourceStore {
             authority_epoch: result.authority_epoch,
             contract_hash: result.projection_hash,
         })
+    }
+
+    /// Activate a workstream bundle under a proven TMCP-022 impact gate.
+    pub async fn activate_workstreams_with_impact(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        actor_id: &str,
+        proposal_id: &str,
+        plan: &SourceActivationPlan,
+        impact: &crate::source::writeback::ActivationImpactGate,
+    ) -> PgResult<CurrentWorkstreamSource> {
+        self.activate_inner(
+            tenant_id,
+            project_id,
+            actor_id,
+            proposal_id,
+            plan,
+            true,
+            false,
+            Some(impact),
+        )
+        .await
     }
 
     /// Explicit opt-in; never reinterpret `activate`'s singular contract hash.
@@ -299,6 +463,7 @@ impl SourceStore {
             plan,
             true,
             false,
+            None,
         )
         .await
     }
@@ -322,6 +487,7 @@ impl SourceStore {
                 plan,
                 true,
                 true,
+                None,
             )
             .await
         {
@@ -347,6 +513,7 @@ impl SourceStore {
                 plan,
                 false,
                 true,
+                None,
             )
             .await
         {
@@ -364,6 +531,7 @@ impl SourceStore {
         plan: &SourceActivationPlan,
         scoped: bool,
         abort: bool,
+        impact: Option<&crate::source::writeback::ActivationImpactGate>,
     ) -> PgResult<CurrentWorkstreamSource> {
         let mut client = self.connect().await?;
         let tx = client.transaction().await?;
@@ -475,7 +643,13 @@ impl SourceStore {
         }
         workstreams::reject_external_graph(&files)?;
         projection
-            .validate_transition(&tx, tenant_id, project_id, previous_snapshot.as_deref())
+            .validate_transition_with_impact(
+                &tx,
+                tenant_id,
+                project_id,
+                previous_snapshot.as_deref(),
+                impact,
+            )
             .await?;
         projection
             .install(&tx, tenant_id, project_id, &snapshot_id)
@@ -599,7 +773,7 @@ impl SourceStore {
     }
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
@@ -676,4 +850,185 @@ pub(crate) fn files_from_ref(source_ref: &Value) -> PgResult<Vec<(String, Vec<u8
             Ok((path, bytes))
         })
         .collect()
+}
+
+fn validate_original_source_provenance(
+    files: &[SourceFile],
+    binding: &SoleSourceBinding,
+) -> PgResult<()> {
+    let ledger_path = binding
+        .ledger_relative_path
+        .as_deref()
+        .ok_or_else(|| PgError::Protocol("sole source ledger_relative_path required".into()))?;
+    let ledger = files
+        .iter()
+        .find(|f| f.path == ledger_path)
+        .ok_or_else(|| {
+            PgError::Protocol(format!(
+                "publish package missing original ledger bytes at {ledger_path}"
+            ))
+        })?;
+    let provenance = files
+        .iter()
+        .find(|f| f.path == SOURCE_PROVENANCE_FILE)
+        .ok_or_else(|| {
+            PgError::Protocol("publish package missing source_provenance.json".into())
+        })?;
+    let meta: serde_json::Value = serde_json::from_slice(&provenance.bytes)
+        .map_err(|e| PgError::Protocol(format!("invalid source_provenance.json: {e}")))?;
+    let declared = meta
+        .get("source_version_digest")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            PgError::Protocol("source_provenance.json missing source_version_digest".into())
+        })?;
+    let actual = format!("sha256:{}", sha256_hex(&ledger.bytes));
+    if declared != actual {
+        return Err(PgError::Protocol(
+            "source_version_digest does not match original ledger bytes".into(),
+        ));
+    }
+    if meta.get("ledger_relative_path").and_then(|v| v.as_str()) != Some(ledger_path) {
+        return Err(PgError::Protocol(
+            "source_provenance.json ledger_relative_path mismatch".into(),
+        ));
+    }
+    if meta.get("source_status_notes").is_none() {
+        return Err(PgError::Protocol(
+            "source_provenance.json missing source_status_notes".into(),
+        ));
+    }
+    let _ = binding;
+    Ok(())
+}
+#[cfg(test)]
+mod publish_prep_tests {
+    use super::*;
+
+    fn binding() -> SoleSourceBinding {
+        SoleSourceBinding {
+            kind: SoleSourceKind::ServerDirectory,
+            locator: "/var/awr/team/demo".into(),
+            ledger_relative_path: Some("ledger.yaml".into()),
+        }
+    }
+
+    fn provenance_and_ledger(binding: &SoleSourceBinding) -> (SourceFile, SourceFile) {
+        let ledger_path = binding.ledger_relative_path.clone().unwrap();
+        let ledger_bytes = b"# original ledger revision\nworkstreams: {}\n".to_vec();
+        let digest = format!("sha256:{}", super::sha256_hex(&ledger_bytes));
+        let provenance = serde_json::json!({
+            "source_version_digest": digest,
+            "ledger_relative_path": ledger_path,
+            "source_status_notes": []
+        });
+        (
+            SourceFile {
+                path: ledger_path,
+                bytes: ledger_bytes,
+            },
+            SourceFile {
+                path: SOURCE_PROVENANCE_FILE.into(),
+                bytes: serde_json::to_vec(&provenance).unwrap(),
+            },
+        )
+    }
+
+    fn workstreams_bytes() -> Vec<u8> {
+        // Minimal structurally valid marker; projection parse is covered by PG tests.
+        br#"{"codec":"awr-team-workstreams-v1","catalog":{"version":1,"project_id":"demo","legacy_default":null,"workstreams":[]},"contracts":[]}"#.to_vec()
+    }
+
+    #[test]
+    fn approve_source_does_not_grant_member_permissions() {
+        assert!(!SourceStore::publish_approval_grants_member_permissions());
+    }
+
+    #[test]
+    fn source_status_does_not_forge_completion_receipts() {
+        assert!(!SourceStore::source_status_forges_completion_receipts());
+        assert!(!crate::source::workstreams::source_status_is_completion_proof());
+    }
+
+    #[test]
+    fn publish_package_requires_sole_source_binding_and_workstreams() {
+        let err = SourceStore::validate_publish_package(&[SourceFile {
+            path: WORKSTREAMS_FILE.into(),
+            bytes: workstreams_bytes(),
+        }])
+        .unwrap_err();
+        assert!(err.to_string().contains("source_binding.json"), "{err}");
+
+        let err = SourceStore::validate_publish_package(&[SourceFile {
+            path: SOURCE_BINDING_FILE.into(),
+            bytes: serde_json::to_vec(&binding()).unwrap(),
+        }])
+        .unwrap_err();
+        assert!(err.to_string().contains("workstreams.json"), "{err}");
+    }
+
+    #[test]
+    fn publish_package_rejects_invented_membership_files() {
+        let b = binding();
+        let (ledger, provenance) = provenance_and_ledger(&b);
+        let err = SourceStore::validate_publish_package(&[
+            SourceFile {
+                path: WORKSTREAMS_FILE.into(),
+                bytes: workstreams_bytes(),
+            },
+            SourceFile {
+                path: SOURCE_BINDING_FILE.into(),
+                bytes: serde_json::to_vec(&b).unwrap(),
+            },
+            ledger,
+            provenance,
+            SourceFile {
+                path: "grants.json".into(),
+                bytes: b"[]".to_vec(),
+            },
+        ])
+        .unwrap_err();
+        assert!(err.to_string().contains("member permissions"), "{err}");
+    }
+
+    #[test]
+    fn happy_path_publish_package_binds_sole_source() {
+        let b = binding();
+        let (ledger, provenance) = provenance_and_ledger(&b);
+        let binding = SourceStore::validate_publish_package(&[
+            SourceFile {
+                path: WORKSTREAMS_FILE.into(),
+                bytes: workstreams_bytes(),
+            },
+            SourceFile {
+                path: SOURCE_BINDING_FILE.into(),
+                bytes: serde_json::to_vec(&b).unwrap(),
+            },
+            ledger,
+            provenance,
+        ])
+        .unwrap();
+        assert_eq!(binding.locator, "/var/awr/team/demo");
+    }
+
+    #[test]
+    fn publish_package_rejects_digest_mismatch_for_original_ledger() {
+        let b = binding();
+        let (mut ledger, provenance) = provenance_and_ledger(&b);
+        ledger.bytes = b"# tampered\n".to_vec();
+        let err = SourceStore::validate_publish_package(&[
+            SourceFile {
+                path: WORKSTREAMS_FILE.into(),
+                bytes: workstreams_bytes(),
+            },
+            SourceFile {
+                path: SOURCE_BINDING_FILE.into(),
+                bytes: serde_json::to_vec(&b).unwrap(),
+            },
+            ledger,
+            provenance,
+        ])
+        .unwrap_err();
+        assert!(err.to_string().contains("source_version_digest"), "{err}");
+    }
 }

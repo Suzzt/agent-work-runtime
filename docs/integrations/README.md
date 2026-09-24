@@ -67,6 +67,11 @@ events unreadable by older binaries; the namespaced ID avoids that. Use
 | Grok Build | L1 | [Grok note](grok.md) | Project MCP add, native `--continue` / `--resume`, dated check |
 | Kimi Code | L1 | [Kimi note](kimi.md) | `.kimi-code/mcp.json`, native session flags, dated check |
 | Codex | L2 | [Codex adapter](codex.md) | `.codex` MCP merge, `client install` hooks, AGENTS snippet |
+| Named adapters (WS-024) | controlled | [Named agent host](named-agent-host.md) | Capability negotiation, L0 report, Codex + Claude Code, subtask parallelism |
+| Claude Code (WS-024) | named | [Claude Code adapter](claude-code-agent.md) | Status/reconnect/forensics; not auto-startable |
+| Team MCP · Codex (TMCP-041) | remote Team | [team-mcp-codex-cli.md](team-mcp-codex-cli.md) | HTTPS Team MCP natural workflow for `codex_cli` |
+| Team MCP · Claude Code (TMCP-041) | remote Team | [team-mcp-claude-code.md](team-mcp-claude-code.md) | HTTPS Team MCP natural workflow for `claude_code` |
+| Team Web entry (WS-044) | browser / Inspector | [team-web-entry.md](team-web-entry.md) | Cookie Web entry distinct from MCP bearer; Team collaboration loop |
 | Cursor | L1 | [Cursor note](cursor.md) | `.cursor/mcp.json`, `type: stdio`, source-built grouped MCP, Cloud Agent HTTPS |
 | Claude Code, Windsurf, … | L0 | [Session workflow](session-workflow.md) | None needed: `--client generic` with a `host:`-prefixed conversation ID |
 
@@ -97,3 +102,16 @@ what was actually called and on which host version. An L2 adapter must keep
 Cursor, Claude Code, Windsurf and similar hosts should enter at L0 or L1.
 They do not need a Codex-shaped installer to “count” as supported.
 Cursor MCP merge paths are an [L1 note](cursor.md).
+
+- [Delegation ∩ execution authority (TMCP-030)](delegation-execution-auth.md)
+
+## Team MCP authority notes
+
+| Topic | Page |
+| --- | --- |
+| Delegation ∩ execution auth (TMCP-030) | [delegation-execution-auth.md](delegation-execution-auth.md) |
+| PR delivery ∩ review/complete (TMCP-031) | [pr-delivery-review.md](pr-delivery-review.md) |
+| Independent deploy + member handoff (TMCP-041) | [team-deploy-pack.md](../reference/team-deploy-pack.md) |
+| Team MCP · Codex `codex_cli` (TMCP-041) | [team-mcp-codex-cli.md](team-mcp-codex-cli.md) |
+| Team MCP · Claude Code `claude_code` (TMCP-041) | [team-mcp-claude-code.md](team-mcp-claude-code.md) |
+| Team MCP BIZ acceptance (TMCP-051) | [../reference/team-mcp-biz-acceptance.md](../reference/team-mcp-biz-acceptance.md) |

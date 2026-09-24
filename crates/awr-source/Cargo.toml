@@ -19,6 +19,7 @@ yaml-rust2.workspace = true
 pulldown-cmark.workspace = true
 cap-std.workspace = true
 cap-fs-ext.workspace = true
+awr-team = { path = "../awr-team" }
 
 [[test]]
 name = "security_paths"

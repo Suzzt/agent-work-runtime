@@ -745,6 +745,11 @@ pub fn soft_scores_may_rank(hard_gate: HardGateOutcome) -> bool {
     hard_gate == HardGateOutcome::Pass
 }
 
+/// Canonical semantic hash. Same envelope fields always hash the same way.
+pub fn canonical_assessment_hash(envelope: &AssessmentEnvelope) -> Result<String> {
+    assessment_hash_bytes(envelope)
+}
+
 fn assessment_hash_bytes(envelope: &AssessmentEnvelope) -> Result<String> {
     let payload = json!({
         "schema_id": envelope.schema_id,

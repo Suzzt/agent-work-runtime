@@ -206,12 +206,7 @@ async fn mcp_explain_off_preserves_views_and_on_matches_cli_hash() {
     );
 
     // Invalid explain on unrelated tool.
-    let bad = call(
-        &client,
-        "awr_work_ready",
-        json!({"explain":true}),
-    )
-    .await;
+    let bad = call(&client, "awr_work_ready", json!({"explain":true})).await;
     assert_eq!(bad.is_error, Some(true));
 
     client.cancel().await.unwrap();
@@ -222,16 +217,15 @@ async fn explain_errors_surface_without_breaking_legacy_prepare() {
     let f = Fixture::new();
     let client = f.client().await;
     // Budget=1 forces incompleteness; explain must not hide the error shape.
-    let off = call(
-        &client,
-        "awr_work_prepare",
-        json!({"work":"W","budget":1}),
-    )
-    .await;
+    let off = call(&client, "awr_work_prepare", json!({"work":"W","budget":1})).await;
     assert_eq!(off.is_error, Some(true));
     let off_value = off.structured_content.unwrap();
     assert_ne!(off_value.get("ok"), Some(&serde_json::json!(true)));
-    assert!(off_value.get(awr_runtime::ASSESSMENT_EXPLAIN_FIELD).is_none());
+    assert!(
+        off_value
+            .get(awr_runtime::ASSESSMENT_EXPLAIN_FIELD)
+            .is_none()
+    );
 
     let on = call(
         &client,

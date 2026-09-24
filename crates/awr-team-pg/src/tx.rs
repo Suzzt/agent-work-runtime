@@ -1,5 +1,5 @@
 use crate::error::{PgError, PgResult};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 /// i64 values that travel as decimal strings at response/receipt boundaries
@@ -397,8 +397,41 @@ pub(crate) async fn validate_reviewer(
     if status != "active" {
         return Err(PgError::Forbidden);
     }
+    // Source-approval / membership capability (not TMCP review.decide).
+    // Independent review.decide is gated separately via membership.independent_review.
     match role.as_deref() {
-        Some("admin") | Some("reviewer") => Ok(()),
+        Some("admin")
+        | Some("project_admin")
+        | Some("reviewer")
+        | Some("maintainer")
+        | Some("developer")
+        | Some("worker") => Ok(()),
         _ => Err(PgError::Forbidden),
+    }
+}
+
+/// TMCP-031: explicit independent review.decide grant on an eligible template.
+pub(crate) async fn require_independent_review_grant(
+    tx: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    project_id: &str,
+    reviewer_actor_id: &str,
+) -> PgResult<()> {
+    let row = tx
+        .query_opt(
+            "SELECT m.role, COALESCE(m.independent_review, false)
+             FROM awr_team.project_memberships m
+             WHERE m.tenant_id=$1 AND m.project_id=$2 AND m.actor_id=$3",
+            &[&tenant_id, &project_id, &reviewer_actor_id],
+        )
+        .await?
+        .ok_or(PgError::Forbidden)?;
+    let role: String = row.get(0);
+    let independent_review: bool = row.get(1);
+    let template = crate::workstream_auth::map_membership_role(&role).ok_or(PgError::Forbidden)?;
+    if independent_review && awr_team::independent_review_eligible(template) {
+        Ok(())
+    } else {
+        Err(PgError::Forbidden)
     }
 }

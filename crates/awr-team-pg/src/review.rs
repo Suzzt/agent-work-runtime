@@ -31,6 +31,27 @@ pub struct CompletionReceipt {
     pub policy: String,
 }
 
+/// Versioned PR delivery binding (TMCP-031). GitHub facts are manually observed;
+/// this is not webhook auto-sync.
+#[derive(Clone, Debug, Serialize)]
+pub struct PrDelivery {
+    pub id: String,
+    pub work_id: String,
+    pub contract_hash: String,
+    pub repository: String,
+    pub pr_number: i32,
+    pub pr_url: String,
+    pub head_sha: String,
+    pub merge_sha: Option<String>,
+    pub test_evidence_id: Option<String>,
+    pub gh_submitted: bool,
+    pub gh_approved: bool,
+    pub gh_merged: bool,
+    pub fact_source: String,
+    pub observed_at: String,
+    pub state: String,
+}
+
 pub struct ReviewStore {
     pool: crate::PgPool,
 }
@@ -297,11 +318,9 @@ impl ReviewStore {
         if state != "open" {
             return Err(PgError::ReviewRequired);
         }
-        if reviewer_actor_id == author {
-            return Err(PgError::AuthorCannotReview);
-        }
         // Reviewer: real, active, approval-capable member (status +
-        // membership role), and not an agent (CR #42 P2-5).
+        // membership role), and not an agent (CR #42 P2-5). Independence is
+        // judged by responsible person, not by a second agent of the same human.
         let reviewer_kind: String = tx
             .query_opt(
                 "SELECT kind FROM awr_team.actors WHERE tenant_id=$1 AND id=$2",
@@ -314,6 +333,35 @@ impl ReviewStore {
             return Err(PgError::AuthorCannotReview);
         }
         crate::tx::validate_reviewer(&tx, tenant_id, project_id, reviewer_actor_id).await?;
+        crate::tx::require_independent_review_grant(&tx, tenant_id, project_id, reviewer_actor_id)
+            .await?;
+        // Unbound legacy agents compare by actor id; humans/agents with
+        // bindings compare by responsible person (WS-018).
+        let author_person = match resolve_person_id(&tx, tenant_id, project_id, &author).await {
+            Ok(person) => person,
+            Err(_) => author.clone(),
+        };
+        let reviewer_person =
+            resolve_person_id(&tx, tenant_id, project_id, reviewer_actor_id).await?;
+        let same_person = author_person == reviewer_person || reviewer_actor_id == author;
+        let contract = current_contract(&tx, tenant_id, project_id, "main", &work_id).await?;
+        let policy = contract
+            .get("completion_policy")
+            .and_then(Value::as_str)
+            .unwrap_or("trusted_execution_and_review");
+        let independence_kind = if same_person {
+            if decision == "approve" && !self_review_permitted(policy) {
+                return Err(PgError::AuthorCannotReview);
+            }
+            if decision == "approve" {
+                "personal_self_review"
+            } else {
+                // Reject/return by the authoring person is still a personal action.
+                "personal_self_review"
+            }
+        } else {
+            "team_independent"
+        };
         let next = if decision == "approve" {
             "approved"
         } else {
@@ -322,8 +370,8 @@ impl ReviewStore {
         tx.execute(
             "INSERT INTO awr_team.review_decisions(
                 tenant_id, project_id, id, review_round_id, work_id, bundle_hash,
-                reviewer_actor_id, decision, reason)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+                reviewer_actor_id, decision, reason, reviewer_person_id, independence_kind)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
             &[
                 &tenant_id,
                 &project_id,
@@ -334,6 +382,8 @@ impl ReviewStore {
                 &reviewer_actor_id,
                 &decision,
                 &reason,
+                &reviewer_person,
+                &independence_kind,
             ],
         )
         .await?;
@@ -350,9 +400,45 @@ impl ReviewStore {
             reviewer_actor_id,
             &work_id,
             "review.decided",
-            json!({"round_id": round_id, "decision": decision}),
+            json!({
+                "round_id": round_id,
+                "decision": decision,
+                "independence_kind": independence_kind,
+                "reviewer_person_id": reviewer_person,
+                "author_person_id": author_person,
+                "team_independent_acceptance": independence_kind == "team_independent"
+                    && decision == "approve",
+            }),
         )
         .await?;
+        {
+            let summary = json!({
+                "round_id": round_id,
+                "decision": decision,
+                "independence_kind": independence_kind,
+                "reviewer_person_id": reviewer_person,
+            });
+            let audit = crate::ops_audit::OpsAuditWrite {
+                category: crate::ops_audit::OpsCategory::Delivery,
+                action: "review.decide".into(),
+                result: "committed",
+                person_id: Some(reviewer_person.clone()),
+                actor_id: reviewer_actor_id.to_string(),
+                client_id: "review".into(),
+                target_kind: "review".into(),
+                target_id: Some(round_id.to_string()),
+                work_id: Some(work_id.clone()),
+                change_id: None,
+                request_id: None,
+                membership_version: None,
+                authority_version: None,
+                policy_version: Some(awr_team::PERMISSION_POLICY_VERSION as i32),
+                source_version: None,
+                digest: Some(crate::ops_audit::digest_of(&summary)),
+                summary,
+            };
+            crate::ops_audit::record_in_tx(&tx, tenant_id, project_id, &audit).await?;
+        }
         tx.commit().await?;
         Ok(ReviewRound {
             id: round_id.into(),
@@ -641,15 +727,72 @@ impl ReviewStore {
                 .map(|row| row.get(0)),
             None => None,
         };
-        let approved_by = json!({"approved_by": approver, "submitted_by": actor_id});
+
+        // Active PR delivery (if any) must still match live contract/head binding.
+        // Merged/approved GitHub state never substitutes for AWR acceptance.
+        let pr_row = tx
+            .query_opt(
+                "SELECT id, contract_hash, head_sha, gh_merged, state, author_actor_id,
+                        owner_person_id, executor_actor_id
+                 FROM awr_team.pr_deliveries
+                 WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3 AND state='active'
+                 ORDER BY created_at DESC LIMIT 1",
+                &[&tenant_id, &project_id, &work_id],
+            )
+            .await?;
+        let mut pr_delivery_id: Option<String> = None;
+        let mut pr_author: Option<String> = None;
+        let mut pr_owner: Option<String> = None;
+        let mut pr_executor: Option<String> = None;
+        if let Some(pr) = &pr_row {
+            let pr_contract: String = pr.get(1);
+            if pr_contract != evidence.contract_hash {
+                return Err(PgError::PreconditionsChanged);
+            }
+            pr_delivery_id = Some(pr.get(0));
+            pr_author = pr.get(5);
+            pr_owner = pr.get(6);
+            pr_executor = pr.get(7);
+            let _gh_merged: bool = pr.get(3);
+            // Explicit: merge flag is recorded but does not authorize completion.
+            let _ = _gh_merged;
+        }
+        let verified_executor = if let Some(eid) = evidence.execution_id.as_deref() {
+            tx.query_opt(
+                "SELECT executor_actor_id FROM awr_team.executions
+                 WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+                &[&tenant_id, &project_id, &eid],
+            )
+            .await?
+            .map(|r| r.get::<_, String>(0))
+        } else {
+            None
+        };
+        let author_actor = pr_author
+            .clone()
+            .or_else(|| Some(evidence.created_by.clone()));
+        let executor_actor = pr_executor.clone().or(verified_executor);
+        let approved_by = json!({
+            "approved_by": approver,
+            "submitted_by": actor_id,
+            "author_actor_id": author_actor,
+            "owner_person_id": pr_owner.clone(),
+            "executor_actor_id": executor_actor,
+            "reviewer_actor_id": approver.clone(),
+            "final_submitter_actor_id": actor_id,
+            "pr_delivery_id": pr_delivery_id.clone(),
+            "github_merged_does_not_complete": true,
+        });
         let dependency_binding_hash = sha256_hex(json!(dependency_links).to_string().as_bytes());
         let receipt_id = new_id();
         tx.execute(
             "INSERT INTO awr_team.completion_receipts(
                 tenant_id, project_id, id, work_id, scope_id, contract_hash,
                 result_digest, dependency_binding_hash, evidence_bundle_hash,
-                policy, approved_by_json)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+                policy, approved_by_json,
+                author_actor_id, owner_person_id, executor_actor_id,
+                final_submitter_actor_id, pr_delivery_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)",
             &[
                 &tenant_id,
                 &project_id,
@@ -662,6 +805,11 @@ impl ReviewStore {
                 &evidence.digest,
                 &policy,
                 &approved_by,
+                &author_actor,
+                &pr_owner,
+                &executor_actor,
+                &actor_id,
+                &pr_delivery_id,
             ],
         )
         .await?;
@@ -730,6 +878,34 @@ impl ReviewStore {
             &result,
         )
         .await?;
+        {
+            let summary = json!({
+                "receipt_id": receipt_id,
+                "contract_hash": evidence.contract_hash,
+                "policy": policy,
+                "request_id": request_id,
+            });
+            let audit = crate::ops_audit::OpsAuditWrite {
+                category: crate::ops_audit::OpsCategory::Delivery,
+                action: "delivery.finalize".into(),
+                result: "committed",
+                person_id: None,
+                actor_id: actor_id.to_string(),
+                client_id: client_id.to_string(),
+                target_kind: "completion".into(),
+                target_id: Some(receipt_id.clone()),
+                work_id: Some(evidence.work_id.clone()),
+                change_id: None,
+                request_id: Some(request_id.to_string()),
+                membership_version: None,
+                authority_version: None,
+                policy_version: Some(awr_team::PERMISSION_POLICY_VERSION as i32),
+                source_version: Some(evidence.contract_hash.clone()),
+                digest: Some(crate::ops_audit::digest_of(&summary)),
+                summary,
+            };
+            crate::ops_audit::record_in_tx(&tx, tenant_id, project_id, &audit).await?;
+        }
         tx.commit().await?;
         Ok(CompletionReceipt {
             id: receipt_id,
@@ -737,6 +913,435 @@ impl ReviewStore {
             contract_hash: evidence.contract_hash,
             policy: policy.into(),
         })
+    }
+
+    /// Register a PR delivery binding after authorized human GitHub verification.
+    /// Does not claim webhook auto-sync; requires fact_source + observed_at.
+    pub async fn register_pr_delivery(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        actor_id: &str,
+        work_id: &str,
+        contract_hash: &str,
+        repository: &str,
+        pr_number: i32,
+        pr_url: &str,
+        head_sha: &str,
+        merge_sha: Option<&str>,
+        test_evidence_id: Option<&str>,
+        fact_source: &str,
+        observed_at: &str,
+        author_actor_id: Option<&str>,
+        owner_person_id: Option<&str>,
+        executor_actor_id: Option<&str>,
+        gh_submitted: bool,
+        gh_approved: bool,
+        gh_merged: bool,
+    ) -> PgResult<PrDelivery> {
+        if pr_number <= 0
+            || repository.trim().is_empty()
+            || repository.len() > 256
+            || pr_url.trim().is_empty()
+            || pr_url.len() > 512
+            || !is_git_sha(head_sha)
+            || merge_sha.is_some_and(|s| !is_git_sha(s))
+            || !matches!(
+                fact_source,
+                "authorized_human_github_verification" | "operator_recorded_observation"
+            )
+            || observed_at.trim().is_empty()
+        {
+            return Err(PgError::Protocol("invalid pr delivery registration".into()));
+        }
+        // URL alone is never sufficient proof — fact_source must be an authorized observation.
+        let mut client = self.connect().await?;
+        let tx = client.transaction().await?;
+        bind_scope(&tx, tenant_id, project_id).await?;
+        lock_project(&tx, tenant_id, project_id).await?;
+        let live = current_contract(&tx, tenant_id, project_id, "main", work_id).await?;
+        let live_hash = current_contract_hash(&live);
+        if live_hash != contract_hash {
+            return Err(PgError::PreconditionsChanged);
+        }
+        let mut test_digest: Option<String> = None;
+        if let Some(eid) = test_evidence_id {
+            let ev = load_evidence(&tx, tenant_id, project_id, eid).await?;
+            if ev.work_id != work_id || ev.contract_hash != contract_hash {
+                return Err(PgError::EvidenceInvalid);
+            }
+            test_digest = Some(ev.digest);
+        }
+        // Invalidate prior active deliveries for this work when head/contract diverge.
+        tx.execute(
+            "UPDATE awr_team.pr_deliveries
+             SET state='invalidated', invalidation_reason='superseded_by_new_registration'
+             WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3 AND state='active'",
+            &[&tenant_id, &project_id, &work_id],
+        )
+        .await?;
+        let id = new_id();
+        let observed_ts = validate_observed_at(observed_at)?;
+        tx.execute(
+            "INSERT INTO awr_team.pr_deliveries(
+                tenant_id, project_id, id, work_id, contract_hash, repository, pr_number, pr_url,
+                head_sha, merge_sha, test_evidence_id, test_evidence_digest,
+                gh_submitted, gh_approved, gh_merged, fact_source, observed_at,
+                registered_by_actor_id, author_actor_id, owner_person_id, executor_actor_id, state)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,'active')",
+            &[
+                &tenant_id,
+                &project_id,
+                &id,
+                &work_id,
+                &contract_hash,
+                &repository,
+                &pr_number,
+                &pr_url,
+                &head_sha,
+                &merge_sha,
+                &test_evidence_id,
+                &test_digest,
+                &gh_submitted,
+                &gh_approved,
+                &gh_merged,
+                &fact_source,
+                &observed_ts,
+                &actor_id,
+                &author_actor_id,
+                &owner_person_id,
+                &executor_actor_id,
+            ],
+        )
+        .await?;
+        // Head change invalidates open review rounds for mismatched bundle/contract.
+        invalidate_open_rounds_for_contract(&tx, tenant_id, project_id, work_id, contract_hash)
+            .await?;
+        crate::tx::emit_event(
+            &tx,
+            tenant_id,
+            project_id,
+            actor_id,
+            work_id,
+            "delivery.pr_registered",
+            json!({
+                "delivery_id": id,
+                "repository": repository,
+                "pr_number": pr_number,
+                "head_sha": head_sha,
+                "merge_sha": merge_sha,
+                "fact_source": fact_source,
+                "observed_at": observed_at,
+                "webhook_auto_sync": false,
+            }),
+        )
+        .await?;
+        {
+            let summary = json!({
+                "delivery_id": id,
+                "repository": repository,
+                "pr_number": pr_number,
+                "head_sha": head_sha,
+                "fact_source": fact_source,
+                "contract_hash": contract_hash,
+            });
+            let audit = crate::ops_audit::OpsAuditWrite {
+                category: crate::ops_audit::OpsCategory::Delivery,
+                action: "delivery.register_pr".into(),
+                result: "committed",
+                person_id: owner_person_id.map(|s| s.to_string()),
+                actor_id: actor_id.to_string(),
+                client_id: "delivery".into(),
+                target_kind: "delivery".into(),
+                target_id: Some(id.clone()),
+                work_id: Some(work_id.to_string()),
+                change_id: None,
+                request_id: None,
+                membership_version: None,
+                authority_version: None,
+                policy_version: Some(awr_team::PERMISSION_POLICY_VERSION as i32),
+                source_version: Some(contract_hash.to_string()),
+                digest: Some(crate::ops_audit::digest_of(&summary)),
+                summary,
+            };
+            crate::ops_audit::record_in_tx(&tx, tenant_id, project_id, &audit).await?;
+        }
+        tx.commit().await?;
+        Ok(PrDelivery {
+            id,
+            work_id: work_id.into(),
+            contract_hash: contract_hash.into(),
+            repository: repository.into(),
+            pr_number,
+            pr_url: pr_url.into(),
+            head_sha: head_sha.into(),
+            merge_sha: merge_sha.map(str::to_owned),
+            test_evidence_id: test_evidence_id.map(str::to_owned),
+            gh_submitted,
+            gh_approved,
+            gh_merged,
+            fact_source: fact_source.into(),
+            observed_at: observed_at.into(),
+            state: "active".into(),
+        })
+    }
+
+    /// Update GitHub observation flags on an active PR delivery (still not webhook sync).
+    pub async fn observe_pr_delivery(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        actor_id: &str,
+        delivery_id: &str,
+        expected_head_sha: &str,
+        fact_source: &str,
+        observed_at: &str,
+        gh_approved: Option<bool>,
+        gh_merged: Option<bool>,
+        merge_sha: Option<&str>,
+    ) -> PgResult<PrDelivery> {
+        if !is_git_sha(expected_head_sha)
+            || !matches!(
+                fact_source,
+                "authorized_human_github_verification" | "operator_recorded_observation"
+            )
+            || merge_sha.is_some_and(|s| !is_git_sha(s))
+        {
+            return Err(PgError::Protocol("invalid pr observation".into()));
+        }
+        let mut client = self.connect().await?;
+        let tx = client.transaction().await?;
+        bind_scope(&tx, tenant_id, project_id).await?;
+        lock_project(&tx, tenant_id, project_id).await?;
+        let row = tx
+            .query_opt(
+                "SELECT work_id, contract_hash, repository, pr_number, pr_url, head_sha, merge_sha,
+                        test_evidence_id, gh_submitted, gh_approved, gh_merged, state
+                 FROM awr_team.pr_deliveries
+                 WHERE tenant_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE",
+                &[&tenant_id, &project_id, &delivery_id],
+            )
+            .await?
+            .ok_or_else(|| PgError::Protocol("pr delivery not found".into()))?;
+        let work_id: String = row.get(0);
+        let contract_hash: String = row.get(1);
+        let repository: String = row.get(2);
+        let pr_number: i32 = row.get(3);
+        let pr_url: String = row.get(4);
+        let head_sha: String = row.get(5);
+        let mut cur_merge: Option<String> = row.get(6);
+        let test_evidence_id: Option<String> = row.get(7);
+        let gh_submitted: bool = row.get(8);
+        let mut cur_approved: bool = row.get(9);
+        let mut cur_merged: bool = row.get(10);
+        let state: String = row.get(11);
+        if state != "active" {
+            return Err(PgError::PreconditionsChanged);
+        }
+        if head_sha != expected_head_sha {
+            tx.execute(
+                "UPDATE awr_team.pr_deliveries
+                 SET state='invalidated', invalidation_reason='head_sha_mismatch'
+                 WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+                &[&tenant_id, &project_id, &delivery_id],
+            )
+            .await?;
+            // Mismatched head invalidates open AWR review approvals for this work.
+            invalidate_open_rounds_for_contract(
+                &tx,
+                tenant_id,
+                project_id,
+                &work_id,
+                &contract_hash,
+            )
+            .await?;
+            tx.commit().await?;
+            return Err(PgError::PreconditionsChanged);
+        }
+        let live = current_contract(&tx, tenant_id, project_id, "main", &work_id).await?;
+        if current_contract_hash(&live) != contract_hash {
+            tx.execute(
+                "UPDATE awr_team.pr_deliveries
+                 SET state='invalidated', invalidation_reason='contract_hash_mismatch'
+                 WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+                &[&tenant_id, &project_id, &delivery_id],
+            )
+            .await?;
+            invalidate_open_rounds_for_contract(
+                &tx,
+                tenant_id,
+                project_id,
+                &work_id,
+                &contract_hash,
+            )
+            .await?;
+            tx.commit().await?;
+            return Err(PgError::PreconditionsChanged);
+        }
+        if let Some(v) = gh_approved {
+            cur_approved = v;
+        }
+        if let Some(v) = gh_merged {
+            cur_merged = v;
+        }
+        if let Some(m) = merge_sha {
+            cur_merge = Some(m.to_owned());
+        }
+        let observed_ts = validate_observed_at(observed_at)?;
+        tx.execute(
+            "UPDATE awr_team.pr_deliveries
+             SET gh_approved=$4, gh_merged=$5, merge_sha=$6, fact_source=$7, observed_at=$8
+             WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+            &[
+                &tenant_id,
+                &project_id,
+                &delivery_id,
+                &cur_approved,
+                &cur_merged,
+                &cur_merge,
+                &fact_source,
+                &observed_ts,
+            ],
+        )
+        .await?;
+        crate::tx::emit_event(
+            &tx,
+            tenant_id,
+            project_id,
+            actor_id,
+            &work_id,
+            "delivery.pr_observed",
+            json!({
+                "delivery_id": delivery_id,
+                "gh_approved": cur_approved,
+                "gh_merged": cur_merged,
+                "merge_sha": cur_merge,
+                "fact_source": fact_source,
+                "observed_at": observed_at,
+                "awr_acceptance_complete": false,
+                "webhook_auto_sync": false,
+            }),
+        )
+        .await?;
+        {
+            let summary = json!({
+                "delivery_id": delivery_id,
+                "expected_head_sha": expected_head_sha,
+                "gh_approved": cur_approved,
+                "gh_merged": cur_merged,
+                "fact_source": fact_source,
+            });
+            let audit = crate::ops_audit::OpsAuditWrite {
+                category: crate::ops_audit::OpsCategory::Delivery,
+                action: "delivery.observe_pr".into(),
+                result: "committed",
+                person_id: None,
+                actor_id: actor_id.to_string(),
+                client_id: "delivery".into(),
+                target_kind: "delivery".into(),
+                target_id: Some(delivery_id.to_string()),
+                work_id: Some(work_id.clone()),
+                change_id: None,
+                request_id: None,
+                membership_version: None,
+                authority_version: None,
+                policy_version: Some(awr_team::PERMISSION_POLICY_VERSION as i32),
+                source_version: Some(contract_hash.clone()),
+                digest: Some(crate::ops_audit::digest_of(&summary)),
+                summary,
+            };
+            crate::ops_audit::record_in_tx(&tx, tenant_id, project_id, &audit).await?;
+        }
+        tx.commit().await?;
+        Ok(PrDelivery {
+            id: delivery_id.into(),
+            work_id,
+            contract_hash,
+            repository,
+            pr_number,
+            pr_url,
+            head_sha,
+            merge_sha: cur_merge,
+            test_evidence_id,
+            gh_submitted,
+            gh_approved: cur_approved,
+            gh_merged: cur_merged,
+            fact_source: fact_source.into(),
+            observed_at: observed_at.into(),
+            state: "active".into(),
+        })
+    }
+
+    /// Combined status: GitHub PR facts vs AWR acceptance (never conflated).
+    pub async fn delivery_status(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        work_id: &str,
+    ) -> PgResult<Value> {
+        let mut client = self.connect().await?;
+        let tx = client.transaction().await?;
+        bind_scope(&tx, tenant_id, project_id).await?;
+        let pr = tx
+            .query_opt(
+                "SELECT id, repository, pr_number, pr_url, head_sha, merge_sha,
+                        gh_submitted, gh_approved, gh_merged, fact_source, observed_at,
+                        contract_hash, state, test_evidence_id
+                 FROM awr_team.pr_deliveries
+                 WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3 AND state='active'
+                 ORDER BY created_at DESC LIMIT 1",
+                &[&tenant_id, &project_id, &work_id],
+            )
+            .await?;
+        let runtime: Option<(String, Option<String>)> = tx
+            .query_opt(
+                "SELECT state, selected_completion_id FROM awr_team.work_runtime
+                 WHERE tenant_id=$1 AND project_id=$2 AND scope_id='main' AND work_id=$3",
+                &[&tenant_id, &project_id, &work_id],
+            )
+            .await?
+            .map(|r| (r.get(0), r.get(1)));
+        let awr_complete = runtime
+            .as_ref()
+            .is_some_and(|(s, cid)| s == "completed" && cid.is_some());
+        let status = json!({
+            "work_id": work_id,
+            "pr": pr.as_ref().map(|r| json!({
+                "delivery_id": r.get::<_,String>(0),
+                "repository": r.get::<_,String>(1),
+                "pr_number": r.get::<_,i32>(2),
+                "pr_url": r.get::<_,String>(3),
+                "head_sha": r.get::<_,String>(4),
+                "merge_sha": r.get::<_,Option<String>>(5),
+                "submitted": r.get::<_,bool>(6),
+                "approved": r.get::<_,bool>(7),
+                "merged": r.get::<_,bool>(8),
+                "fact_source": r.get::<_,String>(9),
+                "observed_at": r.get::<_,String>(10),
+                "contract_hash": r.get::<_,String>(11),
+                "state": r.get::<_,String>(12),
+                "test_evidence_id": r.get::<_,Option<String>>(13),
+            })),
+            "github": {
+                "submitted": pr.as_ref().map(|r| r.get::<_,bool>(6)).unwrap_or(false),
+                "approved": pr.as_ref().map(|r| r.get::<_,bool>(7)).unwrap_or(false),
+                "merged": pr.as_ref().map(|r| r.get::<_,bool>(8)).unwrap_or(false),
+            },
+            "awr_acceptance": {
+                "complete": awr_complete,
+                "runtime_state": runtime.as_ref().map(|(s,_)| s.clone()),
+                "selected_completion_id": runtime.as_ref().and_then(|(_,c)| c.clone()),
+            },
+            "cannot_skip_acceptance_via": [
+                "pr_url_alone",
+                "green_ci",
+                "admin_role",
+                "already_merged"
+            ],
+            "webhook_auto_sync": false,
+        });
+        tx.commit().await?;
+        Ok(status)
     }
 
     pub async fn source_declared_is_not_complete(
@@ -1069,6 +1674,92 @@ async fn current_review(
             })
         }
     }
+}
+
+/// Resolve the responsible person for an actor.
+/// Humans map to a persons row with the same id (created if needed).
+/// Agents require an active person_agent_bindings row — another agent of the
+/// same person is still that person (WS-018 independence).
+pub(crate) async fn resolve_person_id(
+    tx: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    project_id: &str,
+    actor_id: &str,
+) -> PgResult<String> {
+    let kind: String = tx
+        .query_opt(
+            "SELECT kind FROM awr_team.actors WHERE tenant_id=$1 AND id=$2",
+            &[&tenant_id, &actor_id],
+        )
+        .await?
+        .map(|r| r.get(0))
+        .ok_or(PgError::Forbidden)?;
+    if let Some(row) = tx
+        .query_opt(
+            "SELECT person_id FROM awr_team.person_agent_bindings
+             WHERE tenant_id=$1 AND project_id=$2 AND agent_id=$3 AND status='active'",
+            &[&tenant_id, &project_id, &actor_id],
+        )
+        .await?
+    {
+        return Ok(row.get(0));
+    }
+    if kind == "human" {
+        tx.execute(
+            "INSERT INTO awr_team.persons(tenant_id,project_id,id,display_name,status)
+             VALUES ($1,$2,$3,$3,'active')
+             ON CONFLICT (tenant_id, project_id, id) DO NOTHING",
+            &[&tenant_id, &project_id, &actor_id],
+        )
+        .await?;
+        return Ok(actor_id.to_owned());
+    }
+    Err(PgError::Forbidden)
+}
+
+pub(crate) fn self_review_permitted(completion_policy: &str) -> bool {
+    matches!(
+        completion_policy,
+        "trusted_execution_and_author_self_review"
+    )
+}
+
+fn is_git_sha(s: &str) -> bool {
+    s.len() == 40
+        && s.bytes().all(|b| b.is_ascii_hexdigit())
+        && s.bytes().all(|b| !b.is_ascii_uppercase())
+}
+
+fn validate_observed_at(raw: &str) -> PgResult<&str> {
+    // Accept RFC3339-like timestamps; PG casts to timestamptz. Reject empties/controls.
+    let s = raw.trim();
+    if s.is_empty() || s.len() > 64 || s.chars().any(char::is_control) {
+        return Err(PgError::Protocol("observed_at must be RFC3339".into()));
+    }
+    // Minimal shape: YYYY-MM-DDThh:mm:ss...Z or with offset
+    let bytes = s.as_bytes();
+    if bytes.len() < 20 || bytes[4] != b'-' || bytes[7] != b'-' || bytes[10] != b'T' {
+        return Err(PgError::Protocol("observed_at must be RFC3339".into()));
+    }
+    Ok(s)
+}
+
+async fn invalidate_open_rounds_for_contract(
+    tx: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    project_id: &str,
+    work_id: &str,
+    contract_hash: &str,
+) -> PgResult<()> {
+    // Keep rejected/approved history; only open rounds for mismatched contract are invalidated.
+    tx.execute(
+        "UPDATE awr_team.review_rounds SET state='invalidated'
+         WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3
+           AND state='open' AND contract_hash<>$4",
+        &[&tenant_id, &project_id, &work_id, &contract_hash],
+    )
+    .await?;
+    Ok(())
 }
 
 async fn invalidate_open_rounds(
