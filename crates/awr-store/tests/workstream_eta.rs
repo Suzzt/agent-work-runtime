@@ -118,10 +118,11 @@ fn sqlite_eta_append_only_replay_isolation_and_reestimate() {
         observed_wait_ms: 0,
         source_ledger: "historical_observation".into(),
     };
-    assert!(f
-        .store
-        .record_eta_sample(project, "bad-sample", &clash)
-        .is_err());
+    assert!(
+        f.store
+            .record_eta_sample(project, "bad-sample", &clash)
+            .is_err()
+    );
 
     let req = request(&project_s, "forecast-1");
     let record = estimate_next_acceptance(&req).unwrap();
@@ -140,10 +141,11 @@ fn sqlite_eta_append_only_replay_isolation_and_reestimate() {
     // Immutable: altered body for same forecast_id is rejected.
     let mut altered = record.clone();
     altered.generated_at_ms += 5;
-    assert!(f
-        .store
-        .append_eta_forecast(project, "eta-1b", &altered)
-        .is_err());
+    assert!(
+        f.store
+            .append_eta_forecast(project, "eta-1b", &altered)
+            .is_err()
+    );
 
     let mut req2 = request(&project_s, "forecast-2");
     req2.capacity.available_executors = 1;

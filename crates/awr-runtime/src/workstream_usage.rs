@@ -170,6 +170,7 @@ pub fn refuse_eta_from_cumulative_duration(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use awr_core::Error;
     use awr_core::workstream_usage::*;
     use awr_store::{SourceRegistration, Store};
 
@@ -301,24 +302,20 @@ mod tests {
             ],
             recorded_at_ms: 21,
         };
-        // Correction changed cost to 80; allocation must conserve against stored receipt body
-        // (original 101) OR corrected? validate_against uses stored receipt body (uncorrected).
-        // Store validates against persisted receipt body which still has prior cost 101.
-        // So allocation of 80 would fail. Allocate against original 101.
-        let alloc = UsageAllocationRecord {
-            shares: vec![
-                UsageAllocation {
-                    workstream_id: Some(Id::from(7u128)),
-                    micros: 50,
-                },
-                UsageAllocation {
-                    workstream_id: Some(Id::from(8u128)),
-                    micros: 51,
-                },
-            ],
-            ..alloc
-        };
+        let mut stale = alloc.clone();
+        stale.allocation_id = "a-stale".into();
+        stale.shares[1].micros = 51;
+        assert!(matches!(
+            record_usage_allocation(&mut store, &project, "alloc-stale", &stale),
+            Err(UsageRuntimeError::Store(Error::InvalidInput(_)))
+        ));
         record_usage_allocation(&mut store, &project, "alloc-1", &alloc).unwrap();
+        let mut second = alloc.clone();
+        second.allocation_id = "a2".into();
+        assert!(matches!(
+            record_usage_allocation(&mut store, &project, "alloc-2", &second),
+            Err(UsageRuntimeError::Store(Error::RuleViolation(_)))
+        ));
 
         let snap1 = UsageCounterSnapshot {
             scope: UsageCounterScope {

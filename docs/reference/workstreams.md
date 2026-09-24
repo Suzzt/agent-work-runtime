@@ -19,7 +19,6 @@ bounded local reference runner. Versioned cross-stream hard dependencies and ado
 in core/store/team-pg (WS-030). File/dir/workspace versus shared external/integration resource bounds are enforced
 at reservation and admission; physical strong isolation still requires a verified
 host sandbox or OS boundary, not AWR metadata alone.
-
 These paths do not establish complete isolation for every CLI, MCP or Team operation.
 
 The Team source coordinator also accepts an explicit multi-work source bundle
@@ -141,7 +140,10 @@ WS-041 persists and queries these as real usage + time accounting: deduped
 receipts bind to execution / task / occurrence-time mainline; actual cost,
 API-equivalent estimate, unknown, and coverage stay separate columns;
 cumulative provider counters convert to incremental deltas; corrections and
-cross-stream allocations are append-only and auditable. Measured time/usage
+cross-stream allocations are append-only and auditable. An allocation conserves
+the corrected cost, and a second allocation of the same receipt is refused.
+Replaying a request key with a different body conflicts instead of keeping the
+first body under a success result. Measured time/usage
 with coverage is handed to WS-043 as historical observation only —
 cumulative-duration fields must never be presented as estimated remaining time.
 

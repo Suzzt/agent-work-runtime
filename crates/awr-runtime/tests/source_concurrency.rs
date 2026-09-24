@@ -390,6 +390,7 @@ fn recover_pending_shard_receipt_resumes_under_lock() {
     )
     .unwrap();
     assert_eq!(pending.value["ok"], false, "{}", pending.value);
+    assert_eq!(pending.value["ok"], false, "{}", pending.value);
     assert_eq!(pending.value["status"], "pending_recovery");
     assert!(
         fs::read_to_string(f.root.join("docs/a.md"))
@@ -437,4 +438,80 @@ fn recover_pending_shard_receipt_resumes_under_lock() {
     .unwrap();
     assert_eq!(again.value["ok"], true, "{}", again.value);
     assert_eq!(again.value["already_recorded"], true);
+}
+
+#[test]
+fn changed_intent_preserves_pending_receipt_for_recovery() {
+    let mut f = ShardFixture::new();
+    let a_after = "---\nid: A\ntitle: Alpha\nstatus: accepted\n---\n# Alpha\n\nAccepted A.\n";
+    let b_after = "---\nid: B\ntitle: Beta\nstatus: accepted\n---\n# Beta\n\nAccepted B.\n";
+    let shards = vec![f.shard("docs/a.md", a_after), f.shard("docs/b.md", b_after)];
+    let revision = f.store.project(f.project).unwrap().project_revision;
+    // Leave a pending receipt by using a too-new expected revision.
+    let pending = activate_shard_candidate(
+        &mut f.store,
+        &f.root,
+        f.project,
+        "shards-intent-preserve",
+        "markdown-directory-v1",
+        shards.clone(),
+        revision.saturating_add(999),
+    )
+    .unwrap();
+    assert_eq!(pending.value["ok"], false, "{}", pending.value);
+    assert_eq!(pending.value["status"], "pending_recovery");
+    let receipt_path = {
+        fn find_receipt(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+            for entry in std::fs::read_dir(dir).ok()?.flatten() {
+                let path = entry.path();
+                if path.file_name().is_some_and(|n| n == "receipt.json") {
+                    return Some(path);
+                }
+                if path.is_dir() {
+                    if let Some(found) = find_receipt(&path) {
+                        return Some(found);
+                    }
+                }
+            }
+            None
+        }
+        find_receipt(&f.root.join(".awr")).expect("pending receipt.json")
+    };
+    let original = std::fs::read_to_string(&receipt_path).unwrap();
+
+    let mut other = shards.clone();
+    other[0] = f.shard(
+        "docs/a.md",
+        "---\nid: A\ntitle: Alpha\nstatus: other\n---\n# Alpha\n\nOther A.\n",
+    );
+    let err = activate_shard_candidate(
+        &mut f.store,
+        &f.root,
+        f.project,
+        "shards-intent-preserve",
+        "markdown-directory-v1",
+        other,
+        revision.saturating_add(999),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(err, Error::SourceConflict(_)),
+        "changed candidate intent must conflict before overwrite: {err:?}"
+    );
+    let after = std::fs::read_to_string(&receipt_path).unwrap();
+    assert_eq!(
+        after, original,
+        "original pending receipt must be preserved"
+    );
+
+    // Recovery of the original pending receipt still works after the conflict.
+    let recovered = recover_shard_candidate(
+        &mut f.store,
+        &f.root,
+        f.project,
+        "shards-intent-preserve",
+        revision,
+    )
+    .unwrap();
+    assert_eq!(recovered.value["ok"], true, "{}", recovered.value);
 }

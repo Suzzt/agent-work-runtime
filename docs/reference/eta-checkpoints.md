@@ -9,7 +9,7 @@ observations and are **append-only**: historical rows are never rewritten.
 - Core: `awr_core::workstream_eta` — critical-path / concurrency schedule,
   forecast records, calibration gate, reestimate links, sample/acceptance
   isolation.
-- Store (schema 13 / `eta_checkpoints`): append-only `eta_forecasts`, isolated
+- Store (schema 14 / `eta_checkpoints`): append-only `eta_forecasts`, isolated
   `eta_sample_ledger` and `eta_acceptance_data`, idempotent ingest receipts.
 - Runtime: `estimate_and_persist`, `reestimate_and_persist`, query helpers, and
   `observation_handoff_for_estimate` (consumes WS-041 handoff without treating

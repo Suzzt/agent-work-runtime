@@ -469,19 +469,23 @@ pub fn apply_handoff_accept(
     req: &AcceptHandoffRequest,
 ) -> Result<TeamHandoff> {
     validate_request_key(&req.request_key)?;
-    require_version(current, req.expected_version)?;
     if current.id != req.handoff_id {
         return Err(Error::NotFound("handoff id mismatch".into()));
     }
-    // Idempotent accept: same request_key on already-accepted returns conflict-free via store.
+    // Idempotent accept ignores the pre-accept expected_version: the stored row
+    // has already advanced. A different successor or receiver still conflicts.
     if current.status == HandoffStatus::Accepted {
-        if current.accept_request_key.as_deref() == Some(req.request_key.as_str()) {
+        let same_request = current.accept_request_key.as_deref() == Some(req.request_key.as_str())
+            && current.accepted_successor.as_ref() == Some(&req.successor_execution)
+            && current.to_person_id == req.acceptor_person_id;
+        if same_request {
             return Ok(current.clone());
         }
         return Err(Error::ClaimConflict(
             "handoff already accepted by another request".into(),
         ));
     }
+    require_version(current, req.expected_version)?;
     if !current.status.is_open() {
         return Err(Error::RuleViolation(
             "handoff is not open for accept".into(),
@@ -876,6 +880,28 @@ mod tests {
         let duty = accepted.duty_at(2).unwrap();
         assert_eq!(duty.responsible_person_id, person("bob"));
         assert!(!duty.successor_may_execute);
+        let mut changed = AcceptHandoffRequest {
+            request_key: "acc-own".into(),
+            handoff_id: "ho-own".into(),
+            expected_version: accepted.version,
+            acceptor_person_id: person("bob"),
+            successor_execution: ExecutionInstance::Person {
+                person_id: person("carol"),
+            },
+            prior_execution_stopped: true,
+            prior_reconciled: false,
+            context_reprepared: true,
+            expected_current_fence: None,
+            live_fence: None,
+            unknown_executions_open: false,
+            now_ms: 3,
+        };
+        assert!(apply_handoff_accept(&accepted, &changed).is_err());
+        changed.successor_execution = ExecutionInstance::Person {
+            person_id: person("bob"),
+        };
+        changed.expected_version = 1;
+        assert_eq!(apply_handoff_accept(&accepted, &changed).unwrap(), accepted);
     }
 
     #[test]

@@ -54,7 +54,11 @@ fn independent_fixture_marks_unprovable_and_blocks_agent_approver_promotion() {
         HistoryDisposition::PendingConfirmation
     );
     assert!(!agent_approver.promoted_to_owner_or_approver);
-    assert!(prev.history.iter().all(|h| !h.promoted_to_owner_or_approver));
+    assert!(
+        prev.history
+            .iter()
+            .all(|h| !h.promoted_to_owner_or_approver)
+    );
     assert!(!prev.incomplete_work_item_ids.is_empty());
     assert!(!prev.active_session_ids.is_empty());
     assert!(!prev.release_evidence_ids.is_empty());

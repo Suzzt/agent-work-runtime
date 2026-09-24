@@ -27,6 +27,7 @@ pub const DEFAULT_COMPLETION_POLICY: &str = "independent_review";
 
 pub const SOURCE_BINDING_FILE: &str = "source_binding.json";
 pub const WORKSTREAMS_FILE: &str = "workstreams.json";
+pub const SOURCE_PROVENANCE_FILE: &str = "source_provenance.json";
 pub const PARSER_VERSION: &str = "awr-team-workstreams/1";
 
 const SUPPORTED_SPEC_EXTENSIONS: &[&str] = &["json", "md", "markdown"];
@@ -130,6 +131,9 @@ pub struct ReferencedSpec {
     pub path: String,
     pub digest: String,
     pub bytes: usize,
+    /// Exact bytes observed through the root-confined open used for validation.
+    #[serde(skip)]
+    pub content: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -137,6 +141,15 @@ pub struct ReferencedSpec {
 pub struct PublishPackageFile {
     pub path: String,
     pub bytes: Vec<u8>,
+}
+
+/// Immutable original-source provenance persisted beside the generated candidate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceProvenance {
+    pub source_version_digest: String,
+    pub ledger_relative_path: String,
+    pub source_status_notes: Vec<SourceStatusNote>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -187,11 +200,9 @@ pub fn prepare_publish_from_server_directory(
     options: &PublishPrepOptions,
 ) -> Result<TeamPublishPackage> {
     let location = SoleSourceLocation::server_directory(root, ledger_relative_path)?;
-    let ledger_path = root.join(ledger_relative_path);
-    let bytes = fs::read(&ledger_path).map_err(|e| {
+    let bytes = crate::read_under_root(root, ledger_relative_path).map_err(|e| {
         Error::InvalidInput(format!(
-            "cannot read sole-source ledger {}: {e}",
-            ledger_path.display()
+            "cannot read sole-source ledger {ledger_relative_path} under bound root: {e}"
         ))
     })?;
     prepare_publish_from_ledger_bytes(&location, root, &bytes, project_id, options)
@@ -248,6 +259,15 @@ pub fn prepare_publish_from_ledger_bytes(
     let binding_bytes =
         serde_json::to_vec_pretty(location).map_err(|e| Error::InvalidInput(e.to_string()))?;
 
+    let source_version_digest = fingerprint(ledger_bytes);
+    let provenance = SourceProvenance {
+        source_version_digest: source_version_digest.clone(),
+        ledger_relative_path: relative.into(),
+        source_status_notes: status_notes.clone(),
+    };
+    let provenance_bytes =
+        serde_json::to_vec_pretty(&provenance).map_err(|e| Error::InvalidInput(e.to_string()))?;
+
     let mut files = vec![
         PublishPackageFile {
             path: WORKSTREAMS_FILE.into(),
@@ -257,14 +277,21 @@ pub fn prepare_publish_from_ledger_bytes(
             path: SOURCE_BINDING_FILE.into(),
             bytes: binding_bytes,
         },
+        PublishPackageFile {
+            path: SOURCE_PROVENANCE_FILE.into(),
+            bytes: provenance_bytes,
+        },
+        PublishPackageFile {
+            // Persist the exact original ledger bytes so distinct source revisions
+            // remain distinguishable after ingest (TMCP-020).
+            path: relative.into(),
+            bytes: ledger_bytes.to_vec(),
+        },
     ];
     for spec in &referenced {
-        let abs = content_root.join(&spec.path);
-        let bytes = fs::read(&abs)
-            .map_err(|e| Error::InvalidInput(format!("referenced spec {}: {e}", spec.path)))?;
         files.push(PublishPackageFile {
             path: spec.path.clone(),
-            bytes,
+            bytes: spec.content.clone(),
         });
     }
     files.sort_by(|a, b| a.path.cmp(&b.path));
@@ -272,7 +299,7 @@ pub fn prepare_publish_from_ledger_bytes(
     Ok(TeamPublishPackage {
         project_id: project_id.into(),
         source_location: location.clone(),
-        source_version_digest: fingerprint(ledger_bytes),
+        source_version_digest,
         ledger_identity_digest: identity_digest(&bundle)?,
         bundle_digest: bundle
             .hash()
@@ -514,9 +541,9 @@ fn load_referenced_specs(root: &Path, bundle: &WorkstreamBundle) -> Result<Vec<R
                 "unsupported referenced spec format `{path}`; first-round supports Markdown/JSON only"
             )));
         }
-        let abs = root.join(&path);
-        let bytes = fs::read(&abs)
-            .map_err(|e| Error::InvalidInput(format!("missing referenced spec `{path}`: {e}")))?;
+        let bytes = crate::read_under_root(root, &path).map_err(|e| {
+            Error::InvalidInput(format!("missing or unsafe referenced spec `{path}`: {e}"))
+        })?;
         if ext == "json" {
             let _: Value = serde_json::from_slice(&bytes).map_err(|e| {
                 Error::InvalidInput(format!("referenced JSON spec `{path}` is invalid: {e}"))
@@ -526,6 +553,7 @@ fn load_referenced_specs(root: &Path, bundle: &WorkstreamBundle) -> Result<Vec<R
             path,
             digest: fingerprint(&bytes),
             bytes: bytes.len(),
+            content: bytes,
         });
     }
     Ok(specs)
@@ -844,5 +872,106 @@ mod tests {
         assert!(
             SoleSourceLocation::private_management_repo("/tmp/not-a-repo", "ledger.yaml").is_err()
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn root_confined_open_accepts_in_root_files_and_refuses_escaping_symlinks() {
+        let root = fixture_root();
+        let package = prepare_publish_from_server_directory(
+            &root,
+            "ledger.yaml",
+            "demo",
+            &PublishPrepOptions::default(),
+        )
+        .unwrap();
+        assert!(
+            package
+                .files
+                .iter()
+                .any(|f| f.path == "contracts/api-v1.json" && !f.bytes.is_empty())
+        );
+
+        let tmp = std::env::temp_dir().join(format!("awr-tmcp020-symlink-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("contracts")).unwrap();
+        // Copy fixture into disposable tree.
+        fs::copy(root.join("ledger.yaml"), tmp.join("ledger.yaml")).unwrap();
+        fs::copy(
+            root.join("contracts/api-v1.json"),
+            tmp.join("contracts/api-v1.json"),
+        )
+        .unwrap();
+        fs::copy(
+            root.join("contracts/client-v1.md"),
+            tmp.join("contracts/client-v1.md"),
+        )
+        .unwrap();
+        let outside = tmp.join("outside-secret.json");
+        fs::write(&outside, br#"{"secret":"OUTSIDE_SENTINEL"}"#).unwrap();
+        fs::remove_file(tmp.join("contracts/api-v1.json")).unwrap();
+        std::os::unix::fs::symlink(&outside, tmp.join("contracts/api-v1.json")).unwrap();
+
+        let err = prepare_publish_from_server_directory(
+            &tmp,
+            "ledger.yaml",
+            "demo",
+            &PublishPrepOptions::default(),
+        )
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("contracts/api-v1.json")
+                || msg.contains("refused")
+                || msg.contains("symlink")
+                || msg.contains("RuleViolation")
+                || msg.contains("unsafe"),
+            "escaping symlink must fail: {msg}"
+        );
+        // Ensure outside sentinel never packages.
+        assert!(!msg.contains("OUTSIDE_SENTINEL"));
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn distinct_original_yaml_revisions_differ_in_persisted_package() {
+        let root = fixture_root();
+        let location = SoleSourceLocation::server_directory(&root, "ledger.yaml").unwrap();
+        let original = fs::read(root.join("ledger.yaml")).unwrap();
+        let mut revised = original.clone();
+        revised.extend_from_slice(b"\n# revision-marker-2\n");
+        let options = PublishPrepOptions::default();
+        let a = prepare_publish_from_ledger_bytes(&location, &root, &original, "demo", &options)
+            .unwrap();
+        let b = prepare_publish_from_ledger_bytes(&location, &root, &revised, "demo", &options)
+            .unwrap();
+        assert_ne!(a.source_version_digest, b.source_version_digest);
+        let a_ledger = a
+            .files
+            .iter()
+            .find(|f| f.path == "ledger.yaml")
+            .expect("original ledger bytes");
+        let b_ledger = b
+            .files
+            .iter()
+            .find(|f| f.path == "ledger.yaml")
+            .expect("original ledger bytes");
+        assert_ne!(a_ledger.bytes, b_ledger.bytes);
+        assert_eq!(a_ledger.bytes, original);
+        assert_eq!(b_ledger.bytes, revised);
+        let a_prov = a
+            .files
+            .iter()
+            .find(|f| f.path == SOURCE_PROVENANCE_FILE)
+            .expect("provenance");
+        let b_prov = b
+            .files
+            .iter()
+            .find(|f| f.path == SOURCE_PROVENANCE_FILE)
+            .expect("provenance");
+        assert_ne!(a_prov.bytes, b_prov.bytes);
+        let a_meta: SourceProvenance = serde_json::from_slice(&a_prov.bytes).unwrap();
+        assert_eq!(a_meta.source_version_digest, a.source_version_digest);
+        assert_eq!(a_meta.ledger_relative_path, "ledger.yaml");
     }
 }

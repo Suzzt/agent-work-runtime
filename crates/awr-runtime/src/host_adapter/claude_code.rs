@@ -30,7 +30,6 @@ impl ClaudeCodeAdapter {
             control_mode: AdapterControlMode::NamedControlled,
             capabilities: BTreeSet::from([
                 AdapterCapability::StatusRead,
-                AdapterCapability::ReconnectResume,
                 AdapterCapability::ResultForensics,
             ]),
             auto_startable: false,
@@ -63,18 +62,18 @@ impl ExecutionHostAdapter for ClaudeCodeAdapter {
 
     fn status(&self, handle: &NativeExecutionHandle) -> Result<AdapterActionOutcome> {
         let state = self.state.read().expect("claude state");
-        if state.sessions.contains(&handle.native_session)
-            || state
-                .reports
-                .iter()
-                .any(|r| r.execution_id.to_string() == handle.execution_id)
-        {
+        let from_report = state
+            .reports
+            .iter()
+            .any(|r| r.execution_id.to_string() == handle.execution_id);
+        if from_report {
             Ok(supported(
-                "claude_code status_read: session/report observed",
+                "claude_code status_read: verified from retained ExternalExecutionReport",
             ))
         } else {
+            // Local session bookmarks alone are unverified.
             Ok(supported(
-                "claude_code status_read: no local observation; query original execution before retry",
+                "claude_code status_read: unknown/unverified; no L0 report — query original execution before retry",
             ))
         }
     }
@@ -86,11 +85,11 @@ impl ExecutionHostAdapter for ClaudeCodeAdapter {
         ))
     }
 
-    fn reconnect_resume(&self, handle: &NativeExecutionHandle) -> Result<AdapterActionOutcome> {
-        let mut state = self.state.write().expect("claude state");
-        state.sessions.insert(handle.native_session.clone());
-        Ok(supported(
-            "claude_code reconnect_resume: rebound native session identity",
+    fn reconnect_resume(&self, _handle: &NativeExecutionHandle) -> Result<AdapterActionOutcome> {
+        // In-memory session insert is not attributable native reconnect evidence.
+        Ok(unsupported(
+            &self.matrix,
+            AdapterCapability::ReconnectResume,
         ))
     }
 

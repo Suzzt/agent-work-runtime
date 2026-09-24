@@ -21,7 +21,12 @@ lists `awr_team_query` and `awr_team_command`.
 
 ## Tools
 
-Same Team surface as Codex:
+Same Team surface as Codex. Arguments are production `WorkstreamQuery` /
+`WorkstreamCommand` JSON (`deny_unknown_fields`): query fields are **top-level**
+(no `args` wrapper); commands require the full precondition envelope plus
+op-specific `args`. See [team-mcp-codex-cli.md](team-mcp-codex-cli.md) for the
+complete reusable envelopes — copy values from an authorized `work.prepare`
+before the first mutation.
 
 | Tool | Use |
 | --- | --- |
@@ -35,16 +40,59 @@ uncertainty before retrying with a new id.
 
 ### 1. Query
 
-Call `awr_team_query` with `{"protocol_version":1,"op":"capabilities"}`, then
-`work.list` / `work.search` on your authorized `workstream_id`. Only claim work
-you can see.
+Call `awr_team_query` with:
 
-### 2. Claim / renew
+```json
+{"protocol_version":1,"op":"capabilities"}
+```
 
-1. `session.start` with `conversation_id` like `claude:<native-session-id>`.
-2. `claim.acquire` with session + expected work/session versions and TTL.
-3. `claim.renew` on the active fence/lease before expiry.
-4. `claim.inspect` when unsure — do not interpret an acquire replay as renew.
+then list/search on your authorized stream (top-level fields):
+
+```json
+{"protocol_version":1,"op":"work.list","workstream_id":"00000000000000000000000001","limit":20}
+```
+
+```json
+{"protocol_version":1,"op":"work.search","workstream_id":"00000000000000000000000001","search":"alpha","limit":20}
+```
+
+Only claim work you can see.
+
+### 2. Prepare, then session / claim
+
+1. `work.prepare` for the chosen `work_id` (fills the command envelope).
+2. `session.start` with `conversation_id` like `claude:<native-session-id>`.
+3. `claim.acquire` with session + expected work/session versions and TTL.
+4. `claim.renew` on the active fence/lease before expiry.
+5. `claim.inspect` when unsure — do not interpret an acquire replay as renew.
+
+Example prepare + session.start envelopes:
+
+```json
+{
+  "protocol_version": 1,
+  "op": "work.prepare",
+  "workstream_id": "00000000000000000000000001",
+  "work_id": "API-1",
+  "max_context_bytes": 120000
+}
+```
+
+```json
+{
+  "protocol_version": 1,
+  "request_id": "00000000-0000-4000-8000-000000000011",
+  "op": "session.start",
+  "workstream_id": "00000000000000000000000001",
+  "work_id": "API-1",
+  "coordinator_epoch": "epoch-a",
+  "expected_project_revision": "3",
+  "expected_authority_version": "1",
+  "expected_ownership_version": "1",
+  "expected_contract_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "args": {"conversation_id": "claude:<native-session-id>"}
+}
+```
 
 Bind external session labels with L0 habits from
 [claude-code-agent.md](claude-code-agent.md) (`claude:<native-id>`), but perform
@@ -52,26 +100,73 @@ coordination on **Team** tools above.
 
 ### 3. Context
 
-`work.prepare` for the claimed work. Read `required_specs` and
-`authorized_readable_refs`. Fetch bodies only through `source.content` /
-`artifact.content`. Recheck prepare after relevant source publishes.
+Re-run `work.prepare` when the read set may have moved. Read `required_specs`
+and `authorized_readable_refs`. Fetch bodies only through `source.content` /
+`artifact.content`.
 
 ### 4. Checkpoint
 
 `session.checkpoint` with the **consumed** `context_hash`, concrete
-`next_action`, and `open_loops`. Closing Claude Code or the MCP transport does
-not end the durable Team session — use `session.end` or an authorized handoff.
+`next_action`, and `open_loops` inside a full command envelope:
+
+```json
+{
+  "protocol_version": 1,
+  "request_id": "00000000-0000-4000-8000-000000000012",
+  "op": "session.checkpoint",
+  "workstream_id": "00000000000000000000000001",
+  "work_id": "API-1",
+  "coordinator_epoch": "epoch-a",
+  "expected_project_revision": "5",
+  "expected_authority_version": "1",
+  "expected_ownership_version": "1",
+  "expected_contract_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "args": {
+    "session_id": "<id>",
+    "expected_session_version": "1",
+    "context_hash": "<hash from prepare you actually consumed>",
+    "next_action": "Implement filtered query API",
+    "open_loops": ["Await schema review"]
+  }
+}
+```
+
+Closing Claude Code or the MCP transport does not end the durable Team session —
+use `session.end` or an authorized handoff.
 
 ### 5. PR link
 
-Develop in your git checkout of the handed repo. After opening the PR:
+Develop in your git checkout of the handed repo. After opening the PR, register
+facts with a full command envelope:
 
-- `delivery.register_pr` with repository, number, URL, `head_sha`,
-  `fact_source`, `observed_at`
-- `evidence.submit` / `review.open` / `delivery.submit_and_request_review`
+```json
+{
+  "protocol_version": 1,
+  "request_id": "00000000-0000-4000-8000-000000000013",
+  "op": "delivery.register_pr",
+  "workstream_id": "00000000000000000000000001",
+  "work_id": "API-1",
+  "coordinator_epoch": "epoch-a",
+  "expected_project_revision": "6",
+  "expected_authority_version": "1",
+  "expected_ownership_version": "1",
+  "expected_contract_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "args": {
+    "session_id": "<id>",
+    "expected_session_version": "2",
+    "repository": "originoneai/example",
+    "pr_number": 1,
+    "pr_url": "https://github.com/originoneai/example/pull/1",
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "fact_source": "authorized_human_github_verification",
+    "observed_at": "2026-09-23T04:00:00+08:00"
+  }
+}
+```
 
-See [pr-delivery-review.md](pr-delivery-review.md). GitHub UI state is not AWR
-completion.
+Then `evidence.submit` / `review.open` / `delivery.submit_and_request_review` as
+authorized. See [pr-delivery-review.md](pr-delivery-review.md). GitHub UI state
+is not AWR completion.
 
 ### 6. Rework
 
@@ -87,7 +182,7 @@ team-independent reviewers.
 
 ## Host adapter note
 
-`claude_code` supports status / reconnect / forensics; **start** and
-**stop_confirmation** return human continuation. Prefer reconnecting the same
-execution identity before starting anything new
-([named-agent-host.md](named-agent-host.md)).
+`claude_code` supports status / reconnect / forensics only when backed by
+attributable observation; **start** and **stop_confirmation** return human
+continuation. Prefer reconnecting the same execution identity before starting
+anything new ([named-agent-host.md](named-agent-host.md)).
