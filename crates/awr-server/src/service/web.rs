@@ -286,6 +286,10 @@ fn capabilities_query() -> WorkstreamQuery {
 #[serde(deny_unknown_fields)]
 struct LoginBody {
     bearer: String,
+    /// Optional project key. When set, authenticate only against that binding.
+    /// When omitted, discover any authorized binding without exposing others.
+    #[serde(default)]
+    project: Option<String>,
 }
 
 async fn login(State(state): State<Arc<StateData>>, headers: HeaderMap, body: Bytes) -> Response {
@@ -314,23 +318,19 @@ async fn login(State(state): State<Arc<StateData>>, headers: HeaderMap, body: By
     {
         return with_cors(denied(), &origin);
     }
-    let Some(project) = state.projects.values().next() else {
-        return with_cors(denied(), &origin);
-    };
-    match state
-        .store
-        .query(
-            &project.tenant_id,
-            &project.project_id,
-            &parsed.bearer,
-            capabilities_query(),
-        )
-        .await
+    let authorized = match authorized_project_bindings(
+        &state,
+        &parsed.bearer,
+        parsed.project.as_deref(),
+    )
+    .await
     {
-        Ok(_) => {}
+        Ok(list) if !list.is_empty() => list,
+        Ok(_) => return with_cors(denied(), &origin),
         Err(PgError::Forbidden) => return with_cors(denied(), &origin),
         Err(error) => return with_cors(error_response(error), &origin),
-    }
+    };
+    let project_keys: Vec<String> = authorized.iter().map(|p| p.key.clone()).collect();
     let session_id = match new_session_id() {
         Ok(id) => id,
         Err(r) => return with_cors(r, &origin),
@@ -361,7 +361,7 @@ async fn login(State(state): State<Arc<StateData>>, headers: HeaderMap, body: By
             "protocol_version": 1,
             "session_id": session_id,
             "expires_at_ms": now + SESSION_TTL_SECS * 1000,
-            "projects": state.projects.keys().cloned().collect::<Vec<_>>(),
+            "projects": project_keys,
             "auth": {
                 "kind": "http_only_cookie",
                 "cookie": COOKIE_NAME,
@@ -487,6 +487,10 @@ async fn session_inspect(State(state): State<Arc<StateData>>, headers: HeaderMap
             &origin,
         );
     };
+    let projects = match authorized_project_keys(&state, &session.bearer).await {
+        Ok(keys) => keys,
+        Err(_) => Vec::<String>::new(),
+    };
     with_cors(
         response(
             StatusCode::OK,
@@ -496,7 +500,7 @@ async fn session_inspect(State(state): State<Arc<StateData>>, headers: HeaderMap
                 "created_at_ms": session.created_at_ms,
                 "expires_at_ms": session.expires_at_ms,
                 "last_seen_ms": session.last_seen_ms,
-                "projects": state.projects.keys().cloned().collect::<Vec<_>>(),
+                "projects": projects,
             }),
         ),
         &origin,
@@ -511,7 +515,7 @@ async fn list_projects(State(state): State<Arc<StateData>>, headers: HeaderMap) 
     let Some(id) = cookie_session_id(&headers) else {
         return with_cors(denied(), &origin);
     };
-    if state.web_sessions.get_live(&id).is_none() {
+    let Some(session) = state.web_sessions.get_live(&id) else {
         return with_cors(
             response(
                 StatusCode::UNAUTHORIZED,
@@ -519,18 +523,21 @@ async fn list_projects(State(state): State<Arc<StateData>>, headers: HeaderMap) 
             ),
             &origin,
         );
-    }
-    let projects: Vec<Value> = state
-        .projects
-        .values()
-        .map(|p: &ProjectBinding| {
-            json!({
-                "key": p.key,
-                "tenant_id": p.tenant_id,
-                "project_id": p.project_id,
+    };
+    let projects = match authorized_project_bindings(&state, &session.bearer, None).await {
+        Ok(list) => list
+            .into_iter()
+            .map(|p| {
+                json!({
+                    "key": p.key,
+                    "tenant_id": p.tenant_id,
+                    "project_id": p.project_id,
+                })
             })
-        })
-        .collect();
+            .collect::<Vec<Value>>(),
+        Err(PgError::Forbidden) => Vec::new(),
+        Err(error) => return with_cors(error_response(error), &origin),
+    };
     with_cors(
         response(
             StatusCode::OK,
@@ -559,6 +566,50 @@ async fn preflight(State(state): State<Arc<StateData>>, headers: HeaderMap) -> R
         HeaderValue::from_static("600"),
     );
     with_cors(res, &origin)
+}
+
+/// Projects the bearer is currently authorized for (capabilities probe).
+/// `only_key` selects one binding; otherwise all configured projects are checked.
+/// Unauthorized bindings are omitted — never enumerated to the client.
+async fn authorized_project_bindings(
+    state: &StateData,
+    bearer: &str,
+    only_key: Option<&str>,
+) -> Result<Vec<ProjectBinding>, PgError> {
+    let candidates: Vec<&ProjectBinding> = if let Some(key) = only_key {
+        match state.projects.get(key) {
+            Some(p) => vec![p],
+            None => return Ok(Vec::new()),
+        }
+    } else {
+        state.projects.values().collect()
+    };
+    let mut out = Vec::new();
+    for project in candidates {
+        match state
+            .store
+            .query(
+                &project.tenant_id,
+                &project.project_id,
+                bearer,
+                capabilities_query(),
+            )
+            .await
+        {
+            Ok(_) => out.push(project.clone()),
+            Err(PgError::Forbidden) => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(out)
+}
+
+async fn authorized_project_keys(state: &StateData, bearer: &str) -> Result<Vec<String>, PgError> {
+    Ok(authorized_project_bindings(state, bearer, None)
+        .await?
+        .into_iter()
+        .map(|p| p.key)
+        .collect())
 }
 
 async fn require_session(

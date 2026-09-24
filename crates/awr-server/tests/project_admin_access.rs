@@ -109,7 +109,15 @@ fn member_plan() -> AdminAccessPlan {
 
 #[tokio::test]
 async fn admin_can_preview_apply_via_mcp_and_http_non_admin_denied_no_raw_secrets() {
-    let (_g, _owner, _db, store) = setup().await;
+    let (_g, owner, _db, store) = setup().await;
+    owner
+        .batch_execute(
+            "UPDATE awr_team.workstream_grants
+             SET can_write=true, can_manage=true, grant_version=grant_version+1
+             WHERE client_id='cli-a'",
+        )
+        .await
+        .unwrap();
     let server = start(store).await;
     let client = http();
 

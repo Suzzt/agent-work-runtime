@@ -2,9 +2,10 @@
 use crate::error::{PgError, PgResult};
 use crate::tx::{bind_workstream_scope, new_id};
 use awr_core::{
-    AdoptDeliveryRequest, AdoptionCredential, DeliveryCredentialReceipt, DeliveryError,
-    ExportAuthorization, GrantExportAuthorizationRequest, HardDeliveryDependency,
-    RegisterHardDependencyRequest, RevokeExportAuthorizationRequest, RevokeHardDependencyRequest,
+    AdoptDeliveryRequest, AdoptionCredential, CompletionAcceptanceProof, DeliveryAvailability,
+    DeliveryCredentialReceipt, DeliveryError, DeliveryVersion, EvidenceLevel, ExportAuthorization,
+    GrantExportAuthorizationRequest, HardDeliveryDependency, Id, RegisterHardDependencyRequest,
+    RevokeExportAuthorizationRequest, RevokeHardDependencyRequest,
     adopt_delivery_credential as core_adopt_delivery_credential, apply_export_revoke,
     apply_hard_dependency_revoke, validate_export_grant, validate_hard_dependency_registration,
 };
@@ -123,6 +124,14 @@ impl DeliveryAdoptionStore {
                 },
             ));
         }
+        if load_dep(&tx, tenant, project, &req.dependency_id)
+            .await?
+            .is_some()
+        {
+            return Err(PgError::Protocol(
+                "hard delivery dependency id already registered".into(),
+            ));
+        }
         let dep = validate_hard_dependency_registration(req).map_err(map_delivery)?;
         persist_dep(&tx, tenant, project, &dep).await?;
         let receipt = record_receipt(
@@ -223,6 +232,14 @@ impl DeliveryAdoptionStore {
                     replayed: true,
                     ..receipt
                 },
+            ));
+        }
+        if load_export(&tx, tenant, project, &req.authorization_id)
+            .await?
+            .is_some()
+        {
+            return Err(PgError::Protocol(
+                "export authorization id already registered".into(),
             ));
         }
         let auth = validate_export_grant(req).map_err(map_delivery)?;
@@ -346,13 +363,246 @@ impl DeliveryAdoptionStore {
                 "adoption export authorization snapshot does not match store".into(),
             ));
         }
-        let cred = core_adopt_delivery_credential(req).map_err(map_delivery)?;
+        if load_credential(&tx, tenant, project, &req.credential_id)
+            .await?
+            .is_some()
+        {
+            return Err(PgError::Protocol(
+                "adoption credential id already registered".into(),
+            ));
+        }
+        // WS-018 completion is authoritative. Request-supplied proof fields are
+        // never trusted on their own. fixed_delivery may adopt a historical
+        // receipt after the current selection moves; current_contract revalidates
+        // against the live selected completion.
+        let trusted_completion = load_trusted_completion_proof(
+            &tx,
+            tenant,
+            project,
+            &stored_dep.provider.work_item_id,
+            &stored_dep.selected,
+        )
+        .await?;
+        let availability =
+            availability_from_completion(&tx, tenant, project, &trusted_completion).await?;
+        let current_selection =
+            current_selection_for_policy(&tx, tenant, project, &stored_dep).await?;
+        let mut trusted_req = req.clone();
+        trusted_req.dependency = stored_dep;
+        trusted_req.export_authorization = stored_export;
+        trusted_req.completion = trusted_completion;
+        trusted_req.availability = availability;
+        trusted_req.current_selection = current_selection;
+        let cred = core_adopt_delivery_credential(&trusted_req).map_err(map_delivery)?;
         persist_credential(&tx, tenant, project, &cred).await?;
         let receipt =
             record_receipt(&tx, tenant, project, &req.request_key, &cred.id, "adopt").await?;
         tx.commit().await?;
         Ok((cred, receipt))
     }
+}
+
+fn missing_trusted_completion() -> PgError {
+    PgError::Protocol("trusted WS-018 completion proof missing".into())
+}
+
+async fn current_selection_for_policy(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    dep: &HardDeliveryDependency,
+) -> PgResult<Option<DeliveryVersion>> {
+    if dep.policy == awr_core::DeliveryVersionPolicy::FixedDelivery {
+        return Ok(None);
+    }
+    let row = tx
+        .query_opt(
+            "SELECT state, selected_completion_id FROM awr_team.work_runtime
+             WHERE tenant_id=$1 AND project_id=$2 AND scope_id='main' AND work_id=$3",
+            &[&tenant, &project, &dep.provider.work_item_id],
+        )
+        .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let state: String = row.get(0);
+    let selected: Option<String> = row.get(1);
+    if state != "completed" {
+        return Ok(None);
+    }
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    if selected == dep.selected.completion_receipt.to_string() {
+        return Ok(Some(dep.selected.clone()));
+    }
+    let receipt_id: Id = selected
+        .parse()
+        .map_err(|_| PgError::Protocol("current completion id is not a ulid".into()))?;
+    Ok(Some(DeliveryVersion {
+        completion_receipt: receipt_id,
+        ..dep.selected.clone()
+    }))
+}
+
+async fn availability_from_completion(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    proof: &CompletionAcceptanceProof,
+) -> PgResult<DeliveryAvailability> {
+    let evidence_id = proof.evidence_id.to_string();
+    let row = tx
+        .query_opt(
+            "SELECT e.output_digest, a.state
+             FROM awr_team.evidence e
+             LEFT JOIN awr_team.artifacts a
+               ON a.tenant_id=e.tenant_id AND a.project_id=e.project_id AND a.id=e.artifact_id
+             WHERE e.tenant_id=$1 AND e.project_id=$2 AND e.id=$3",
+            &[&tenant, &project, &evidence_id],
+        )
+        .await?
+        .ok_or_else(missing_trusted_completion)?;
+    let output: Option<String> = row.get(0);
+    let artifact_state: Option<String> = row.get(1);
+    if output.as_deref() != Some(proof.artifact_sha256.as_str()) {
+        return Err(PgError::Protocol(
+            "trusted completion artifact binding mismatch".into(),
+        ));
+    }
+    if artifact_state.as_deref() == Some("missing") {
+        return Ok(DeliveryAvailability::Unavailable);
+    }
+    Ok(DeliveryAvailability::Available)
+}
+
+async fn load_trusted_completion_proof(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    provider_work_id: &str,
+    selected: &DeliveryVersion,
+) -> PgResult<CompletionAcceptanceProof> {
+    let receipt_id = selected.completion_receipt.to_string();
+    let receipt = tx
+        .query_opt(
+            "SELECT work_id, contract_hash, independence_kind, evidence_id,
+                    approved_by_person_id, submitted_by_person_id,
+                    (EXTRACT(EPOCH FROM accepted_at) * 1000)::bigint
+             FROM awr_team.completion_receipts
+             WHERE tenant_id=$1 AND project_id=$2 AND scope_id='main'
+               AND work_id=$3 AND id=$4",
+            &[&tenant, &project, &provider_work_id, &receipt_id],
+        )
+        .await?
+        .ok_or_else(missing_trusted_completion)?;
+    let work_id: String = receipt.get(0);
+    let contract_hash: String = receipt.get(1);
+    let independence_kind: Option<String> = receipt.get(2);
+    let evidence_id: Option<String> = receipt.get(3);
+    let reviewer_person: Option<String> = receipt.get(4);
+    let author_person: Option<String> = receipt.get(5);
+    let verified_at_ms: i64 = receipt.get(6);
+
+    if work_id != provider_work_id || contract_hash != selected.contract_sha256 {
+        return Err(PgError::Protocol(
+            "trusted completion contract/work binding mismatch".into(),
+        ));
+    }
+    let evidence_id = evidence_id.ok_or_else(missing_trusted_completion)?;
+    let independence_kind = independence_kind.ok_or_else(missing_trusted_completion)?;
+    let author_person = author_person.ok_or_else(missing_trusted_completion)?;
+    let reviewer_person = reviewer_person.ok_or_else(missing_trusted_completion)?;
+    if author_person.is_empty() || reviewer_person.is_empty() {
+        return Err(missing_trusted_completion());
+    }
+
+    let evidence = tx
+        .query_opt(
+            "SELECT work_id, contract_hash, output_digest, trust_basis, digest
+             FROM awr_team.evidence
+             WHERE tenant_id=$1 AND project_id=$2 AND id=$3",
+            &[&tenant, &project, &evidence_id],
+        )
+        .await?
+        .ok_or_else(missing_trusted_completion)?;
+    let ev_work: String = evidence.get(0);
+    let ev_contract: String = evidence.get(1);
+    let output_digest: Option<String> = evidence.get(2);
+    let trust_basis: String = evidence.get(3);
+    let bundle_hash: String = evidence.get(4);
+    let artifact_sha256 = output_digest.ok_or_else(missing_trusted_completion)?;
+    if ev_work != provider_work_id
+        || ev_contract != selected.contract_sha256
+        || artifact_sha256 != selected.artifact_sha256
+    {
+        return Err(PgError::Protocol(
+            "trusted completion evidence binding mismatch".into(),
+        ));
+    }
+
+    // Independent-review binding: a still-approved round must have an approve
+    // decision by the receipt's reviewer, and that person must not be the author.
+    if independence_kind == "team_independent" {
+        let approved = tx
+            .query_opt(
+                "SELECT 1
+                 FROM awr_team.review_rounds rr
+                 JOIN awr_team.review_decisions rd
+                   ON rd.tenant_id=rr.tenant_id AND rd.project_id=rr.project_id
+                  AND rd.review_round_id=rr.id
+                 WHERE rr.tenant_id=$1 AND rr.project_id=$2 AND rr.work_id=$3
+                   AND rr.bundle_hash=$4 AND rr.contract_hash=$5
+                   AND rr.state='approved'
+                   AND rd.decision='approve'
+                   AND rd.independence_kind='team_independent'
+                   AND rd.reviewer_person_id=$6
+                   AND rd.reviewer_person_id <> $7
+                 LIMIT 1",
+                &[
+                    &tenant,
+                    &project,
+                    &provider_work_id,
+                    &bundle_hash,
+                    &selected.contract_sha256,
+                    &reviewer_person,
+                    &author_person,
+                ],
+            )
+            .await?;
+        if approved.is_none() {
+            return Err(PgError::Protocol(
+                "trusted completion independent-review binding missing".into(),
+            ));
+        }
+    }
+
+    let evidence_level = match trust_basis.as_str() {
+        "trusted_executor" | "human_review" => EvidenceLevel::LocallyVerified,
+        _ => EvidenceLevel::Unknown,
+    };
+    let evidence_ulid: Id = evidence_id
+        .parse()
+        .map_err(|_| PgError::Protocol("completion evidence id is not a ulid".into()))?;
+    if verified_at_ms < 0 {
+        return Err(PgError::Protocol(
+            "trusted completion has invalid time".into(),
+        ));
+    }
+
+    Ok(CompletionAcceptanceProof {
+        completion_receipt_id: selected.completion_receipt,
+        work_item_id: provider_work_id.to_string(),
+        contract_sha256: selected.contract_sha256.clone(),
+        artifact_sha256: selected.artifact_sha256.clone(),
+        independence_kind: independence_kind.clone(),
+        team_independent_acceptance: independence_kind == "team_independent",
+        author_person_id: author_person,
+        reviewer_person_id: reviewer_person,
+        evidence_id: evidence_ulid,
+        evidence_level,
+        verified_at_ms,
+    })
 }
 
 async fn load_dep(

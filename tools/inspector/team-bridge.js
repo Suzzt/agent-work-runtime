@@ -1,11 +1,16 @@
 /**
  * Team Web bridge helpers (WS-044).
- * Demo fixtures + optional proxy to awr-server `/v1/web` cookie entry.
+ * Demo fixtures when not live; live `--team-url` proxies to awr-server `/v1/web`
+ * (cookie session, authorized query/command store, durable receipts).
  */
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
+
+/** Owned Inspector path so browsers attach the session to /api/team/* routes. */
+const OWNED_COOKIE_PATH = '/api/team';
+const UPSTREAM_COOKIE_PATH = '/v1/web';
 
 function asObject(body) {
   if (body == null) return {};
@@ -13,9 +18,37 @@ function asObject(body) {
   try { return JSON.parse(body || '{}'); } catch { return null; }
 }
 
+/**
+ * Rewrite upstream Set-Cookie Path=/v1/web → Path=/api/team at the proxy
+ * boundary (including Max-Age=0 clears). Upstream Path would not be sent to
+ * Inspector /api/team/projects, logout, or revoke.
+ */
+function rewriteOwnedCookiePath(cookie) {
+  const raw = String(cookie);
+  if (/;\s*Path=\/v1\/web(?=;|$)/i.test(raw)) {
+    return raw.replace(/;\s*Path=\/v1\/web(?=;|$)/gi, `; Path=${OWNED_COOKIE_PATH}`);
+  }
+  // Upstream omitted Path or used another value — still pin to owned routes.
+  if (/;\s*Path=/i.test(raw)) {
+    return raw.replace(/;\s*Path=[^;]*/i, `; Path=${OWNED_COOKIE_PATH}`);
+  }
+  return `${raw}; Path=${OWNED_COOKIE_PATH}`;
+}
+
+function applyProxiedCookies(res, setCookie) {
+  if (!res || !setCookie || !setCookie.length) return;
+  const rewritten = setCookie.map(rewriteOwnedCookiePath);
+  res.setHeader('set-cookie', rewritten.length === 1 ? rewritten[0] : rewritten);
+}
+
 function createTeamBridge(opts) {
+  const live = Boolean(opts.teamUrl);
+  // Fixtures are demo-only: never when --team-url is set.
+  const demoMode = !live && opts.demo !== false;
   const TEAM = {
     url: opts.teamUrl || null,
+    live,
+    demoMode,
     port: opts.port,
     fixtureDir:
       opts.teamFixtureDir ||
@@ -30,7 +63,7 @@ function createTeamBridge(opts) {
   }
 
   function demoSessionCookie(id) {
-    return `awr_web_session=${id}; HttpOnly; Path=/api/team; SameSite=Strict`;
+    return `awr_web_session=${id}; HttpOnly; Path=${OWNED_COOKIE_PATH}; SameSite=Strict`;
   }
 
   function parseTeamCookie(req) {
@@ -53,22 +86,23 @@ function createTeamBridge(opts) {
     return session;
   }
 
-  async function proxyTeam(reqPath, req, body) {
+  async function proxyTeam(reqPath, req, body, methodOverride) {
     if (!TEAM.url) return null;
+    const method = methodOverride || req.method || 'GET';
     const headers = {
       'content-type': 'application/json',
       'x-awr-web': '1',
       origin: `http://127.0.0.1:${TEAM.port}`,
     };
-    if (req.headers.cookie) headers.cookie = req.headers.cookie;
+    if (req.headers && req.headers.cookie) headers.cookie = req.headers.cookie;
     const payload =
-      body == null || req.method === 'GET'
+      body == null || method === 'GET' || method === 'HEAD'
         ? undefined
         : typeof body === 'string'
           ? body
           : JSON.stringify(body);
     const res = await fetch(String(TEAM.url).replace(/\/$/, '') + reqPath, {
-      method: req.method,
+      method,
       headers,
       body: payload,
     });
@@ -79,15 +113,73 @@ function createTeamBridge(opts) {
     } catch {
       json = { ok: false, error: { code: 'BadGateway', message: text.slice(0, 200) } };
     }
-    const setCookie = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
+    const setCookie =
+      typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
     return { status: res.status, json, setCookie };
   }
 
+  function liveError(proxied) {
+    const body = proxied && proxied.json;
+    if (body && body.code) {
+      return { ok: false, error: { code: body.code, message: body.message || body.code } };
+    }
+    if (body && body.error) {
+      return { ok: false, error: body.error };
+    }
+    return {
+      ok: false,
+      error: {
+        code: proxied && proxied.status === 401 ? 'Unauthenticated' : 'UpstreamError',
+        message: (body && body.message) || 'upstream request failed',
+      },
+    };
+  }
+
+  const ACTION_OP = {
+    accept_responsibility: 'handoff.accept',
+    select_agent: 'claim.acquire',
+    respond_blocker: 'session.checkpoint',
+    handoff_receive: 'handoff.accept',
+    submit_review: 'delivery.submit_and_request_review',
+    rework: 'work.rework',
+    accept: 'review.accept',
+  };
+
+  function mapWorksFromQuery(data) {
+    const items = (data && data.items) || (data && data.works) || [];
+    if (!Array.isArray(items)) return [];
+    return items.map((item) => {
+      if (item && item.key) return item;
+      const key = (item && (item.external_key || item.work_id || item.id)) || 'unknown';
+      return {
+        key: String(key),
+        title: (item && (item.title || item.name)) || String(key),
+        owner_person: (item && item.owner_person) || null,
+        agent: (item && item.agent) || null,
+        outcome: (item && item.outcome) || null,
+        status: (item && (item.status || item.state)) || 'unknown',
+        blocker: (item && item.blocker) || null,
+        next_step: (item && item.next_step) || null,
+        depends_on: (item && item.depends_on) || [],
+        hidden_deps: (item && item.hidden_deps) || [],
+        capabilities: (item && item.capabilities) || {},
+      };
+    });
+  }
+
   const routes = {
-    'GET /api/team/projects': async (url, _body, req) => {
-      if (TEAM.url) {
-        const proxied = await proxyTeam('/v1/web/projects', req, null);
-        if (proxied) return proxied.json;
+    'GET /api/team/projects': async (url, _body, req, res) => {
+      if (TEAM.live) {
+        const proxied = await proxyTeam('/v1/web/projects', req, null, 'GET');
+        if (!proxied) {
+          return { ok: false, error: { code: 'BadGateway', message: 'live proxy unavailable' } };
+        }
+        applyProxiedCookies(res, proxied.setCookie);
+        if (proxied.status >= 400) return liveError(proxied);
+        return proxied.json;
+      }
+      if (!TEAM.demoMode) {
+        return { ok: false, error: { code: 'DemoDisabled', message: 'fixtures require demo mode' } };
       }
       const view = url.searchParams.get('view') === 'personal' ? 'personal-view.json' : 'team-view.json';
       const data = readFixture(view);
@@ -96,7 +188,49 @@ function createTeamBridge(opts) {
       return { ok: true, projects: data.projects, session, view: data.view };
     },
 
-    'GET /api/team/overview': async (url) => {
+    'GET /api/team/overview': async (url, _body, req, res) => {
+      if (TEAM.live) {
+        const project = url.searchParams.get('project');
+        if (!project) {
+          return { ok: false, error: { code: 'InvalidInput', message: 'project required' } };
+        }
+        const session = await proxyTeam('/v1/web/session', req, null, 'GET');
+        if (!session) {
+          return { ok: false, error: { code: 'BadGateway', message: 'live proxy unavailable' } };
+        }
+        applyProxiedCookies(res, session.setCookie);
+        if (session.status >= 400) return liveError(session);
+
+        const worksQ = await proxyTeam(
+          `/v1/web/projects/${encodeURIComponent(project)}/query`,
+          req,
+          { protocol_version: 1, op: 'work.list' },
+          'POST'
+        );
+        if (!worksQ) {
+          return { ok: false, error: { code: 'BadGateway', message: 'live proxy unavailable' } };
+        }
+        applyProxiedCookies(res, worksQ.setCookie);
+        if (worksQ.status >= 400) return liveError(worksQ);
+
+        const payload = worksQ.json && worksQ.json.data ? worksQ.json.data : worksQ.json;
+        return {
+          ok: true,
+          project,
+          works: mapWorksFromQuery(payload),
+          members: [],
+          handoffs: [],
+          reviews: [],
+          schema: 'awr-team-web-loop-live/v1',
+          session: {
+            session_id: session.json && session.json.session_id,
+            expires_at_ms: session.json && session.json.expires_at_ms,
+          },
+        };
+      }
+      if (!TEAM.demoMode) {
+        return { ok: false, error: { code: 'DemoDisabled', message: 'fixtures require demo mode' } };
+      }
       const view = url.searchParams.get('view') === 'personal' ? 'personal-view.json' : 'team-view.json';
       const data = readFixture(view);
       return {
@@ -111,12 +245,17 @@ function createTeamBridge(opts) {
     },
 
     'POST /api/team/login': async (_url, body, req, res) => {
-      if (TEAM.url) {
-        const proxied = await proxyTeam('/v1/web/login', req, body);
-        if (proxied) {
-          for (const c of proxied.setCookie || []) res.setHeader('set-cookie', c);
-          return proxied.json;
+      if (TEAM.live) {
+        const proxied = await proxyTeam('/v1/web/login', req, body, 'POST');
+        if (!proxied) {
+          return { ok: false, error: { code: 'BadGateway', message: 'live proxy unavailable' } };
         }
+        applyProxiedCookies(res, proxied.setCookie);
+        if (proxied.status >= 400) return liveError(proxied);
+        return proxied.json;
+      }
+      if (!TEAM.demoMode) {
+        return { ok: false, error: { code: 'DemoDisabled', message: 'fixtures require demo mode' } };
       }
       const parsed = asObject(body);
       if (!parsed) {
@@ -145,54 +284,115 @@ function createTeamBridge(opts) {
     },
 
     'POST /api/team/logout': async (_url, _body, req, res) => {
-      if (TEAM.url) {
-        const proxied = await proxyTeam('/v1/web/logout', req, '{}');
-        if (proxied) {
-          for (const c of proxied.setCookie || []) res.setHeader('set-cookie', c);
-          return proxied.json;
+      if (TEAM.live) {
+        const proxied = await proxyTeam('/v1/web/logout', req, '{}', 'POST');
+        if (!proxied) {
+          return { ok: false, error: { code: 'BadGateway', message: 'live proxy unavailable' } };
         }
+        applyProxiedCookies(res, proxied.setCookie);
+        if (proxied.status >= 400) return liveError(proxied);
+        return proxied.json;
       }
       const id = parseTeamCookie(req);
       if (id && TEAM.sessions.has(id)) TEAM.sessions.get(id).revoked = true;
       res.setHeader(
         'set-cookie',
-        'awr_web_session=; HttpOnly; Path=/api/team; SameSite=Strict; Max-Age=0'
+        `awr_web_session=; HttpOnly; Path=${OWNED_COOKIE_PATH}; SameSite=Strict; Max-Age=0`
       );
       return { ok: true, logged_out: true };
     },
 
     'POST /api/team/session/revoke': async (_url, body, req, res) => {
-      if (TEAM.url) {
-        const proxied = await proxyTeam('/v1/web/session/revoke', req, body);
-        if (proxied) {
-          for (const c of proxied.setCookie || []) res.setHeader('set-cookie', c);
-          return proxied.json;
+      if (TEAM.live) {
+        const proxied = await proxyTeam('/v1/web/session/revoke', req, body, 'POST');
+        if (!proxied) {
+          return { ok: false, error: { code: 'BadGateway', message: 'live proxy unavailable' } };
         }
+        applyProxiedCookies(res, proxied.setCookie);
+        if (proxied.status >= 400) return liveError(proxied);
+        return proxied.json;
       }
       const id = parseTeamCookie(req);
       if (id && TEAM.sessions.has(id)) TEAM.sessions.get(id).revoked = true;
       for (const s of TEAM.sessions.values()) s.revoked = true;
       res.setHeader(
         'set-cookie',
-        'awr_web_session=; HttpOnly; Path=/api/team; SameSite=Strict; Max-Age=0'
+        `awr_web_session=; HttpOnly; Path=${OWNED_COOKIE_PATH}; SameSite=Strict; Max-Age=0`
       );
       return { ok: true, revoked: [{ scope: 'all_mine' }] };
     },
 
-    'POST /api/team/action': async (_url, body) => {
+    'POST /api/team/action': async (_url, body, req, res) => {
       const parsed = asObject(body);
       if (!parsed) {
         return { ok: false, error: { code: 'InvalidInput', message: 'invalid action' } };
       }
-      const allowed = new Set([
-        'accept_responsibility',
-        'select_agent',
-        'respond_blocker',
-        'handoff_receive',
-        'submit_review',
-        'rework',
-        'accept',
-      ]);
+
+      if (TEAM.live) {
+        if (!parsed.project || typeof parsed.project !== 'string') {
+          return { ok: false, error: { code: 'InvalidInput', message: 'project required' } };
+        }
+        // Live writes must hit the authorized command store — never invent receipts.
+        const session = await proxyTeam('/v1/web/session', req, null, 'GET');
+        if (!session) {
+          return { ok: false, error: { code: 'BadGateway', message: 'live proxy unavailable' } };
+        }
+        applyProxiedCookies(res, session.setCookie);
+        if (session.status >= 400) return liveError(session);
+
+        let commandPayload = parsed.command;
+        if (!commandPayload || typeof commandPayload !== 'object') {
+          // Allow callers to supply a full command under top-level fields.
+          if (parsed.protocol_version && parsed.op && parsed.request_id) {
+            commandPayload = { ...parsed };
+            delete commandPayload.project;
+            delete commandPayload.action;
+            delete commandPayload.command;
+            delete commandPayload.expired;
+          } else {
+            return {
+              ok: false,
+              error: {
+                code: 'InvalidInput',
+                message:
+                  'live action requires a command payload for the authorized command store',
+              },
+            };
+          }
+        }
+        if (parsed.expired === true) {
+          return { ok: false, error: { code: 'ExpiredOperation', message: 'operation expired' } };
+        }
+
+        const proxied = await proxyTeam(
+          `/v1/web/projects/${encodeURIComponent(parsed.project)}/command`,
+          req,
+          commandPayload,
+          'POST'
+        );
+        if (!proxied) {
+          return { ok: false, error: { code: 'BadGateway', message: 'live proxy unavailable' } };
+        }
+        applyProxiedCookies(res, proxied.setCookie);
+        if (proxied.status >= 400) return liveError(proxied);
+
+        const upstream = proxied.json || {};
+        // Uncertain-outcome / exact replay: forward store receipt unchanged.
+        return {
+          ok: true,
+          replayed: Boolean(upstream.replayed),
+          receipt: upstream.receipt || null,
+          server_op: (upstream.receipt && upstream.receipt.op) || commandPayload.op || null,
+          execution_authorized: upstream.execution_authorized,
+          upstream,
+        };
+      }
+
+      if (!TEAM.demoMode) {
+        return { ok: false, error: { code: 'DemoDisabled', message: 'fixtures require demo mode' } };
+      }
+
+      const allowed = new Set(Object.keys(ACTION_OP));
       if (!allowed.has(parsed.action) || !parsed.request_id || !parsed.work_key) {
         return { ok: false, error: { code: 'InvalidInput', message: 'invalid action fields' } };
       }
@@ -203,19 +403,10 @@ function createTeamBridge(opts) {
       if (TEAM.receipts.has(receiptKey)) {
         return { ok: true, replayed: true, receipt: TEAM.receipts.get(receiptKey) };
       }
-      const opMap = {
-        accept_responsibility: 'handoff.accept',
-        select_agent: 'claim.acquire',
-        respond_blocker: 'session.checkpoint',
-        handoff_receive: 'handoff.accept',
-        submit_review: 'delivery.submit_and_request_review',
-        rework: 'work.rework',
-        accept: 'review.accept',
-      };
       const receipt = {
         id: 'rcpt_' + receiptKey,
         request_id: receiptKey,
-        op: opMap[parsed.action],
+        op: ACTION_OP[parsed.action],
         work_key: parsed.work_key,
         project: parsed.project,
         agent_id: parsed.agent_id || null,
@@ -226,7 +417,15 @@ function createTeamBridge(opts) {
     },
   };
 
-  return { TEAM, routes, readFixture, teamAuth };
+  return {
+    TEAM,
+    routes,
+    readFixture,
+    teamAuth,
+    rewriteOwnedCookiePath,
+    OWNED_COOKIE_PATH,
+    UPSTREAM_COOKIE_PATH,
+  };
 }
 
-module.exports = { createTeamBridge };
+module.exports = { createTeamBridge, rewriteOwnedCookiePath };

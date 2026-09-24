@@ -421,10 +421,9 @@ impl ServerHandler for Endpoint {
                         .await
                 }
                 "awr_team_access_preview" => {
-                    let plan: awr_team_pg::AdminAccessPlan = serde_json::from_value(
-                        args.get("plan").cloned().unwrap_or(Value::Null),
-                    )
-                    .map_err(|_| PgError::Protocol("invalid access plan".into()))?;
+                    let plan: awr_team_pg::AdminAccessPlan =
+                        serde_json::from_value(args.get("plan").cloned().unwrap_or(Value::Null))
+                            .map_err(|_| PgError::Protocol("invalid access plan".into()))?;
                     self.state
                         .store
                         .project_access()
@@ -437,10 +436,9 @@ impl ServerHandler for Endpoint {
                         .await
                 }
                 "awr_team_access_apply" => {
-                    let plan: awr_team_pg::AdminAccessPlan = serde_json::from_value(
-                        args.get("plan").cloned().unwrap_or(Value::Null),
-                    )
-                    .map_err(|_| PgError::Protocol("invalid access plan".into()))?;
+                    let plan: awr_team_pg::AdminAccessPlan =
+                        serde_json::from_value(args.get("plan").cloned().unwrap_or(Value::Null))
+                            .map_err(|_| PgError::Protocol("invalid access plan".into()))?;
                     let request_id = args
                         .get("request_id")
                         .and_then(|v| v.as_str())
