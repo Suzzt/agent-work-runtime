@@ -4,9 +4,9 @@
 
 # AWR
 
-**The open-source project delivery platform for people and AI.**
+**Let your AI team keep complex projects moving—from goal to verified delivery.**
 
-Keep the goal. Connect the work. Make delivery traceable.
+The open-source project delivery platform for people and AI.
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -20,45 +20,78 @@ Keep the goal. Connect the work. Make delivery traceable.
 
 ---
 
-AWR gives people and AI agents a shared, durable record of a project: its goals,
-work, dependencies, decisions and evidence. It connects your existing project
-sources to the agent you already use through **CLI or MCP**, so the next session
-can find the current task and continue from recorded progress.
+AWR connects **goals, workstreams, dependencies, context and acceptance** into
+one project delivery workflow. It is built for **one person coordinating several
+agents, and teams delivering a shared project**—starting with complex software
+projects.
 
-People and agents plan, execute and review. AWR preserves the facts they need,
-compiles focused context, and makes handoffs and completion claims inspectable.
+Changing sessions, models or collaborators should preserve the project's goals,
+constraints and verified progress. Parallel work should have clear ownership
+and handoffs. At every stage, you should be able to tell **what is ready, what is
+waiting, what has been verified, and where the effort went**.
 
-## Use cases
+People set direction and review outcomes; agents do the work. AWR connects their
+work to the same project through **CLI/MCP**, with Team collaboration developing
+on that foundation. The availability labels below distinguish the published
+release from development on `main`.
 
-| When you need to… | How AWR helps |
-| --- | --- |
-| Keep a long project moving | Preserve goals, unfinished work, checkpoints and the next action across sessions. |
-| Hand work to another agent | Compile the relevant rules, task state, acceptance criteria and dependencies from shared project sources. |
-| Coordinate parallel tasks | Track prerequisites and session claims, and distinguish ready work from waiting or blocked work. |
-| Check what was actually delivered | Link completion to a source version, verification report and evidence, rather than a status label alone. |
-| Bring an existing project under management | Preview the current Markdown/YAML sources and map their vocabulary before accepting initialization. |
+## Why AWR
 
-## Core capabilities
+| Core value | What changes for your project | Availability |
+| --- | --- | --- |
+| **Keep the goal through every handoff** | Goals, shared rules, decisions and unfinished work stay connected. A successor receives the current task's required context and checkpoint, so the project can continue across sessions and agents. | **0.5.0** · [Continuity](docs/integrations/context-continuity.md) |
+| **Run independent workstreams in one project** | Frontend, backend and testing keep their own tasks, context and ownership while sharing project constraints. Claims and resource checks protect supported concurrent operations. | **In development** · [Workstreams](docs/reference/workstreams.md) |
+| **Depend on a verified delivery** | Bind downstream work to an accepted artifact and contract version. When that dependency changes, recheck affected consumers according to their adoption policy. | **In development** · [Delivery dependencies](docs/reference/workstreams.md#cross-workstream-dependencies) |
+| **Know what “done” actually means** | Connect completion claims to version-bound evidence. Track implementation, verification, merge and release as separate facts; Team review adds explicit reviewer and approval records. | **0.5.0 evidence foundation**; [Team delivery review](docs/integrations/pr-delivery-review.md) **in development** |
+| **See what each outcome costs** | Attribute recorded usage and time to work and its owning workstream. Keep actual costs, API-equivalent estimates, unknowns and observation coverage distinct; count shared effort once. | **In development** · [Usage and time](docs/reference/usage-time-observation.md) |
 
-| Capability | What it provides |
-| --- | --- |
-| **Source-backed project state** | Goals, tasks, rules and decisions remain connected to authoritative project files. [Project intake](docs/TAKEOVER.md) |
-| **Focused context** | Task-specific context with a token budget, required facts and explicit completeness information. [Measured example](docs/benchmarks/README.md) |
-| **Work navigation** | Current, ready, waiting and blocked work, plus bounded guidance for the next action. [Daily work](docs/reference/daily-work.md) |
-| **Session continuity** | Claims, checkpoints, open loops and recovery inspection across conversations. [Session workflow](docs/integrations/session-workflow.md) |
-| **Traceable delivery** | Version-bound evidence and acceptance checks; recorded completion stays distinct from verified completion. [Completion guide](docs/TAKEOVER.md#organize-and-recheck) |
-| **Shared access** | Local stdio MCP or one HTTP service for explicitly registered projects and multiple clients. [Shared MCP service](docs/reference/mcp-service.md) |
+These capabilities belong to the same project model. A person coordinating
+several agents can need the same dependency, review and accounting discipline as
+a larger team. Workstream isolation concerns project state and supported
+operations; physical process isolation depends on the execution host.
 
-**Available today:** the published **0.5.0** CLI/MCP packages provide the personal
-project workflow, shared HTTP MCP and Personal Workspace file exchange. The
-optional [Inspector](https://github.com/originoneai/awr/tree/v0.5.0/tools/inspector)
+## See a project move from goal to delivery
+
+**Illustrative workflow · advanced workstreams are in development.**
+This example explains the collaboration model; it is not an executed benchmark.
+
+<p align="center">
+  <img src="docs/assets/awr-delivery-workflow.png" alt="A shared customer-portal goal connects frontend, backend and testing workstreams. Frontend builds the UI in parallel, then adopts verified backend API v1 for integration. Testing verifies the combined result before review. Dependency changes trigger checks for affected consumers; session handoffs retain the same project. Implementation, verification, merge, release, evidence, cost and time remain distinct facts." width="960" />
+</p>
+
+1. **Agree on the outcome.** Define a customer portal's requirements, shared
+   constraints and acceptance criteria before splitting the work.
+2. **Make progress in parallel.** One agent builds the UI, another implements
+   the API, and a third prepares acceptance checks. Each workstream carries its
+   relevant context and ownership.
+3. **Join through a verified version.** UI work can proceed immediately;
+   integration waits for an accepted API delivery, then adopts that exact
+   version and its evidence.
+4. **Continue through change.** A successor uses the current checkpoint and
+   dependency records. A changed contract triggers checks for affected consumers;
+   a fixed, accepted version remains bound unless revoked.
+5. **Review the delivered result.** Inspect the combined result against its
+   acceptance criteria, with separate implementation, verification, merge and
+   release records.
+6. **Account for the effort.** Associate observed usage and time with the work
+   and outcome; show gaps explicitly when a host does not expose complete data.
+
+## What you can use today
+
+The published **0.5.0** CLI/MCP packages provide source-backed goals and tasks,
+dependency navigation, focused context, session claims and checkpoints,
+version-bound evidence, a [shared HTTP MCP service](docs/reference/mcp-service.md)
+for multiple clients/projects, and Personal Workspace file exchange.
+The optional [Inspector](https://github.com/originoneai/awr/tree/v0.5.0/tools/inspector)
 is run from source and is not bundled in npm/PyPI.
 
-**In development:** Team collaboration, isolated workstreams and advanced
-cross-workstream delivery are being developed on `main`. They have separate
-contracts and are **not included in the 0.5.0 installation below**. See the
-[release notes](https://github.com/originoneai/awr/releases/tag/v0.5.0) for the
-published boundary and [project updates](#project-updates) for source progress.
+**Development on `main`:** isolated workstreams, versioned cross-workstream
+delivery, Team review and workstream usage/time accounting have development
+implementations and documented entry points. They are **not included in the
+0.5.0 installation below**. Availability and enforcement depend on the supported
+surface described in each linked guide. The
+[release notes](https://github.com/originoneai/awr/releases/tag/v0.5.0) define the
+published package boundary.
 
 ## Quickstart
 
@@ -91,13 +124,13 @@ Run these commands from your project directory. Replace the example goal with
 the outcome you want to deliver.
 
 ```sh
-awr init --goal "Deliver a reviewed documentation update"
+awr init --goal "Deliver a customer portal with verified sign-in"
 ```
 
 Review the proposed sources and mappings, then accept the same goal:
 
 ```sh
-awr init --goal "Deliver a reviewed documentation update" --accept
+awr init --goal "Deliver a customer portal with verified sign-in" --accept
 awr status
 awr intake inspect
 ```
@@ -111,11 +144,14 @@ and acceptance criteria before starting implementation. See the
 
 With CLI access to the initialized project, give your agent this instruction:
 
-> Use AWR to manage this project. Start by reading the current goals, tasks,
-> dependencies and checkpoint. Record this request with clear acceptance criteria
-> and a next action. Keep progress and verification evidence current as you work,
-> and save a checkpoint before stopping. In the next session, check for source
-> changes and continue from that checkpoint.
+> Use AWR to carry this project from its goal to verified delivery. Start by
+> reading the goal, shared rules, dependencies and latest checkpoint. Break this
+> request into work with clear acceptance criteria, ownership and next actions.
+> Check an upstream result's version and evidence before using it. Keep
+> implementation, verification, merge and release facts separate. Record available
+> usage data and its gaps. Before stopping, save a checkpoint so the next agent
+> can check current sources and continue. Use the installed version's supported
+> capabilities and report any missing integration.
 
 You can inspect progress at any time with `awr status`. For the explicit
 claim → context → checkpoint workflow, see the
@@ -183,7 +219,11 @@ Hook availability and activation depend on the host. A configuration file alone
 does not prove an automatic checkpoint or handoff occurred.
 [Integration layers and boundaries](docs/integrations/README.md).
 
-## Measured efficiency
+## Put the context budget into the current task
+
+AWR compiles focused project context locally, without an additional model call.
+This gives the agent the relevant goals, rules, dependencies and evidence within
+a budget, reducing the need to read every project source on each handoff.
 
 On the [public, reproducible context benchmark](docs/benchmarks/README.md):
 
