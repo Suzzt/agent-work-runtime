@@ -2,8 +2,8 @@
   "work": "AWR-DEC-012",
   "pr_url": "https://github.com/originoneai/awr/pull/148",
   "pr_number": 148,
-  "head_sha": "60b84badb974d84f0198f75986f8540ff4da3bf9",
-  "base_sha": "030b653f621fbd74c85526a163e32e0c04329fad",
+  "head_sha": "29ccd5e603a12169aa77beec846ed4d4591ac64a",
+  "base_sha": "06a7a4ecc87794a86645df596f2bd008ae0e16e8",
   "base_branch": "codex/awr-dec-011-bounded-fact-snapshot",
   "acceptance_mapping": {
     "1_support_vocab_preserve_raw_unknown_not_false": {

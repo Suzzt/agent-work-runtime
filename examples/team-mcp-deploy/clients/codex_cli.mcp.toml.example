@@ -1,0 +1,12 @@
+# Merge into a trusted project's .codex/config.toml (or adapt for `codex mcp`).
+# WS-024 adapter id: codex_cli. Remote Team MCP — not personal awr-mcp stdio.
+# Official MCP docs: https://learn.chatgpt.com/docs/extend/mcp
+
+[mcp_servers.awr_team]
+url = "https://team.example/v1/projects/example/mcp"
+# Prefer the client's env-based bearer mechanism when available.
+# If your Codex build expects explicit headers, use the form below and keep the
+# secret in the environment — never commit the bearer string.
+http_headers = { Authorization = "Bearer ${AWR_TEAM_BEARER}" }
+
+# This file is a template. Confirm /mcp shows awr_team_query and awr_team_command.

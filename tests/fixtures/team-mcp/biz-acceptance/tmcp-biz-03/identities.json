@@ -1,0 +1,36 @@
+{
+  "namespace": "team-mcp-v1/biz-member-handoff",
+  "persons": [
+    {
+      "person_id": "person.alex-chen",
+      "display_name": "Alex Chen",
+      "role": "developer",
+      "preferred_client": "codex_cli"
+    },
+    {
+      "person_id": "person.blair-nguyen",
+      "display_name": "Blair Nguyen",
+      "role": "developer",
+      "preferred_client": "claude_code"
+    },
+    {
+      "person_id": "person.riley-park",
+      "display_name": "Riley Park",
+      "role": "reviewer",
+      "preferred_client": "codex_cli"
+    }
+  ],
+  "named_clients": [
+    "codex_cli",
+    "claude_code"
+  ],
+  "independence_rules": {
+    "reviewer_person_must_differ_from": [
+      "person.alex-chen",
+      "person.blair-nguyen"
+    ],
+    "minimum_developer_persons": 2,
+    "minimum_named_clients": 2,
+    "forbidden": "same person or same agent session signing both execution and independent_review"
+  }
+}

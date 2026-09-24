@@ -96,26 +96,27 @@ def main() -> int:
     mirror_manifest = MIRROR / "fixture-manifest.json"
     mirror_auth = MIRROR / "authorization-requirements.md"
 
-    for p in (
-        local_plan,
-        local_manifest,
-        local_auth,
-        mirror_plan,
-        mirror_manifest,
-        mirror_auth,
-        MIRROR / "README.md",
-    ):
+    for p in (mirror_plan, mirror_manifest, mirror_auth, MIRROR / "README.md"):
         if not p.is_file():
             fail(f"missing required artifact {p}")
 
-    plan = load(local_plan)
-    mirror = load(mirror_plan)
-    if plan != mirror:
-        fail("local evaluation-plan.json differs from checked-in mirror")
-    if local_manifest.read_text() != mirror_manifest.read_text():
-        fail("local fixture-manifest.json differs from checked-in mirror")
-    if local_auth.read_text() != mirror_auth.read_text():
-        fail("local authorization-requirements.md differs from checked-in mirror")
+    # Checked-in fixtures are the gate. A private .local copy is optional and
+    # must match when present, so a clean checkout can still verify the freeze.
+    plan = load(mirror_plan)
+    local_present = (
+        local_plan.is_file() or local_manifest.is_file() or local_auth.is_file()
+    )
+    if local_present:
+        if not (
+            local_plan.is_file() and local_manifest.is_file() and local_auth.is_file()
+        ):
+            fail("local EVO-001 plan is partial; plan, manifest, and auth doc must all exist")
+        if load(local_plan) != plan:
+            fail("local evaluation-plan.json differs from checked-in mirror")
+        if local_manifest.read_text() != mirror_manifest.read_text():
+            fail("local fixture-manifest.json differs from checked-in mirror")
+        if local_auth.read_text() != mirror_auth.read_text():
+            fail("local authorization-requirements.md differs from checked-in mirror")
 
     missing = REQUIRED_PLAN_KEYS - set(plan)
     if missing:
@@ -261,7 +262,7 @@ def main() -> int:
         if field not in plan["measurement_separation"]:
             fail(f"measurement_separation.{field} required")
 
-    manifest = load(local_manifest)
+    manifest = load(mirror_manifest)
     if manifest.get("plan_hash") != plan["plan_hash"]:
         fail("manifest plan_hash != plan plan_hash")
     if manifest.get("paid_models_invoked") is not False:
@@ -297,7 +298,7 @@ def main() -> int:
         if data.get("enters_subject_context") is not False:
             fail(f"referee file {fx['path']} must set enters_subject_context=false")
 
-    auth_text = local_auth.read_text()
+    auth_text = mirror_auth.read_text()
     for needle in (
         "native_verification",
         "paid_verification",

@@ -1,0 +1,191 @@
+{
+  "contract_id": "awr-team-mcp-biz-acceptance-v1",
+  "version": "1.0.0",
+  "ledger_shape": "team_mcp_acceptance",
+  "evidence_root": ".local/awr-team-mcp-acceptance-v1",
+  "required_named_clients": [
+    "codex_cli",
+    "claude_code"
+  ],
+  "required_gates": [
+    "natural_client_initiation",
+    "actual_tool_or_role_execution",
+    "real_artifact",
+    "business_followup_1",
+    "business_followup_2",
+    "independent_review",
+    "delivery",
+    "traceable_receipt"
+  ],
+  "status_authority": {
+    "pass_requires": "live_multi_person_remote_mcp_with_independent_reviewer_person",
+    "forbidden": [
+      "same_agent_signs_execution_and_review",
+      "backend_sql_mutate_for_acceptance",
+      "seed_sessions_claims_or_receipts",
+      "leak_internal_scenario_ids_in_prompts"
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "TMCP-BIZ-01",
+      "title": "按角色查询与过滤的工作面板",
+      "business_title": "星河协作台角色过滤",
+      "fixture": "tests/fixtures/team-mcp/biz-acceptance/tmcp-biz-01",
+      "namespace": "team-mcp-v1/biz-role-filter",
+      "artifact_directory": ".local/awr-team-mcp-acceptance-v1/tmcp-biz-01",
+      "named_clients": [
+        "codex_cli",
+        "claude_code"
+      ],
+      "persons": {
+        "executor": "person.alex-chen",
+        "peer": "person.blair-nguyen",
+        "reviewer": "person.riley-park"
+      },
+      "initial_request": "我们需要在协作台上按成员角色筛选待办和已交付项，方便产品经理只看自己范围。请先摸清现有列表接口，给出可落地的过滤方案并开始实现。",
+      "followups": [
+        "过滤控件的交互太绕了：请改成顶部芯片式多选，并保持键盘可达。不要动权限模型。",
+        "试用账号在过滤时看到了正式项目的条目，请查清边界后修好，并补一条不会再回归的验证说明。"
+      ],
+      "expected_artifacts": [
+        "角色过滤方案与实现说明",
+        "过滤控件交互修订说明",
+        "试用边界修复与验证",
+        "独立复核记录",
+        "最终交付回执说明"
+      ],
+      "required_gates": [
+        "natural_client_initiation",
+        "actual_tool_or_role_execution",
+        "real_artifact",
+        "business_followup_1",
+        "business_followup_2",
+        "independent_review",
+        "delivery",
+        "traceable_receipt"
+      ],
+      "summary": "交付角色维度的查询/过滤能力；随后调整交互，并修复试用边界泄漏。"
+    },
+    {
+      "id": "TMCP-BIZ-02",
+      "title": "并行推进发现缺依赖后批准再规划并交付",
+      "business_title": "并线补齐共享契约",
+      "fixture": "tests/fixtures/team-mcp/biz-acceptance/tmcp-biz-02",
+      "namespace": "team-mcp-v1/biz-parallel-replan",
+      "artifact_directory": ".local/awr-team-mcp-acceptance-v1/tmcp-biz-02",
+      "named_clients": [
+        "codex_cli",
+        "claude_code"
+      ],
+      "persons": {
+        "executor": "person.blair-nguyen",
+        "peer": "person.alex-chen",
+        "reviewer": "person.riley-park"
+      },
+      "initial_request": "请和同伴并行推进客户端与服务端对接：各自认领一块，先把当前可交付的接口联通。如果发现缺共享依赖，先停下来说明，不要硬编码绕过。",
+      "followups": [
+        "共享类型和错误码约定还不齐，请整理一份双方都遵守的约定，并更新两边的引用。",
+        "集成之后返回体字段名不一致，请做第二次调整，保证联调脚本一次通过。"
+      ],
+      "expected_artifacts": [
+        "缺依赖发现与再规划说明",
+        "共享约定文档",
+        "集成后字段对齐修订",
+        "独立复核记录",
+        "最终交付回执说明"
+      ],
+      "required_gates": [
+        "natural_client_initiation",
+        "actual_tool_or_role_execution",
+        "real_artifact",
+        "business_followup_1",
+        "business_followup_2",
+        "independent_review",
+        "delivery",
+        "traceable_receipt"
+      ],
+      "summary": "两名开发并行工作时发现缺失依赖，批准再规划后继续交付；随后统一约定并做集成后二次调整。"
+    },
+    {
+      "id": "TMCP-BIZ-03",
+      "title": "成员交接并退役旧客户端后交付",
+      "business_title": "北岸项目成员交接",
+      "fixture": "tests/fixtures/team-mcp/biz-acceptance/tmcp-biz-03",
+      "namespace": "team-mcp-v1/biz-member-handoff",
+      "artifact_directory": ".local/awr-team-mcp-acceptance-v1/tmcp-biz-03",
+      "named_clients": [
+        "codex_cli",
+        "claude_code"
+      ],
+      "persons": {
+        "executor": "person.alex-chen",
+        "peer": "person.blair-nguyen",
+        "reviewer": "person.riley-park"
+      },
+      "initial_request": "前任同事要离开项目了。请接手他未完成的接入说明，换成你自己的客户端凭证继续推进，并确保旧客户端配置不再被使用。",
+      "followups": [
+        "有人反馈响应里多了一个不认识的字段，请找到它出现的位置，说明来源，并决定保留、改名还是删除。",
+        "复核认为交接文档仍提到旧客户端路径，请按意见返工后再提审。"
+      ],
+      "expected_artifacts": [
+        "成员交接与旧客户端退役记录",
+        "未知字段落点核验",
+        "按复核意见返工说明",
+        "独立复核记录",
+        "最终交付回执说明"
+      ],
+      "required_gates": [
+        "natural_client_initiation",
+        "actual_tool_or_role_execution",
+        "real_artifact",
+        "business_followup_1",
+        "business_followup_2",
+        "independent_review",
+        "delivery",
+        "traceable_receipt"
+      ],
+      "summary": "完成成员交接、退役旧客户端后交付；再核验未知字段落点，并按独立复核意见返工。"
+    },
+    {
+      "id": "TMCP-BIZ-04",
+      "title": "PR 返工与服务重连后交付",
+      "business_title": "潮汐网关兼容修订",
+      "fixture": "tests/fixtures/team-mcp/biz-acceptance/tmcp-biz-04",
+      "namespace": "team-mcp-v1/biz-pr-reconnect",
+      "artifact_directory": ".local/awr-team-mcp-acceptance-v1/tmcp-biz-04",
+      "named_clients": [
+        "codex_cli",
+        "claude_code"
+      ],
+      "persons": {
+        "executor": "person.blair-nguyen",
+        "peer": "person.alex-chen",
+        "reviewer": "person.riley-park"
+      },
+      "initial_request": "上一个合并请求被打回了。请根据审阅意见修改，确认 Team 服务仍可连上后再重新提交，不要新建无关分支把问题绕开。",
+      "followups": [
+        "断线重连后偶发用了新的请求号导致重复写入，请定位根因并修好，补一条回归说明。",
+        "旧客户端仍按上一版字段解析，请做兼容修订，保证新旧读法都能工作。"
+      ],
+      "expected_artifacts": [
+        "PR 返工与重连记录",
+        "根因修复与回归说明",
+        "兼容性修订说明",
+        "独立复核记录",
+        "最终交付回执说明"
+      ],
+      "required_gates": [
+        "natural_client_initiation",
+        "actual_tool_or_role_execution",
+        "real_artifact",
+        "business_followup_1",
+        "business_followup_2",
+        "independent_review",
+        "delivery",
+        "traceable_receipt"
+      ],
+      "summary": "针对审阅意见返工，服务断线重连后继续交付；再做根因修复与兼容性修订。"
+    }
+  ]
+}

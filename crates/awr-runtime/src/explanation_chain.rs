@@ -144,6 +144,54 @@ pub struct ExplanationChainResult {
     pub query_original_only: bool,
 }
 
+fn authority_tag<'a>(summary: Option<&'a str>, key: &str) -> Option<&'a str> {
+    let summary = summary?;
+    let equals = format!("{key}=");
+    for part in summary.split('|') {
+        if let Some(value) = part.strip_prefix(&equals) {
+            return Some(value);
+        }
+    }
+    // Legacy envelopes stored a single `key:value` summary.
+    let colon = format!("{key}:");
+    summary.strip_prefix(&colon)
+}
+
+fn authority_facet_still_valid(
+    prior: &AssessmentIdentity,
+    key: &str,
+    current: Option<&str>,
+) -> bool {
+    let Some(now) = current.filter(|value| !value.is_empty()) else {
+        return true;
+    };
+    match authority_tag(prior.input_summary.as_deref(), key) {
+        Some(old) => old == now,
+        // A current source or auth that the prior envelope did not record is not the same authority.
+        None => false,
+    }
+}
+
+fn explanation_input_summary(chain_hash: &str, authority: &ExplanationAuthority) -> String {
+    let mut parts = Vec::new();
+    if let Some(src) = authority
+        .source_revision
+        .as_deref()
+        .filter(|s| !s.is_empty())
+    {
+        parts.push(format!("source_revision={src}"));
+    }
+    if let Some(auth) = authority
+        .auth_fingerprint
+        .as_deref()
+        .filter(|s| !s.is_empty())
+    {
+        parts.push(format!("auth={auth}"));
+    }
+    parts.push(format!("chain={chain_hash}"));
+    parts.join("|")
+}
+
 /// Whether a prior envelope identity remains usable under current authority.
 pub fn prior_explanation_still_valid(
     prior: &AssessmentIdentity,
@@ -160,47 +208,11 @@ pub fn prior_explanation_still_valid(
             return false;
         }
     }
-    // Source revision is carried on fact_snapshot_hash / input_summary when present;
-    // also compare explicit authority source_revision against prior input_summary tag.
-    if let Some(now) = current.source_revision.as_deref() {
-        let prior_src = prior
-            .input_summary
-            .as_deref()
-            .and_then(|s| s.strip_prefix("source_revision:"));
-        if let Some(old) = prior_src {
-            if old != now {
-                return false;
-            }
-        }
-        // When prior fact_snapshot_hash is bound and current auth differs, invalidate.
-        if prior.fact_snapshot_hash.is_some()
-            && current
-                .auth_fingerprint
-                .as_deref()
-                .is_some_and(|a| !a.is_empty())
-        {
-            // Auth fingerprint change alone invalidates cached advice.
-            if let Some(old_auth) = prior
-                .input_summary
-                .as_deref()
-                .and_then(|s| s.strip_prefix("auth:"))
-            {
-                if old_auth != current.auth_fingerprint.as_deref().unwrap_or("") {
-                    return false;
-                }
-            }
-        }
+    if !authority_facet_still_valid(prior, "source_revision", current.source_revision.as_deref()) {
+        return false;
     }
-    if let Some(now_auth) = current.auth_fingerprint.as_deref() {
-        if let Some(old_auth) = prior
-            .input_summary
-            .as_deref()
-            .and_then(|s| s.strip_prefix("auth:"))
-        {
-            if old_auth != now_auth {
-                return false;
-            }
-        }
+    if !authority_facet_still_valid(prior, "auth", current.auth_fingerprint.as_deref()) {
+        return false;
     }
     true
 }
@@ -923,14 +935,7 @@ pub fn compose_explanation_chain(input: ExplanationChainInput) -> Result<Explana
 
     let snapshot = fact_snapshot_from_prepared_view(&input.prepared)?;
 
-    let mut input_summary = format!("explanation_chain:{}", snapshot.content_hash);
-    if let Some(src) = &input.current_authority.source_revision {
-        input_summary = format!("source_revision:{src}");
-    }
-    if let Some(auth) = &input.current_authority.auth_fingerprint {
-        // Prefer auth tag when present so invalidation can compare.
-        input_summary = format!("auth:{auth}");
-    }
+    let input_summary = explanation_input_summary(&snapshot.content_hash, &input.current_authority);
 
     let identity = AssessmentIdentity {
         project_id: input.prepared.project_id.clone(),
@@ -1076,30 +1081,7 @@ pub fn compose_explanation_chain(input: ExplanationChainInput) -> Result<Explana
 
     // Stamp profile for DEC-020 consumers without breaking schema_id.
     envelope.assessment_profile = EXPLANATION_CHAIN_PROFILE.into();
-    // Recompute hash after profile / layer annotation changes.
-    envelope.assessment_hash = {
-        // Reuse compose hash by round-tripping through compose is heavy; compute via evaluate path.
-        // The envelope type exposes assessment_hash as public — recompute with the same function
-        // by calling compose again would recurse. Instead hash the public JSON shape.
-        use sha2::{Digest, Sha256};
-        let payload = serde_json::to_vec(&json!({
-            "schema_id": envelope.schema_id,
-            "schema_version": envelope.schema_version,
-            "assessment_profile": envelope.assessment_profile,
-            "identity": envelope.identity,
-            "layers": envelope.layers,
-            "assessments": envelope.assessments,
-            "evidence_quality": envelope.evidence_quality,
-            "advisory_actions": envelope.advisory_actions,
-            "limits": envelope.limits,
-            "management": envelope.management,
-            "action_rationale": envelope.action_rationale,
-            "legacy": envelope.legacy,
-            "unsupported_fields": envelope.unsupported_fields,
-            "hard_gate": envelope.hard_gate,
-        }))?;
-        format!("{:x}", Sha256::digest(payload))
-    };
+    envelope.assessment_hash = canonical_assessment_hash(&envelope)?;
 
     // Final safety: never claim a process was stopped.
     for item in &envelope.assessments {
@@ -1188,6 +1170,31 @@ mod tests {
             source_revision: None,
             auth_fingerprint: None,
             stop_or_revoke: true,
+        };
+        assert!(!prior_explanation_still_valid(&prior, &auth));
+    }
+
+    #[test]
+    fn matching_auth_does_not_hide_a_source_change() {
+        let prior = AssessmentIdentity {
+            project_id: None,
+            work_key: Some("W".into()),
+            work_id: None,
+            branch_id: None,
+            contract_fingerprint: Some("c1".into()),
+            policy_id: ASSESSMENT_POLICY_ID.into(),
+            policy_version: 1,
+            policy_hash: None,
+            input_summary: Some("auth:auth-ok".into()),
+            as_of: Some(1),
+            verified_main_sha: None,
+            fact_snapshot_hash: Some("snap".into()),
+        };
+        let auth = ExplanationAuthority {
+            contract_hash: Some("c1".into()),
+            source_revision: Some("775".into()),
+            auth_fingerprint: Some("auth-ok".into()),
+            stop_or_revoke: false,
         };
         assert!(!prior_explanation_still_valid(&prior, &auth));
     }

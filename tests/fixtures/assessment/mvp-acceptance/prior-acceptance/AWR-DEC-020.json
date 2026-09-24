@@ -2,8 +2,8 @@
   "work": "AWR-DEC-020",
   "pr_url": "https://github.com/originoneai/awr/pull/150",
   "pr_number": 150,
-  "head_sha": "f9f89b5ada2c6218c46407ad8fecbb6f0911ef5d",
-  "base_sha": "ffe7d54a18d3342daab32d385da1569f384c2a43",
+  "head_sha": "89d0cfc97cee2f2b764ff3b7cebefe3b36b12b7e",
+  "base_sha": "338cbb9cea4ce16ab521d2a4afaaa354180c89b4",
   "base_branch": "codex/awr-dec-013-counterexample-corpus",
   "acceptance_mapping": {
     "1": "layers preserve existing conclusions; envelope cites basis_refs and unchecked items (ac1 +/- , P01)",

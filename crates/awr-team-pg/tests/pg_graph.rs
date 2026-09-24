@@ -6,10 +6,12 @@
 
 use awr_team::{SourceActivationPlan, WorkContract, WorkId};
 use awr_team_pg::{
-    DependencyEdge, GraphStore, IngestRequest, LeaseStore, PgError, SourceFile, SourceStore,
-    paths_conflict, require_main_scope, validate_required_graph,
+    DependencyEdge, EdgeMutation, GraphStore, IngestRequest, LeaseStore, PgError, ResourceBound,
+    ResourceLeaseBind, SourceFile, SourceStore, paths_conflict, reference_shared_outcome,
+    require_main_scope, resources_conflict, validate_required_graph,
 };
 use serde_json::json;
+use std::collections::BTreeSet;
 use std::sync::MutexGuard;
 use tokio_postgres::Client;
 
@@ -54,7 +56,8 @@ async fn setup() -> (MutexGuard<'static, ()>, Client, GraphStore, String) {
                 VALUES ('tenant-a','project-a','main','main','active');
              INSERT INTO awr_team.work_items(tenant_id,project_id,id,external_key) VALUES
                 ('tenant-a','project-a','work-a','W'),
-                ('tenant-a','project-a','work-b','X');
+                ('tenant-a','project-a','work-b','X'),
+                ('tenant-a','project-a','work-c','Y');
              INSERT INTO awr_team.source_snapshots(
                 tenant_id, project_id, id, manifest_digest, source_ref_json, parser_version, created_by)
                 VALUES ('tenant-a','project-a','snap-1','digest','{{}}','p1','actor-a');
@@ -65,7 +68,8 @@ async fn setup() -> (MutexGuard<'static, ()>, Client, GraphStore, String) {
                 definition_state, title, contract_json)
                 VALUES
                 ('tenant-a','project-a','snap-1','main','work-a','{contract_hash}','enabled','W','{}'),
-                ('tenant-a','project-a','snap-1','main','work-b','hash-b','enabled','X','{{\"acceptance\":[\"child\"]}}');",
+                ('tenant-a','project-a','snap-1','main','work-b','hash-b','enabled','X','{{\"acceptance\":[\"child\"]}}'),
+                ('tenant-a','project-a','snap-1','main','work-c','hash-c','enabled','Y','{{\"acceptance\":[\"child\"]}}');",
             contract_json.replace('\'', "''")
         ))
         .await
@@ -120,7 +124,13 @@ async fn invalid_graph_is_rejected_without_partial_edges() {
         )
         .await
         .unwrap_err();
-    assert!(matches!(err, PgError::DependencyCycle));
+    match &err {
+        PgError::DependencyCycle(path) => {
+            assert_eq!(path.first(), path.last());
+            assert!(path.len() >= 3, "explainable path: {path:?}");
+        }
+        other => panic!("expected cycle path, got {other}"),
+    }
     let count: i64 = admin
         .query_one("SELECT count(*) FROM awr_team.dependency_edges", &[])
         .await
@@ -583,4 +593,329 @@ async fn removed_claimed_child_blocks_activation_but_expired_claim_does_not() {
     attempt_activate("0")
         .await
         .expect("expired claim must not block activation");
+}
+
+// WS-031: concurrent edge mutations serialize; a cyclic union cannot commit,
+// and dangling endpoints are refused against authoritative contracts.
+#[tokio::test]
+async fn concurrent_edge_mutations_cannot_form_a_cycle_or_dangling_ref() {
+    let (_lock, admin, store, _db) = setup().await;
+    let forward = [EdgeMutation::Upsert(DependencyEdge {
+        from: "work-a".into(),
+        to: "work-b".into(),
+        relation: "requires".into(),
+        required: true,
+    })];
+    let backward = [EdgeMutation::Upsert(DependencyEdge {
+        from: "work-b".into(),
+        to: "work-a".into(),
+        relation: "requires".into(),
+        required: true,
+    })];
+    let (a, b) = tokio::join!(
+        store.apply_edge_mutations(TENANT, PROJECT, "snap-1", "main", &forward),
+        store.apply_edge_mutations(TENANT, PROJECT, "snap-1", "main", &backward),
+    );
+    let outcomes = [a, b];
+    let oks: Vec<_> = outcomes.iter().filter(|r| r.is_ok()).collect();
+    let errs: Vec<_> = outcomes.iter().filter(|r| r.is_err()).collect();
+    assert_eq!(
+        oks.len(),
+        1,
+        "exactly one mutation may commit: {outcomes:?}"
+    );
+    assert_eq!(
+        errs.len(),
+        1,
+        "the other must refuse the cyclic union: {outcomes:?}"
+    );
+    match errs[0].as_ref().unwrap_err() {
+        PgError::DependencyCycle(path) => {
+            assert_eq!(path.first(), path.last());
+            assert!(path.len() >= 3, "explainable path: {path:?}");
+        }
+        other => panic!("expected cycle path, got {other}"),
+    }
+    let edges: Vec<(String, String)> = admin
+        .query(
+            "SELECT from_work_id, to_work_id FROM awr_team.dependency_edges WHERE snapshot_id='snap-1'",
+            &[],
+        )
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| (r.get(0), r.get(1)))
+        .collect();
+    assert_eq!(edges.len(), 1, "cyclic union committed: {edges:?}");
+
+    let dangling = store
+        .apply_edge_mutations(
+            TENANT,
+            PROJECT,
+            "snap-1",
+            "main",
+            &[EdgeMutation::Upsert(DependencyEdge {
+                from: "work-a".into(),
+                to: "missing-work".into(),
+                relation: "requires".into(),
+                required: true,
+            })],
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(dangling, PgError::MissingDependency));
+}
+
+#[tokio::test]
+async fn cross_stream_chain_ready_only_when_all_necessary_deps_satisfied() {
+    let (_lock, _, store, _db) = setup().await;
+    // A(work-a) → B(work-b) → later A consumer(work-c): acyclic cross-stream shape.
+    store
+        .apply_edge_mutations(
+            TENANT,
+            PROJECT,
+            "snap-1",
+            "main",
+            &[
+                EdgeMutation::Upsert(DependencyEdge {
+                    from: "work-b".into(),
+                    to: "work-a".into(),
+                    relation: "requires".into(),
+                    required: true,
+                }),
+                EdgeMutation::Upsert(DependencyEdge {
+                    from: "work-c".into(),
+                    to: "work-b".into(),
+                    relation: "requires".into(),
+                    required: true,
+                }),
+            ],
+        )
+        .await
+        .unwrap();
+    let partial = BTreeSet::from(["work-a".into()]);
+    let ready = store
+        .work_necessary_deps_ready(TENANT, PROJECT, "snap-1", "main", "work-c", &partial)
+        .await
+        .unwrap();
+    assert_eq!(ready, Err(vec!["work-b".into()]));
+    let full = BTreeSet::from(["work-a".into(), "work-b".into()]);
+    let ready = store
+        .work_necessary_deps_ready(TENANT, PROJECT, "snap-1", "main", "work-c", &full)
+        .await
+        .unwrap();
+    assert_eq!(ready, Ok(()));
+    let left = reference_shared_outcome("work-a", "art", "contract");
+    let right = reference_shared_outcome("work-a", "art", "contract");
+    assert_eq!(left, right);
+}
+
+#[tokio::test]
+async fn replace_edges_rejects_cycle_with_explainable_path() {
+    let (_lock, _, store, _db) = setup().await;
+    let err = store
+        .replace_edges(
+            TENANT,
+            PROJECT,
+            "snap-1",
+            "main",
+            &["work-a".into(), "work-b".into(), "work-c".into()],
+            &[
+                DependencyEdge {
+                    from: "work-a".into(),
+                    to: "work-b".into(),
+                    relation: "requires".into(),
+                    required: true,
+                },
+                DependencyEdge {
+                    from: "work-b".into(),
+                    to: "work-c".into(),
+                    relation: "requires".into(),
+                    required: true,
+                },
+                DependencyEdge {
+                    from: "work-c".into(),
+                    to: "work-a".into(),
+                    relation: "requires".into(),
+                    required: true,
+                },
+            ],
+        )
+        .await
+        .unwrap_err();
+    match err {
+        PgError::DependencyCycle(path) => {
+            assert_eq!(path.first(), path.last());
+            assert!(
+                path.windows(2).all(|w| {
+                    [
+                        ("work-a", "work-b"),
+                        ("work-b", "work-c"),
+                        ("work-c", "work-a"),
+                    ]
+                    .iter()
+                    .any(|(a, b)| w[0] == *a && w[1] == *b)
+                }),
+                "path must follow real edges: {path:?}"
+            );
+        }
+        other => panic!("expected explainable cycle, got {other}"),
+    }
+}
+
+#[tokio::test]
+async fn worktree_local_and_shared_external_resources_are_distinct() {
+    let (_lock, _admin, store, _db) = setup().await;
+    store
+        .reserve_bound(
+            TENANT,
+            PROJECT,
+            "work-a",
+            &ResourceBound {
+                kind: "file".into(),
+                key: "src/shared.rs".into(),
+                worktree_id: "wt-a".into(),
+            },
+            ResourceLeaseBind {
+                lease_generation: 1,
+                fence: 1,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    // Same path in another worktree is allowed.
+    store
+        .reserve_bound(
+            TENANT,
+            PROJECT,
+            "work-b",
+            &ResourceBound {
+                kind: "file".into(),
+                key: "src/shared.rs".into(),
+                worktree_id: "wt-b".into(),
+            },
+            ResourceLeaseBind {
+                lease_generation: 1,
+                fence: 2,
+            },
+            None,
+        )
+        .await
+        .expect("different worktrees must not contend over local files");
+    // Shared external resource contends regardless of worktree.
+    store
+        .reserve_bound(
+            TENANT,
+            PROJECT,
+            "work-a",
+            &ResourceBound {
+                kind: "external".into(),
+                key: "postgres://shared/db".into(),
+                worktree_id: String::new(),
+            },
+            ResourceLeaseBind {
+                lease_generation: 1,
+                fence: 1,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let err = store
+        .reserve_bound(
+            TENANT,
+            PROJECT,
+            "work-b",
+            &ResourceBound {
+                kind: "external".into(),
+                key: "postgres://shared/db".into(),
+                worktree_id: String::new(),
+            },
+            ResourceLeaseBind {
+                lease_generation: 2,
+                fence: 3,
+            },
+            None,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, PgError::ResourceConflict), "got {err}");
+    let err = store
+        .reserve_bound(
+            TENANT,
+            PROJECT,
+            "work-b",
+            &ResourceBound {
+                kind: "external".into(),
+                key: "postgres://shared/db".into(),
+                worktree_id: "wt-b".into(),
+            },
+            ResourceLeaseBind::default(),
+            None,
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, PgError::Protocol(_)),
+        "shared external must reject worktree_id: {err}"
+    );
+}
+
+#[test]
+fn resource_conflict_helper_matches_acceptance() {
+    assert!(!resources_conflict(
+        &ResourceBound {
+            kind: "dir".into(),
+            key: "src".into(),
+            worktree_id: "a".into(),
+        },
+        &ResourceBound {
+            kind: "dir".into(),
+            key: "src".into(),
+            worktree_id: "b".into(),
+        },
+    ));
+    assert!(resources_conflict(
+        &ResourceBound {
+            kind: "integration".into(),
+            key: "ref/prod".into(),
+            worktree_id: String::new(),
+        },
+        &ResourceBound {
+            kind: "integration".into(),
+            key: "ref/prod".into(),
+            worktree_id: String::new(),
+        },
+    ));
+}
+
+#[test]
+fn exclusive_workspace_conflicts_with_contained_paths() {
+    let wt = "wt-1";
+    let workspace = ResourceBound {
+        kind: "workspace".into(),
+        key: "root".into(),
+        worktree_id: wt.into(),
+    };
+    let file = ResourceBound {
+        kind: "file".into(),
+        key: "src/main.rs".into(),
+        worktree_id: wt.into(),
+    };
+    let dir = ResourceBound {
+        kind: "dir".into(),
+        key: "src".into(),
+        worktree_id: wt.into(),
+    };
+    let other_wt_file = ResourceBound {
+        kind: "file".into(),
+        key: "src/main.rs".into(),
+        worktree_id: "wt-2".into(),
+    };
+    assert!(resources_conflict(&workspace, &file));
+    assert!(resources_conflict(&file, &workspace));
+    assert!(resources_conflict(&workspace, &dir));
+    assert!(resources_conflict(&workspace, &workspace));
+    assert!(!resources_conflict(&workspace, &other_wt_file));
 }

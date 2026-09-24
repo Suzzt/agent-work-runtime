@@ -1,0 +1,77 @@
+{
+  "namespace": "awr-ws-r2-ws-biz-05",
+  "hard_gate": "auth_revoke_and_reject",
+  "nodes": [
+    {
+      "key": "R5-OWN",
+      "role": "executor",
+      "person_id": "person.cameron-yu",
+      "client_adapter": "codex_cli",
+      "depends_on": []
+    },
+    {
+      "key": "R5-REJECT",
+      "role": "executor_peer",
+      "person_id": "person.finley-rao",
+      "client_adapter": "claude_code",
+      "depends_on": [
+        "R5-OWN"
+      ]
+    },
+    {
+      "key": "R5-REVOKE",
+      "role": "web_operator",
+      "person_id": "person.rowan-shi",
+      "client_adapter": "team_web",
+      "depends_on": [
+        "R5-REJECT"
+      ]
+    },
+    {
+      "key": "R5-REASSIGN",
+      "role": "executor",
+      "person_id": "person.cameron-yu",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "R5-REVOKE"
+      ]
+    },
+    {
+      "key": "R5-FIX",
+      "role": "executor_peer",
+      "person_id": "person.jamie-okada",
+      "client_adapter": "claude_code",
+      "depends_on": [
+        "R5-REASSIGN"
+      ]
+    },
+    {
+      "key": "R5-REVIEW",
+      "role": "reviewer",
+      "person_id": "person.rowan-shi",
+      "client_adapter": "team_web",
+      "depends_on": [
+        "R5-FIX"
+      ]
+    },
+    {
+      "key": "R5-DELIVER",
+      "role": "executor",
+      "person_id": "person.cameron-yu",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "R5-REVIEW"
+      ]
+    }
+  ],
+  "reviewer_distinct_from": [
+    "executor",
+    "executor_peer"
+  ],
+  "required_surfaces": [
+    "codex_cli",
+    "claude_code",
+    "team_web"
+  ],
+  "handoff_requirement": "执行、同伴与复核的责任边界清晰；禁止同一 agent 会话同时签署执行与独立复核；须含真实 Web 操作。"
+}

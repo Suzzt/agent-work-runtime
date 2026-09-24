@@ -1,0 +1,41 @@
+{
+  "namespace": "team-mcp-v1/biz-member-handoff",
+  "delegations": [
+    {
+      "delegation_id": "del.tmcp-biz-03.executor",
+      "person_id": "person.alex-chen",
+      "client_adapter": "codex_cli",
+      "actions": [
+        "claim",
+        "execution",
+        "evidence.submit",
+        "delivery.register_pr",
+        "work.rework"
+      ],
+      "scope": "workstream"
+    },
+    {
+      "delegation_id": "del.tmcp-biz-03.peer",
+      "person_id": "person.blair-nguyen",
+      "client_adapter": "claude_code",
+      "actions": [
+        "claim",
+        "execution",
+        "evidence.submit"
+      ],
+      "scope": "workstream"
+    },
+    {
+      "delegation_id": "del.tmcp-biz-03.reviewer",
+      "person_id": "person.riley-park",
+      "client_adapter": "codex_cli",
+      "actions": [
+        "review.open",
+        "review.decide",
+        "delivery.finalize"
+      ],
+      "scope": "workstream",
+      "independent_review": true
+    }
+  ]
+}

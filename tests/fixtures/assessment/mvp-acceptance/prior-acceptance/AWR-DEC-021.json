@@ -2,8 +2,8 @@
   "work": "AWR-DEC-021",
   "pr_url": "https://github.com/originoneai/awr/pull/151",
   "pr_number": 151,
-  "head_sha": "2b5a36a4e17886545bc6f11aeeb1cb7ae39f5c81",
-  "base_sha": "f9f89b5ada2c6218c46407ad8fecbb6f0911ef5d",
+  "head_sha": "5bbf18f2bf7899eb9c2f968c71a971a8d149b0a7",
+  "base_sha": "89d0cfc97cee2f2b764ff3b7cebefe3b36b12b7e",
   "base_branch": "codex/awr-dec-020-explanation-chain",
   "acceptance_mapping": {
     "1": "CLI/MCP share assessment_hash; explain-off preserves full/summary/action + grouped MCP (capability assessment.explain negotiated)",

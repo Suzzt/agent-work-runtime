@@ -21,7 +21,7 @@
       "index": 1,
       "role": "first_batch_feature",
       "pr_url": "https://github.com/originoneai/awr/pull/146",
-      "head_sha": "8a7afec51110b70a1d47e523e1b31742bacb7b10",
+      "head_sha": "ed035731a03ab9285d92eb6e83ba12c7e56196de",
       "receipt": "prior-acceptance/AWR-DEC-010.json",
       "acceptance_keys": [
         "1_tip_inventory",
@@ -34,7 +34,7 @@
       "index": 2,
       "role": "first_batch_feature",
       "pr_url": "https://github.com/originoneai/awr/pull/147",
-      "head_sha": "030b653f621fbd74c85526a163e32e0c04329fad",
+      "head_sha": "06a7a4ecc87794a86645df596f2bd008ae0e16e8",
       "receipt": "prior-acceptance/AWR-DEC-011.json",
       "acceptance_keys": [
         "1_snapshot_identity_scope_version_conflicts",
@@ -47,7 +47,7 @@
       "index": 3,
       "role": "first_batch_feature",
       "pr_url": "https://github.com/originoneai/awr/pull/148",
-      "head_sha": "60b84badb974d84f0198f75986f8540ff4da3bf9",
+      "head_sha": "29ccd5e603a12169aa77beec846ed4d4591ac64a",
       "receipt": "prior-acceptance/AWR-DEC-012.json",
       "acceptance_keys": [
         "1_support_vocab_preserve_raw_unknown_not_false",
@@ -60,7 +60,7 @@
       "index": 4,
       "role": "first_batch_feature",
       "pr_url": "https://github.com/originoneai/awr/pull/149",
-      "head_sha": "ffe7d54a18d3342daab32d385da1569f384c2a43",
+      "head_sha": "338cbb9cea4ce16ab521d2a4afaaa354180c89b4",
       "receipt": "prior-acceptance/AWR-DEC-013.json",
       "acceptance_keys": [
         "1_freeze_matrix_identity_expect_forbid_compare_budgets_stats",
@@ -73,7 +73,7 @@
       "index": 5,
       "role": "first_batch_feature",
       "pr_url": "https://github.com/originoneai/awr/pull/150",
-      "head_sha": "f9f89b5ada2c6218c46407ad8fecbb6f0911ef5d",
+      "head_sha": "89d0cfc97cee2f2b764ff3b7cebefe3b36b12b7e",
       "receipt": "prior-acceptance/AWR-DEC-020.json",
       "acceptance_keys": [
         "1",
@@ -86,7 +86,7 @@
       "index": 6,
       "role": "first_batch_feature",
       "pr_url": "https://github.com/originoneai/awr/pull/151",
-      "head_sha": "2b5a36a4e17886545bc6f11aeeb1cb7ae39f5c81",
+      "head_sha": "5bbf18f2bf7899eb9c2f968c71a971a8d149b0a7",
       "receipt": "prior-acceptance/AWR-DEC-021.json",
       "acceptance_keys": [
         "1",
@@ -99,7 +99,7 @@
       "index": 7,
       "role": "first_batch_feature",
       "pr_url": "https://github.com/originoneai/awr/pull/152",
-      "head_sha": "189e4a2af57587c667ea1925d6745264e3138714",
+      "head_sha": "8758d0375d0d133659d27628794dea40d7a01c93",
       "receipt": "prior-acceptance/AWR-DEC-022.json",
       "acceptance_keys": [
         "1",
