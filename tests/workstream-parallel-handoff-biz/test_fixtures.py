@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 import importlib.util
+import json
+import shutil
+import sys
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -60,6 +65,31 @@ class FixtureTests(unittest.TestCase):
         for sid, (scenario, _, _) in self.specs.items():
             self.assertEqual(scenario["required_gates"], self.support.GATES, sid)
             self.assertEqual(scenario["scope_revision"], 2, sid)
+
+    def test_verify_main_blocks_live_gates(self):
+        biz = ROOT / "tests/fixtures/workstreams/parallel-handoff-biz"
+        sys.path.insert(0, str(biz))
+        try:
+            spec = importlib.util.spec_from_file_location("ws051_verify", biz / "verify.py")
+            verify = importlib.util.module_from_spec(spec)
+            assert spec.loader is not None
+            spec.loader.exec_module(verify)
+            evidence = ROOT / ".local/pr145-verify-test/scope-r2"
+            shutil.rmtree(evidence.parent, ignore_errors=True)
+            try:
+                buf = StringIO()
+                with redirect_stdout(buf):
+                    rc = verify.main(["--evidence-root", str(evidence)])
+                self.assertEqual(rc, 0)
+                payload = json.loads(buf.getvalue())
+                self.assertTrue(payload["passed_fixture_verification"])
+                self.assertFalse(payload["live_pass"])
+                self.assertEqual(payload["status"], "blocked_pending_trial_participants")
+                self.assertEqual(len(payload["scenarios"]), 6)
+            finally:
+                shutil.rmtree(evidence.parent, ignore_errors=True)
+        finally:
+            sys.path.remove(str(biz))
 
     def test_ws_biz_04_same_person_dual_agent(self):
         scenario, directory, _ = self.specs["WS-BIZ-04"]
