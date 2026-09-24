@@ -1,0 +1,28 @@
+{
+  "case": "C19",
+  "slug": "no-qualified-candidate-or-capability-expired",
+  "fault": "没有合格候选/能力过期",
+  "theme": "auto_no_advice",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "qualified_candidates": 0,
+    "capability_expired": true
+  },
+  "expect": {
+    "advisory_contains": [
+      "no_advisory"
+    ],
+    "hard_pick_candidate": false
+  },
+  "forbidden": {
+    "hard_select_unqualified_candidate": true,
+    "invent_model_success_to_pick": true
+  },
+  "hard_constraint": false
+}

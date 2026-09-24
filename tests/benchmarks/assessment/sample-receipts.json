@@ -1,0 +1,91 @@
+{
+  "baseline_receipt": {
+    "kind": "assessment_compare_receipt",
+    "role": "baseline",
+    "assessment_explain": "off",
+    "source_sha": "60b84badb974d84f0198f75986f8540ff4da3bf9",
+    "fixture_id": "C08",
+    "policy_id": "tip_management_v1",
+    "policy_version": 1,
+    "as_of": 42,
+    "collector_version": 1,
+    "structural": {
+      "hard_constraint_failures": [],
+      "fixture_pass": true,
+      "forbidden_hit": false
+    },
+    "costs": {
+      "collect_ms": 10.0,
+      "judge_ms": 1.0,
+      "output_ms": 2.0,
+      "return_bytes": 1200,
+      "read_ops": 1
+    },
+    "advisory": {
+      "codes": [],
+      "match_expect": true
+    }
+  },
+  "candidate_receipt_ok": {
+    "kind": "assessment_compare_receipt",
+    "source_sha": "60b84badb974d84f0198f75986f8540ff4da3bf9",
+    "fixture_id": "C08",
+    "policy_id": "tip_management_v1",
+    "policy_version": 1,
+    "as_of": 42,
+    "collector_version": 1,
+    "role": "candidate",
+    "assessment_explain": "on",
+    "structural": {
+      "hard_constraint_failures": [],
+      "fixture_pass": true,
+      "forbidden_hit": false
+    },
+    "costs": {
+      "collect_ms": 11.0,
+      "judge_ms": 1.2,
+      "output_ms": 2.4,
+      "return_bytes": 1800,
+      "read_ops": 1
+    },
+    "advisory": {
+      "codes": [
+        "no_advisory"
+      ],
+      "match_expect": true
+    }
+  },
+  "candidate_receipt_hard_fail_offset_attempt": {
+    "kind": "assessment_compare_receipt",
+    "source_sha": "60b84badb974d84f0198f75986f8540ff4da3bf9",
+    "fixture_id": "C08",
+    "policy_id": "tip_management_v1",
+    "policy_version": 1,
+    "as_of": 42,
+    "collector_version": 1,
+    "role": "candidate",
+    "assessment_explain": "on",
+    "costs": {
+      "collect_ms": 11.0,
+      "judge_ms": 1.2,
+      "output_ms": 2.4,
+      "return_bytes": 1800,
+      "read_ops": 1
+    },
+    "structural": {
+      "hard_constraint_failures": [
+        "revoke"
+      ],
+      "fixture_pass": false,
+      "forbidden_hit": true,
+      "soft_score_average": 0.99,
+      "claimed_pass_via_average": true
+    },
+    "advisory": {
+      "codes": [
+        "continue_prepare_current_work"
+      ],
+      "match_expect": false
+    }
+  }
+}

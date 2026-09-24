@@ -1,0 +1,34 @@
+{
+  "case": "C15",
+  "slug": "prepared-without-ack",
+  "fault": "历史prepared但没有ACK",
+  "theme": "delivery_unknown",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "historically_prepared": true,
+    "ack_present": false
+  },
+  "expect": {
+    "delivery_status_in": [
+      "unknown",
+      "not_verified"
+    ],
+    "layers.delivery_observation.status_in": [
+      "unknown",
+      "not_evaluated"
+    ]
+  },
+  "forbidden": {
+    "treat_prepared_without_ack_as_delivered": true,
+    "unknown_delivery_equals_false": true,
+    "average_or_soft_score_offsets_hard_constraint": true
+  },
+  "hard_constraint": true,
+  "critical_family": "delivery_unknown"
+}

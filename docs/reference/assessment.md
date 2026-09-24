@@ -390,7 +390,30 @@ versioned `AssessmentPolicy`, `as_of`, optional `FactSnapshot`, optional
 
 Machine fixtures: `tests/fixtures/assessment/envelope/`.
 
-## 14. Related pages
+
+## 14. DEC-013 counterexample corpus and compare budgets
+
+Pre-registers the offline counterexample corpus, baseline/candidate compare
+contract, performance budget slots, and statistics 口径 **before** the first
+candidate explain run. Reuses EVO-001 pre-registration method but counts
+separately; does not require EVO paid/dual-host experiments.
+
+| Item | Location |
+| --- | --- |
+| Coverage matrix + C01–C20 + P01–P05 | `tests/fixtures/assessment/counterexamples/` |
+| Compare contract / budgets / script | `tests/benchmarks/assessment/` |
+| Operator doc | [`docs/benchmarks/assessment.md`](../benchmarks/assessment.md) |
+
+Metric families stay separate: structural correctness, runtime overhead, and
+advisory effectiveness. Model success rate, dollar savings, and semantic
+understanding are not derived from unmeasured data. Critical hard-constraint
+families (error retry, revoke, wrong task, evidence withdrawal, missing fields,
+delivery unknown, time budget) fail closed and are not offset by averages.
+
+Envelope stack marker: `tests/fixtures/assessment/envelope/manifest.json`
+sets `dec_013_started: true`.
+
+## 15. Related pages
 
 
 

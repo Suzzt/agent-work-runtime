@@ -1,0 +1,82 @@
+{
+  "contract_id": "awr-assessment-compare-v1",
+  "version": "1.0.0",
+  "work": "AWR-DEC-013",
+  "title": "Pre-registered assessment baseline/candidate compare contract",
+  "status": "preregistered_before_first_candidate_run",
+  "method": {
+    "style": "EVO-001_preregistration_reuse",
+    "count_separately_from_evo": true,
+    "evo_paid_or_dual_host_required": false,
+    "baseline": {
+      "id": "baseline_explain_off",
+      "assessment_explain": "off",
+      "same_source": true
+    },
+    "candidate": {
+      "id": "candidate_explain_on_readonly",
+      "assessment_explain": "on",
+      "read_only": true,
+      "same_source": true
+    },
+    "identity_must_match": [
+      "source_sha",
+      "fixture_id",
+      "policy_id",
+      "policy_version",
+      "as_of",
+      "collector_version"
+    ],
+    "costs_recorded": [
+      "collect",
+      "judge",
+      "output"
+    ]
+  },
+  "metric_families": [
+    "structural_correctness",
+    "runtime_overhead",
+    "advisory_effectiveness"
+  ],
+  "unmeasured_not_derived": [
+    "model_success_rate",
+    "dollar_savings",
+    "semantic_understanding"
+  ],
+  "statistics": {
+    "percentile": "nearest_rank",
+    "p95_rule": "sort ascending; index = ceil(0.95*N)-1; require N>=30 before labeling p95",
+    "include_timeouts_failures_overruns_in_denominator": true,
+    "minimum_samples_for_p95": 30,
+    "warmups_before_samples": 3,
+    "cold_and_warm_reported_separately": true
+  },
+  "hard_constraint_policy": {
+    "critical_families_zero_tolerance": [
+      "error_retry",
+      "revoke",
+      "wrong_task",
+      "evidence_withdrawal",
+      "missing_fields",
+      "delivery_unknown",
+      "time_budget"
+    ],
+    "rule": "Any hard_constraint fixture failure fails the compare; soft/average scores must not offset it."
+  },
+  "budgets_file": "budgets.json",
+  "corpus_manifest": "tests/fixtures/assessment/counterexamples/manifest.json",
+  "gates_before_candidate_run": [
+    "corpus_manifest_frozen",
+    "coverage_matrix_frozen",
+    "compare_script_frozen",
+    "budgets_status_frozen_or_baseline_bound",
+    "statistics_口径_frozen"
+  ],
+  "boundaries": [
+    "assessment_read_only",
+    "no_model_or_network",
+    "missing_fields_not_zero_filled",
+    "unknown_is_not_false",
+    "no_second_eval_platform"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "case": "C14",
+  "slug": "archive-corrupt-revoke-or-pin-invalid",
+  "fault": "归档损坏/撤权/pin失效",
+  "theme": "evidence_withdrawal",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "archive_state": "corrupt_or_pin_invalid",
+    "soft_score": 1000000
+  },
+  "expect": {
+    "adoption_blocked_or_legal_only_retained": true,
+    "hard_gate_in": [
+      "reject",
+      "unknown"
+    ]
+  },
+  "forbidden": {
+    "adopt_corrupt_or_revoked_archive": true,
+    "offset_withdrawal_with_average_score": true
+  },
+  "hard_constraint": true,
+  "critical_family": "evidence_withdrawal"
+}

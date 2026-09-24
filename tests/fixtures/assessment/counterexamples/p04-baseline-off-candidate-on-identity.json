@@ -1,0 +1,20 @@
+{
+  "case": "P04",
+  "slug": "baseline-off-candidate-on-identity",
+  "kind": "positive_boundary",
+  "description": "Baseline and candidate share source SHA, fixture id, policy, as_of; only assessment explain flag differs.",
+  "level": "L1",
+  "synthetic": true,
+  "expect": {
+    "same_source_sha": true,
+    "same_fixture_id": true,
+    "same_policy": true,
+    "same_as_of": true,
+    "differs_only_in": [
+      "assessment_explain"
+    ]
+  },
+  "forbidden": {
+    "change_admission_or_completion_semantics": true
+  }
+}

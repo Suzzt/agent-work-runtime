@@ -4,12 +4,30 @@
   "assessment_profile": "management_and_action_rationale",
   "work": "AWR-DEC-012",
   "title": "Typed assessment envelope and unknown/conflict semantics",
-  "depends_on": ["AWR-DEC-010", "AWR-DEC-011"],
+  "depends_on": [
+    "AWR-DEC-010",
+    "AWR-DEC-011"
+  ],
   "policy_id": "tip_management_v1",
   "policy_version": 1,
-  "support_vocab": ["supported", "unknown", "conflicting", "unsupported"],
-  "layer_status": ["supported", "unknown", "conflicting", "unsupported", "not_evaluated"],
-  "hard_gate": ["pass", "reject", "unknown"],
+  "support_vocab": [
+    "supported",
+    "unknown",
+    "conflicting",
+    "unsupported"
+  ],
+  "layer_status": [
+    "supported",
+    "unknown",
+    "conflicting",
+    "unsupported",
+    "not_evaluated"
+  ],
+  "hard_gate": [
+    "pass",
+    "reject",
+    "unknown"
+  ],
   "ceilings": {
     "max_assessments": 64,
     "max_advisory": 32,
@@ -34,5 +52,5 @@
     "no_uncalibrated_confidence_or_probability",
     "reuse_management_decision_and_fact_snapshot"
   ],
-  "dec_013_started": false
+  "dec_013_started": true
 }

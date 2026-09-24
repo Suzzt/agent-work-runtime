@@ -1,0 +1,30 @@
+{
+  "case": "C08",
+  "slug": "stop-or-revoke",
+  "fault": "stop或撤权发生",
+  "theme": "revoke",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "stop_or_revoke": true,
+    "cached_advisory": [
+      "continue_prepare_current_work"
+    ],
+    "soft_score": 999999
+  },
+  "expect": {
+    "hard_gate": "reject",
+    "cached_advice_bypasses_current_check": false
+  },
+  "forbidden": {
+    "authorize_from_cached_advice_after_revoke": true,
+    "offset_revoke_with_soft_scores": true
+  },
+  "hard_constraint": true,
+  "critical_family": "revoke"
+}

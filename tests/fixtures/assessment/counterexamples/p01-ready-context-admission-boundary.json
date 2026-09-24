@@ -1,0 +1,16 @@
+{
+  "case": "P01",
+  "slug": "ready-context-admission-boundary",
+  "kind": "positive_boundary",
+  "description": "Dependencies resolved, context complete, no foreign claim: readiness may be supported; admission still not granted by management classification.",
+  "level": "L1",
+  "synthetic": true,
+  "expect": {
+    "layers.work_readiness.status": "supported",
+    "layers.context_completeness.status": "supported",
+    "execution_admission": "not_granted_by_management_classification"
+  },
+  "forbidden": {
+    "treat_management_continuous_as_admission": true
+  }
+}

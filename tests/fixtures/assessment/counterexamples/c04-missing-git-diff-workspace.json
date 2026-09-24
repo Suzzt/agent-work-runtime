@@ -1,0 +1,30 @@
+{
+  "case": "C04",
+  "slug": "missing-git-diff-workspace",
+  "fault": "缺git diff/工作区数据",
+  "theme": "missing_fields",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "workspace_facts_supply": "absent",
+    "git_diff": null
+  },
+  "expect": {
+    "workspace.changed_lines": "missing",
+    "workspace.change_risk": "unsupported",
+    "support": "unknown"
+  },
+  "forbidden": {
+    "changed_lines_equals_zero": true,
+    "change_risk_low": true,
+    "zero_fill_missing_fields": true,
+    "average_or_soft_score_offsets_hard_constraint": true
+  },
+  "hard_constraint": true,
+  "critical_family": "missing_fields"
+}

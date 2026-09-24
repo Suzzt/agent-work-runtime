@@ -1,0 +1,51 @@
+{
+  "work": "AWR-DEC-013",
+  "title": "Assessment explain cost budgets (frozen before first candidate run)",
+  "status": "frozen_slots_pending_baseline_binding",
+  "note": "Do not invent fixed millisecond gains. Bind measured baseline values into these slots before any candidate compare is labeled pass/fail on overhead.",
+  "binding_rule": "baseline_run must populate measured_* fields; candidate may run only after status becomes frozen_with_baseline",
+  "dimensions": {
+    "collect": {
+      "unit": "ms",
+      "metrics": [
+        "cold_p95_ms",
+        "warm_p95_ms",
+        "read_ops",
+        "peak_rss_bytes"
+      ],
+      "measured_baseline": null,
+      "candidate_ceiling_factor": 1.25,
+      "absolute_ceiling_ms": null
+    },
+    "judge": {
+      "unit": "ms",
+      "metrics": [
+        "cold_p95_ms",
+        "warm_p95_ms",
+        "peak_rss_bytes"
+      ],
+      "measured_baseline": null,
+      "candidate_ceiling_factor": 1.25,
+      "absolute_ceiling_ms": null
+    },
+    "output": {
+      "unit": "ms_and_bytes",
+      "metrics": [
+        "cold_p95_ms",
+        "warm_p95_ms",
+        "return_bytes_p95",
+        "peak_rss_bytes"
+      ],
+      "measured_baseline": null,
+      "candidate_ceiling_factor": 1.25,
+      "absolute_ceiling_ms": null,
+      "absolute_ceiling_return_bytes": 262144
+    }
+  },
+  "default_tool_call_delta_max": 0,
+  "forbid": [
+    "fabricate_ms_improvement",
+    "claim_p95_with_n_lt_30",
+    "exclude_failed_samples_from_latency_denominator"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "case": "C18",
+  "slug": "replay-same-input-policy-as-of",
+  "fault": "相同输入+policy+as_of回放",
+  "theme": "determinism",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "as_of": 42,
+    "policy_id": "tip_management_v1",
+    "policy_version": 1,
+    "repeat": 2
+  },
+  "expect": {
+    "assessment_hash_equal": true,
+    "external_side_effects": 0
+  },
+  "forbidden": {
+    "nondeterministic_hash": true,
+    "replay_executes_external_ops": true
+  },
+  "hard_constraint": false
+}

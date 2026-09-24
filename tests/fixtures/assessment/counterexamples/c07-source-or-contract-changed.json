@@ -1,0 +1,28 @@
+{
+  "case": "C07",
+  "slug": "source-or-contract-changed",
+  "fault": "来源/合同改变",
+  "theme": "staleness",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "envelope_contract_hash": "old",
+    "current_contract_hash": "new"
+  },
+  "expect": {
+    "old_interpretation_valid": false,
+    "advisory_contains": [
+      "refresh_sources"
+    ],
+    "reevaluate_required": true
+  },
+  "forbidden": {
+    "reuse_stale_envelope_as_admission": true
+  },
+  "hard_constraint": false
+}
