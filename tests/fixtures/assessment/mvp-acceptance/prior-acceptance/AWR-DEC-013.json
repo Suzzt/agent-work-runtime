@@ -1,0 +1,58 @@
+{
+  "work": "AWR-DEC-013",
+  "pr_url": "https://github.com/originoneai/awr/pull/149",
+  "pr_number": 149,
+  "head_sha": "338cbb9cea4ce16ab521d2a4afaaa354180c89b4",
+  "base_sha": "29ccd5e603a12169aa77beec846ed4d4591ac64a",
+  "base_branch": "codex/awr-dec-012-typed-assessment-envelope",
+  "acceptance_mapping": {
+    "1_freeze_matrix_identity_expect_forbid_compare_budgets_stats": {
+      "status": "met",
+      "evidence": [
+        "tests/fixtures/assessment/counterexamples/coverage-matrix.json",
+        "tests/fixtures/assessment/counterexamples/manifest.json",
+        "tests/fixtures/assessment/counterexamples/c01-*.json … c20-*.json",
+        "tests/benchmarks/assessment/contract.json",
+        "tests/benchmarks/assessment/budgets.json",
+        "tests/benchmarks/assessment/compare.py",
+        "docs/benchmarks/assessment.md"
+      ]
+    },
+    "2_families_separate_unmeasured_not_derived": {
+      "status": "met",
+      "evidence": [
+        "tests/benchmarks/assessment/contract.json",
+        "tests/benchmarks/assessment/compare.py",
+        "tests/fixtures/assessment/counterexamples/p05-metric-families-separated.json",
+        "tests/fixtures/assessment/counterexamples/c17-few-samples-cancel-or-cost-unmeasured.json"
+      ]
+    },
+    "3_critical_hard_fails_not_offset_by_averages": {
+      "status": "met",
+      "evidence": [
+        "tests/fixtures/assessment/counterexamples/c02-*.json",
+        "tests/fixtures/assessment/counterexamples/c03-*.json",
+        "tests/fixtures/assessment/counterexamples/c04-*.json",
+        "tests/fixtures/assessment/counterexamples/c08-*.json",
+        "tests/fixtures/assessment/counterexamples/c12-*.json",
+        "tests/fixtures/assessment/counterexamples/c14-*.json",
+        "tests/fixtures/assessment/counterexamples/c15-*.json",
+        "tests/benchmarks/assessment/compare.py",
+        "tests/benchmarks/assessment/prove_acceptance.py"
+      ]
+    }
+  },
+  "acceptance_all_pass": true,
+  "tests_run": [
+    "python3 tests/fixtures/assessment/counterexamples/verify.py",
+    "python3 tests/benchmarks/assessment/verify.py",
+    "python3 tests/benchmarks/assessment/prove_acceptance.py",
+    "python3 -m unittest tests.benchmarks.assessment.test_compare",
+    "python3 tests/fixtures/assessment/envelope/verify.py",
+    "python3 tests/fixtures/assessment/signals/verify.py",
+    "python3 tests/fixtures/assessment/contracts/verify.py",
+    "python3 scripts/check_public_tree.py"
+  ],
+  "source_of_slim": "/workspace/awr-dec013-wt/.local/awr-dec-013/completion-evidence.json",
+  "independently_rechecked_by": "AWR-DEC-060"
+}

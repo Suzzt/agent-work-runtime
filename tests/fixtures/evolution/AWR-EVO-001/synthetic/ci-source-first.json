@@ -1,0 +1,6 @@
+{
+  "id": "CI-SOURCE-FIRST",
+  "kind": "source_first_semantics",
+  "synthetic": true,
+  "expect_compat_preserved": true
+}

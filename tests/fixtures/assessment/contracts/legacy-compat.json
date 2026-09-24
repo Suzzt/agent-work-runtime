@@ -1,0 +1,50 @@
+{
+  "verified_main_sha": "8fa6679981c823842282a0a4b5b79b9c7165b2a4",
+  "strategy": "map_existing_returns_do_not_rename_tip_fields",
+  "no_new_command_names": true,
+  "do_not_occupy": [
+    "decision show",
+    "object show"
+  ],
+  "preferred_delivery": {
+    "capability_id": "assessment.explain",
+    "attach_to": [
+      "work assess",
+      "work prepare",
+      "awr_work_assess",
+      "awr_work_prepare"
+    ],
+    "mechanism": "capability_negotiated_explain_boolean_field",
+    "cli_flag": "--explain",
+    "mcp_arg": "explain",
+    "response_field": "assessment_explanation",
+    "default_without_negotiation": "existing_full_summary_action_shapes_unchanged"
+  },
+  "mappings": [
+    {
+      "legacy": "assess_management receipt",
+      "envelope": "management.*"
+    },
+    {
+      "legacy": "prepare_work.management",
+      "envelope": "management.*"
+    },
+    {
+      "legacy": "ActionGuidance / response_view=action guidance",
+      "envelope": "action_rationale.*"
+    },
+    {
+      "legacy": "ManagementDecision.unknown_observations",
+      "envelope": "evidence_quality.missing + management.decision.unknown_observations"
+    },
+    {
+      "legacy": "ManagementDecision.required_actions",
+      "envelope": "advisory_actions (subset) + management.decision.required_actions"
+    }
+  ],
+  "response_views_preserved": [
+    "full",
+    "summary",
+    "action"
+  ]
+}

@@ -35,6 +35,7 @@ async fn start(store: WorkstreamReadStore) -> Server {
         version: 1,
         listen: address,
         allowed_hosts: vec![],
+        allowed_web_origins: vec![],
         projects: vec![
             ProjectBinding {
                 key: "one".into(),

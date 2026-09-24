@@ -1,0 +1,35 @@
+{
+  "case": "C03",
+  "slug": "pending-external-write-lost",
+  "fault": "未决外部写结果丢失",
+  "theme": "error_retry",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "pending_mutation": true,
+    "outcome_known": false,
+    "request_identity": "req-42"
+  },
+  "expect": {
+    "advisory_contains": [
+      "query_original_operation_result"
+    ],
+    "support": "unknown",
+    "hard_gate_in": [
+      "reject",
+      "unknown"
+    ]
+  },
+  "forbidden": {
+    "retry_without_query": true,
+    "treat_unknown_effect_as_safe": true,
+    "average_or_soft_score_offsets_hard_constraint": true
+  },
+  "hard_constraint": true,
+  "critical_family": "error_retry"
+}

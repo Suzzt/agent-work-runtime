@@ -1,0 +1,17 @@
+{
+  "case": "no_uncalibrated_confidence_or_probability",
+  "forbidden_conclusion_keys": [
+    "confidence",
+    "probability",
+    "calibrated_probability",
+    "p_success"
+  ],
+  "evidence_quality_forbidden_keys": [
+    "confidence",
+    "probability",
+    "calibrated_probability",
+    "p_success",
+    "success_rate"
+  ],
+  "coverage_note": "coverage is a field count ratio, not probability"
+}

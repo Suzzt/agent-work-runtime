@@ -94,6 +94,9 @@ explicitly resolvable. All configured hard rules still apply. A five-line produc
 change still needs its existing authorization and verification. A month-long wait
 does not acquire engineering-test requirements merely because it is continuous.
 
+For the frozen AssessmentEnvelope, layer mapping, explain compatibility and
+read consumers, see [engineering assessment](assessment.md).
+
 Management classification is not execution admission. Missing goals, acceptance,
 source freshness or authorization must still be repaired through the existing
 preparation/claim workflow. Completion continues to use the source's engineering

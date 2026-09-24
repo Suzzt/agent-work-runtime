@@ -1,0 +1,8 @@
+schema_version: 1
+contract_bindings:
+  - contract_id: awr-mystery-v1
+    version: "1.0.0"
+    path: contracts/awr-mystery-v1.json
+    section: mystery
+mystery:
+  work_items: []

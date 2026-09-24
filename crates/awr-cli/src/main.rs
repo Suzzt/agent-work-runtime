@@ -3,6 +3,7 @@ mod runtime_snapshot;
 use awr_core::{Error, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 use std::path::PathBuf;
+mod assessment;
 mod batch;
 mod branch;
 mod capabilities;
@@ -19,6 +20,7 @@ mod host_save;
 mod intake_plan;
 mod management;
 mod mutation;
+mod nav;
 mod onboarding;
 mod query;
 mod records;
@@ -108,6 +110,8 @@ enum Command {
         #[command(subcommand)]
         command: source::SourceCommand,
     },
+    /// Read-only mainline navigation across scope, dependencies, accounting and blockers (WS-042).
+    Nav(nav::NavArgs),
     /// Refresh source projections and summarize current project work.
     Status {
         /// Return one page of current queue items (does not include terminal history).
@@ -145,6 +149,11 @@ enum Command {
         /// Use the last recorded snapshot without refreshing business sources.
         #[arg(long)]
         cached: bool,
+    },
+    /// Offline assessment replay, shadow compare, and advice kill-switch (DEC-022).
+    Assessment {
+        #[command(subcommand)]
+        command: assessment::AssessmentCommand,
     },
     /// Read one work item without expanding the full ledger or event history.
     Work {
@@ -234,6 +243,7 @@ fn run(cli: &Cli) -> Result<()> {
         Some(Command::Execution { command }) => execution::run(&cli.project, command, cli.json),
         Some(Command::Recovery { command }) => recovery::run(&cli.project, command, cli.json),
         Some(Command::Source { command }) => source::run(&cli.project, command, cli.json),
+        Some(Command::Nav(args)) => nav::run(&cli.project, &args, cli.json),
         Some(Command::Status {
             queue,
             offset,
@@ -279,6 +289,7 @@ fn run(cli: &Cli) -> Result<()> {
             branch,
             cached,
         }) => query::ready(&cli.project, *limit, branch.as_deref(), cli.json, *cached),
+        Some(Command::Assessment { command }) => assessment::run(command, cli.json),
         Some(Command::Work { command }) => query::work(&cli.project, command, cli.json),
         Some(Command::Session { command }) => session::run(&cli.project, command, cli.json),
         Some(Command::Evidence { command }) => records::evidence(&cli.project, command, cli.json),

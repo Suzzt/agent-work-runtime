@@ -1,0 +1,30 @@
+{
+  "id": "CX-CC-01",
+  "layer": "context_completeness",
+  "title": "Readable complete context without write admission",
+  "scenario": {
+    "context_completeness": {
+      "complete": true,
+      "body_present": true
+    },
+    "transport": {
+      "read_only": true,
+      "freshness_basis": "source_verified_readonly"
+    },
+    "execution_admission": {
+      "active_claims": [],
+      "writable": false
+    },
+    "false_inference_forbidden": [
+      "writable_true",
+      "claim_implied"
+    ]
+  },
+  "expect": {
+    "context_completeness.complete": true,
+    "execution_admission.writable": false,
+    "must_not_promote_to": [
+      "execution_admission.granted"
+    ]
+  }
+}

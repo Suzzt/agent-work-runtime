@@ -41,3 +41,14 @@ This is local regression evidence. Cross-platform execution, performance metrics
 native client use, independent business review and the eight complete E4 scenarios
 require separate measurements and actual-client evidence. The lifecycle script does not invoke a model or
 activate automatic hooks. A passing regression report does not release V1.
+
+## DEC-022 offline assessment (developer)
+
+Offline replay / shadow compare / advice kill-switch are covered by:
+
+- `cargo test -p awr-runtime --test assessment_offline --offline`
+- `cargo test -p awr-cli --test assessment_offline_cli --offline`
+- `python3 tests/benchmarks/assessment/prove_acceptance_dec022.py`
+
+These gates stay offline (no model/network) and do not start EVO-000.
+

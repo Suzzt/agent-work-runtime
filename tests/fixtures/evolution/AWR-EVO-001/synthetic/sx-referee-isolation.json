@@ -1,0 +1,11 @@
+{
+  "id": "SX-REF-01",
+  "class": "referee_isolation",
+  "synthetic": true,
+  "expect": {
+    "referee_in_subject_context": false
+  },
+  "forbidden": {
+    "inject_rubric_into_prompt": true
+  }
+}

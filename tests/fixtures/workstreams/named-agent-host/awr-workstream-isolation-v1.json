@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "contract_id": "awr-workstream-isolation-v1",
+  "work_item": "AWR-WS-024",
+  "title": "Named agent host adapters and controlled subtask parallelism",
+  "principles": [
+    "AWR admission, cancel request, and session end are coordination facts — never real process start or kill.",
+    "Adapters declare start, status_read, stop_confirmation, reconnect_resume, and result_forensics independently.",
+    "Unsupported adapter capabilities must surface a human_continuation path.",
+    "L0 manual/client execution reporting remains first-class alongside named controlled adapters.",
+    "Not every host must be auto-startable.",
+    "Independent subtasks under a parent keep task identity, own claims, and resource boundaries.",
+    "Parent rollup references child outcomes; it does not copy child artifacts.",
+    "Parent session exit does not auto-complete or release unknown child executions.",
+    "Explicit concurrency caps and user pause are enforced before dispatch.",
+    "Reconnect/retry queries the original execution first; never duplicate side effects."
+  ],
+  "adapter_capabilities": [
+    "start",
+    "status_read",
+    "stop_confirmation",
+    "reconnect_resume",
+    "result_forensics"
+  ],
+  "required_clients": ["codex_cli", "claude_code"],
+  "l0_client": "manual_report",
+  "subtask_rules": {
+    "identity": "each scheduled subtask has work_id + claim_id + resource_bounds",
+    "ordering": "hard dependencies decide start order; independent tasks may run in parallel",
+    "internal_helpers": "read-only helper calls may remain execution detail without separate claims"
+  }
+}

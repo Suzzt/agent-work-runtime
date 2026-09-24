@@ -1,0 +1,57 @@
+{
+  "allowed_spec_roots": ["specs", "contracts"],
+  "project_goal_keys": ["delivery"],
+  "self_approve_policy": {
+    "allow_self_approve_ordinary": true,
+    "delivery_completion_policy": "independent_review"
+  },
+  "suggestion_ids": [],
+  "changes": [
+    {
+      "op": "create_task",
+      "before": null,
+      "after": {
+        "work_id": "SHARED-1",
+        "external_key": "SHARED-1",
+        "title": "Extract shared types",
+        "goals": ["delivery"],
+        "scope_paths": ["specs/shared.md"],
+        "acceptance": ["Shared types crate compiles"],
+        "required_dependencies": [],
+        "completion_policy": "independent_review",
+        "definition_state": "draft",
+        "split_from": null,
+        "split_children": []
+      }
+    },
+    {
+      "op": "edit_fields",
+      "before": {
+        "work_id": "CLIENT-1",
+        "external_key": "CLIENT-1",
+        "title": "Implement the SDK",
+        "goals": ["delivery"],
+        "scope_paths": ["sdk/"],
+        "acceptance": ["SDK smoke test passes"],
+        "required_dependencies": ["API-1"],
+        "completion_policy": "independent_review",
+        "definition_state": "enabled",
+        "split_from": null,
+        "split_children": []
+      },
+      "after": {
+        "work_id": "CLIENT-1",
+        "external_key": "CLIENT-1",
+        "title": "Implement the SDK",
+        "goals": ["delivery"],
+        "scope_paths": ["sdk/", "specs/shared.md"],
+        "acceptance": ["SDK smoke test passes", "Uses shared types"],
+        "required_dependencies": ["API-1", "SHARED-1"],
+        "completion_policy": "independent_review",
+        "definition_state": "enabled",
+        "split_from": null,
+        "split_children": []
+      }
+    }
+  ]
+}

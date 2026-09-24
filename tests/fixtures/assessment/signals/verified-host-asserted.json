@@ -1,0 +1,32 @@
+{
+  "case": "host_asserted_vs_verified",
+  "description": "Host-asserted known values are observations; source/runtime recorded values can be facts.",
+  "signals": [
+    {
+      "field": "work.status",
+      "value": "in_progress",
+      "state": "known",
+      "basis": "source_declared",
+      "classification": "fact"
+    },
+    {
+      "field": "management.single_outcome",
+      "value": true,
+      "state": "known",
+      "basis": "host_asserted",
+      "classification": "observation"
+    },
+    {
+      "field": "advisory.continue",
+      "value": "continue_prepare_current_work",
+      "state": "known",
+      "basis": "rule_derived",
+      "classification": "inference"
+    }
+  ],
+  "expect": {
+    "fact_fields": ["work.status"],
+    "observation_fields": ["management.single_outcome"],
+    "inference_fields": ["advisory.continue"]
+  }
+}

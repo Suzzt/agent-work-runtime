@@ -1,0 +1,31 @@
+{
+  "schema_id": "awr-assessment-mvp-follow-ons-v1",
+  "work": "AWR-DEC-060",
+  "follow_on_enhancements": [
+    {
+      "id": "bind_baseline_budgets",
+      "condition": "Measure and bind budgets.json measured_* then set status frozen_with_baseline before any later-version candidate overhead pass/fail."
+    },
+    {
+      "id": "DEC-061_full_14",
+      "condition": "Separate card; must not be claimed by this gate."
+    },
+    {
+      "id": "DEC-030_plus_context_packing",
+      "condition": "Context packing / retention explain after first-batch gate."
+    },
+    {
+      "id": "AUTO_routing",
+      "condition": "Requires separate authorization; not started by DEC-060."
+    }
+  ],
+  "scheduling_conditions": [
+    "Budgets must be baseline-bound before candidate overhead gates.",
+    "No ROI / dollar-savings claims without real business model trials.",
+    "DEC-040/041 and EVO-000 must not start from this gate.",
+    "Mac awr work complete is parent-owned; this agent does not run it."
+  ],
+  "dec_040_started": false,
+  "dec_041_started": false,
+  "evo_000_started": false
+}

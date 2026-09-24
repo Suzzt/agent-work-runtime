@@ -1,0 +1,11 @@
+{
+  "case": "over_limit_truncation",
+  "description": "Candidate/byte ceilings truncate the snapshot and record truncation_reason; no low-risk fill.",
+  "limits": {"max_candidates": 2, "max_bytes": 4096, "max_scan_ops": 8},
+  "signal_count": 8,
+  "expect": {
+    "truncated": true,
+    "truncation_reason": "candidates_exceeded",
+    "omitted_count_at_least": 1
+  }
+}

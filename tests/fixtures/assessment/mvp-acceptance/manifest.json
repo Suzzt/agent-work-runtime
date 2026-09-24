@@ -1,0 +1,153 @@
+{
+  "schema_id": "awr-assessment-mvp-acceptance-v1",
+  "schema_version": 1,
+  "work": "AWR-DEC-060",
+  "title": "First-batch model-free explanation closed-loop — independent acceptance gate",
+  "milestone": "DEC2",
+  "first_batch_count": 8,
+  "count_separately_from": [
+    "Team",
+    "EVO",
+    "RET",
+    "paid_gates",
+    "full_14_item_suite",
+    "AUTO",
+    "native_host",
+    "released_version"
+  ],
+  "items": [
+    {
+      "work": "AWR-DEC-010",
+      "index": 1,
+      "role": "first_batch_feature",
+      "pr_url": "https://github.com/originoneai/awr/pull/146",
+      "head_sha": "ed035731a03ab9285d92eb6e83ba12c7e56196de",
+      "receipt": "prior-acceptance/AWR-DEC-010.json",
+      "acceptance_keys": [
+        "1_tip_inventory",
+        "2_first_batch_scope",
+        "3_frozen_contract"
+      ]
+    },
+    {
+      "work": "AWR-DEC-011",
+      "index": 2,
+      "role": "first_batch_feature",
+      "pr_url": "https://github.com/originoneai/awr/pull/147",
+      "head_sha": "06a7a4ecc87794a86645df596f2bd008ae0e16e8",
+      "receipt": "prior-acceptance/AWR-DEC-011.json",
+      "acceptance_keys": [
+        "1_snapshot_identity_scope_version_conflicts",
+        "2_source_quality_and_missing_git_diff",
+        "3_reuse_one_query_and_bounds"
+      ]
+    },
+    {
+      "work": "AWR-DEC-012",
+      "index": 3,
+      "role": "first_batch_feature",
+      "pr_url": "https://github.com/originoneai/awr/pull/148",
+      "head_sha": "29ccd5e603a12169aa77beec846ed4d4591ac64a",
+      "receipt": "prior-acceptance/AWR-DEC-012.json",
+      "acceptance_keys": [
+        "1_support_vocab_preserve_raw_unknown_not_false",
+        "2_versioned_rules_refs_coverage_no_confidence",
+        "3_pure_inputs_hard_rule_stable_sort_resource_limits"
+      ]
+    },
+    {
+      "work": "AWR-DEC-013",
+      "index": 4,
+      "role": "first_batch_feature",
+      "pr_url": "https://github.com/originoneai/awr/pull/149",
+      "head_sha": "338cbb9cea4ce16ab521d2a4afaaa354180c89b4",
+      "receipt": "prior-acceptance/AWR-DEC-013.json",
+      "acceptance_keys": [
+        "1_freeze_matrix_identity_expect_forbid_compare_budgets_stats",
+        "2_families_separate_unmeasured_not_derived",
+        "3_critical_hard_fails_not_offset_by_averages"
+      ]
+    },
+    {
+      "work": "AWR-DEC-020",
+      "index": 5,
+      "role": "first_batch_feature",
+      "pr_url": "https://github.com/originoneai/awr/pull/150",
+      "head_sha": "89d0cfc97cee2f2b764ff3b7cebefe3b36b12b7e",
+      "receipt": "prior-acceptance/AWR-DEC-020.json",
+      "acceptance_keys": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    {
+      "work": "AWR-DEC-021",
+      "index": 6,
+      "role": "first_batch_feature",
+      "pr_url": "https://github.com/originoneai/awr/pull/151",
+      "head_sha": "5bbf18f2bf7899eb9c2f968c71a971a8d149b0a7",
+      "receipt": "prior-acceptance/AWR-DEC-021.json",
+      "acceptance_keys": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    {
+      "work": "AWR-DEC-022",
+      "index": 7,
+      "role": "first_batch_feature",
+      "pr_url": "https://github.com/originoneai/awr/pull/152",
+      "head_sha": "8758d0375d0d133659d27628794dea40d7a01c93",
+      "receipt": "prior-acceptance/AWR-DEC-022.json",
+      "acceptance_keys": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    {
+      "work": "AWR-DEC-060",
+      "index": 8,
+      "role": "first_batch_independent_acceptance_gate",
+      "pr_url": null,
+      "head_sha": null,
+      "receipt": "gate-checklist.json",
+      "acceptance_keys": [
+        "1_cross_check_010_through_022_eight_items_independent",
+        "2_offline_nomodel_cli_mcp_hard_reject_killswitch_perf_raw",
+        "3_proves_current_offline_explain_only_explicit_non_claims"
+      ]
+    }
+  ],
+  "planned_paths": {
+    "acceptance_note": "docs/benchmarks/assessment.md",
+    "evidence_pack": "tests/fixtures/assessment/mvp-acceptance/",
+    "local_scratch_equivalent": ".local/awr-decision-20260920/mvp-acceptance/",
+    "note": ".local must not ship; checked-in pack under tests/fixtures is authoritative for the gate"
+  },
+  "reuses": [
+    "tests/fixtures/assessment/contracts/",
+    "tests/fixtures/assessment/signals/",
+    "tests/fixtures/assessment/envelope/",
+    "tests/fixtures/assessment/counterexamples/",
+    "tests/fixtures/assessment/replay/",
+    "tests/benchmarks/assessment/",
+    "crates/awr-runtime/{assessment_explain,assessment_replay,assessment_shadow,explanation_chain}.rs",
+    "crates/awr-cli/tests/{assessment_explain_cli,assessment_offline_cli}.rs",
+    "crates/awr-mcp/tests/assessment_explain_mcp.rs"
+  ],
+  "boundaries": [
+    "assessment_read_only",
+    "no_model_or_network",
+    "missing_fields_not_zero_filled",
+    "unknown_is_not_false",
+    "no_second_assessment_stack",
+    "no_roi_invention",
+    "budgets_cross_checked_before_later_version_candidate"
+  ],
+  "dec_040_started": false,
+  "dec_041_started": false,
+  "evo_000_started": false
+}

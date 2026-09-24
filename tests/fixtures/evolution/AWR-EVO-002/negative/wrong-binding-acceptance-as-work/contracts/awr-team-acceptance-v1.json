@@ -1,0 +1,17 @@
+{
+  "contract_id": "awr-team-acceptance-v1",
+  "version": "1.0.0",
+  "kind": "team_acceptance_scenario",
+  "scope": {
+    "required_scenario_ids": ["TAS-001"],
+    "targets": {
+      "acceptance_scenarios": 1
+    }
+  },
+  "preserved_team_v1_denominators": {
+    "required": 69,
+    "real_agent_accepted": 42,
+    "automated_evidence_pending": 27,
+    "note": "read-only snapshot; EVO-002 must not rewrite"
+  }
+}

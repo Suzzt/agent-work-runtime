@@ -120,3 +120,44 @@ cargo test -p awr-mcp --test shared --locked
 HTTP 集成另外覆盖多客户端、多项目、会话、等待、重复请求、重启和未知结果恢复；官方 Rust MCP SDK 客户端还验证协议发现与调用。八项 CLI 对照没有被扩充成全部新工具的逐项对照。
 
 这些属于本地接口与功能验证，不代表真实 Agent 客户端业务验收、性能测量或发布结果。
+
+
+## 五层结果语义与入口不混用（AWR-EVO-010）
+
+本段冻结 AWR-EVO-010 的结果层与协商边界；不新增第二套工作状态机。核对矩阵：
+
+- `.local/awr-evolution-20260919/semantic-contract-matrix.json`
+- `tests/fixtures/evolution/AWR-EVO-010/`
+- `scripts/evolution/verify_evo_010_semantic_contract.py`
+
+### 层与入口主键
+
+| 层 id | CLI / MCP 主要入口 | 可读成功不意味 |
+| --- | --- | --- |
+| `work_readiness` | `status` / `ready` / `awr_project_status` / `awr_work_ready` | 执行准入、上下文完整、投递、完成 |
+| `execution_admission` | `session start`、claim、`work transition`、`awr_work_transition` | 依赖已完成、投递成功、验收通过 |
+| `context_completeness` | `context compile` / `awr_context_compile` / prepare | 依赖完成、可写执行权、模型已消费 |
+| `delivery_observation` | client progress/hook、execution report、ack | 完成有效性、业务验收 |
+| `completion_validity` | `work complete`、evidence、ordinary confirm | 仅因就绪队列或投递回执而通过 |
+
+同一入口不得把一层成功重解释为另一层成功（反例 `CX-MIX-01`）。
+
+可表达但禁止混用的组合：
+
+- 上下文完整且依赖未完成（`CX-SEP-01`）
+- 可读但无执行权（`CX-SEP-02`；对照 `read_only` / 无 claim / MCP 只读）
+
+### 宿主模式
+
+- `runtime_delegated`：唯一写入所有者为 `awr_runtime`
+- `component_only`：唯一写入所有者为 `embedding_host`；**不得**创建宿主 Work/Run/owner，不得持有第二工作状态
+
+### 兼容
+
+旧输出保留。新字段/视图需能力或协议协商；缺必要能力返回
+`CapabilityUnavailable` / `ProtocolUnsupported`，禁止静默降级（`CX-COMPAT-01`）。
+unknown 不得默认为成功。
+
+```sh
+python3 scripts/evolution/verify_evo_010_semantic_contract.py
+```

@@ -1,0 +1,57 @@
+{
+  "schema_id": "awr-assessment-envelope-v1",
+  "schema_version": 1,
+  "assessment_profile": "management_and_action_rationale",
+  "work": "AWR-DEC-012",
+  "title": "Typed assessment envelope and unknown/conflict semantics",
+  "depends_on": [
+    "AWR-DEC-010",
+    "AWR-DEC-011"
+  ],
+  "policy_id": "tip_management_v1",
+  "policy_version": 1,
+  "support_vocab": [
+    "supported",
+    "unknown",
+    "conflicting",
+    "unsupported"
+  ],
+  "layer_status": [
+    "supported",
+    "unknown",
+    "conflicting",
+    "unsupported",
+    "not_evaluated"
+  ],
+  "hard_gate": [
+    "pass",
+    "reject",
+    "unknown"
+  ],
+  "ceilings": {
+    "max_assessments": 64,
+    "max_advisory": 32,
+    "max_candidates": 256,
+    "max_return_bytes": 262144
+  },
+  "fixtures": [
+    "support-vocab.json",
+    "hard-rule-vs-score.json",
+    "reason-order.json",
+    "resource-limits.json",
+    "replay-identity.json",
+    "no-confidence.json"
+  ],
+  "invariants": [
+    "unknown_is_not_false_or_low_risk",
+    "hard_rules_not_offset_by_scores",
+    "stable_reason_and_conflict_order",
+    "resource_limits_do_not_claim_full_scan",
+    "same_input_policy_as_of_identical_hash",
+    "coverage_gaps_conflicts_applicability_separate",
+    "no_uncalibrated_confidence_or_probability",
+    "reuse_management_decision_and_fact_snapshot"
+  ],
+  "dec_013_started": true,
+  "dec_020_started": true
+}

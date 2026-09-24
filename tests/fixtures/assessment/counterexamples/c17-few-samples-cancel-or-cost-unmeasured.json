@@ -1,0 +1,29 @@
+{
+  "case": "C17",
+  "slug": "few-samples-cancel-or-cost-unmeasured",
+  "fault": "历史少样本/取消/费用缺测",
+  "theme": "unmeasured_stats",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "historical_n": 2,
+    "cancellations": 1,
+    "cost_measured": false
+  },
+  "expect": {
+    "report_n_and_unknown": true,
+    "model_success_rate_derived": false,
+    "dollar_savings_derived": false
+  },
+  "forbidden": {
+    "zero_fill_success_rate": true,
+    "invent_p_success": true,
+    "convert_unmeasured_cost_to_bill_savings": true
+  },
+  "hard_constraint": false
+}

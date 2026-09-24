@@ -1,7 +1,13 @@
 //! Authenticated journals, coordination leases and scoped execution operations.
-//! Project serialization is retained until task-level read sets are implemented.
+//! Ordinary commands validate work-scoped read sets (epoch, authority, ownership,
+//! contract and action tokens). The project revision remains an ordered audit
+//! cursor and is not treated as business CAS, so unrelated advances do not force
+//! a semantic refresh. Writers still serialize on the project admission lock.
+pub(crate) mod action_auth;
 pub(crate) mod claims;
 pub(crate) mod executions;
+pub(crate) mod handoffs;
+pub(crate) mod reviews;
 
 use crate::workstream_auth::{
     CommandAuthPhase, ReaderAuthority, authenticate_writer, authorize_command,
@@ -27,6 +33,23 @@ pub(crate) const COMMANDS: &[&str] = &[
     "execution.report",
     "execution.attest",
     "execution.reconcile",
+    "handoff.propose",
+    "handoff.inspect",
+    "handoff.accept",
+    "handoff.reject",
+    "handoff.cancel",
+    "handoff.timeout",
+    "evidence.submit",
+    "review.open",
+    "review.accept",
+    "review.return",
+    "review.decide",
+    "work.rework",
+    "work.complete",
+    "delivery.submit_and_request_review",
+    "delivery.register_pr",
+    "delivery.observe_pr",
+    "delivery.finalize",
 ];
 const RECEIPT_PROTOCOL: &str = "awr-team-workstream-command-v1";
 
@@ -72,6 +95,8 @@ enum Action {
     End(End),
     Claim(claims::Action),
     Execution(executions::Action),
+    Handoff(handoffs::Action),
+    Review(reviews::Action),
 }
 
 struct Applied {
@@ -128,6 +153,25 @@ impl WorkstreamCommand {
             "claim.acquire" | "claim.renew" | "claim.release" => Ok(Action::Claim(
                 claims::Action::parse(&self.op, self.args.clone())?,
             )),
+            "handoff.propose" | "handoff.inspect" | "handoff.accept" | "handoff.reject"
+            | "handoff.cancel" | "handoff.timeout" => Ok(Action::Handoff(handoffs::Action::parse(
+                &self.op,
+                self.args.clone(),
+            )?)),
+            "evidence.submit"
+            | "review.open"
+            | "review.accept"
+            | "review.return"
+            | "review.decide"
+            | "work.rework"
+            | "work.complete"
+            | "delivery.submit_and_request_review"
+            | "delivery.register_pr"
+            | "delivery.observe_pr"
+            | "delivery.finalize" => Ok(Action::Review(reviews::Action::parse(
+                &self.op,
+                self.args.clone(),
+            )?)),
             "session.start" => {
                 let a: Start = serde_json::from_value(self.args.clone()).map_err(|_| invalid())?;
                 if !identity(&a.conversation_id) {
@@ -194,6 +238,21 @@ impl WorkstreamCommandStore {
         crate::check_schema(&client).await?;
         let tx = client.transaction().await?;
         let auth = authenticate_writer(&tx, tenant, project, bearer).await?;
+        let mut auth = auth;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        crate::delegation_auth::resolve_agent_delegation(
+            &tx,
+            &mut auth,
+            project,
+            Some(command.work_id.as_str()),
+            None,
+            None,
+            now_ms,
+        )
+        .await?;
         let (binding, ownership) =
             work_binding(&tx, tenant, project, &auth, &command.work_id).await?;
         let stream = binding.workstream_id;
@@ -205,7 +264,13 @@ impl WorkstreamCommandStore {
         // still requires a current explicit write grant at admission. Effect-phase
         // active-stream / attest / reconcile checks run after idempotent replay.
         // Project freeze/import/restore barriers remain stricter for all writes.
-        authorize_command(&auth, stream, &command.op, CommandAuthPhase::Admission)?;
+        authorize_command(
+            &auth,
+            stream,
+            &command.work_id,
+            &command.op,
+            CommandAuthPhase::Admission,
+        )?;
         if auth.epoch != command.coordinator_epoch {
             return Err(PgError::EpochChanged);
         }
@@ -233,13 +298,22 @@ impl WorkstreamCommandStore {
         if auth.project_status != "active" {
             return Err(PgError::ProjectNotAvailable);
         }
-        if auth.revision != version(&command.expected_project_revision)?
-            || auth.catalog.get(stream)?.authority_version
-                != version(&command.expected_authority_version)? as u64
+        // expected_project_revision remains on the wire for legacy clients and is
+        // validated as a decimal, but it is an audit cursor — not a business CAS.
+        // Authority/ownership/contract/epoch (and action tokens) form the read set.
+        let _audit_cursor = version(&command.expected_project_revision)?;
+        if auth.catalog.get(stream)?.authority_version
+            != version(&command.expected_authority_version)? as u64
         {
             return Err(PgError::PreconditionsChanged);
         }
-        authorize_command(&auth, stream, &command.op, CommandAuthPhase::Effect)?;
+        authorize_command(
+            &auth,
+            stream,
+            &command.work_id,
+            &command.op,
+            CommandAuthPhase::Effect,
+        )?;
         let stored = tx.query_one("SELECT contract_json,contract_hash FROM awr_team.work_contracts
             WHERE tenant_id=$1 AND project_id=$2 AND snapshot_id=$3 AND scope_id='main' AND work_id=$4",
             &[&tenant,&project,&auth.snapshot,&command.work_id]).await?;
@@ -264,6 +338,15 @@ impl WorkstreamCommandStore {
             Action::Claim(a) => {
                 claims::apply(&tx, tenant, project, &auth, &command, ownership, a).await?
             }
+            Action::Handoff(a) => {
+                handoffs::apply(&tx, tenant, project, &auth, &command, ownership, a).await?
+            }
+            Action::Review(a) => {
+                reviews::apply(
+                    &tx, tenant, project, &auth, &command, ownership, &contract, a,
+                )
+                .await?
+            }
             a => Applied {
                 data: apply(&tx, tenant, project, &auth, &command, ownership, a).await?,
                 preceding_events: Vec::new(),
@@ -276,10 +359,27 @@ impl WorkstreamCommandStore {
         if command.op.starts_with("execution.") {
             data["execution_state_basis"] = json!("at_commit");
         }
+        if command.op.starts_with("handoff.") {
+            data["handoff_state_basis"] = json!("at_commit");
+        }
+        if command.op.starts_with("evidence.")
+            || command.op.starts_with("review.")
+            || matches!(command.op.as_str(), "work.rework" | "work.complete")
+        {
+            data["review_state_basis"] = json!("at_commit");
+        }
+        // Project writers still take an exclusive admission lock (SQLite single-writer
+        // compatible serialization). The audit cursor advances here without treating
+        // the caller's expected_project_revision as business CAS.
         let next = auth
             .revision
             .checked_add(1)
             .ok_or(PgError::PreconditionsChanged)?;
+        tx.execute(
+            "UPDATE awr_team.projects SET project_revision=$3 WHERE tenant_id=$1 AND id=$2",
+            &[&tenant, &project, &next],
+        )
+        .await?;
         let receipt = json!({"protocol":RECEIPT_PROTOCOL,"request_id":command.request_id,"op":command.op,
             "request_hash":request_hash,
             "work_id":command.work_id,"workstream_id":stream,"scope_id":"main","ownership_version":ownership.to_string(),
@@ -288,11 +388,6 @@ impl WorkstreamCommandStore {
             "committed_project_revision":next.to_string(),"data":data,"execution_authorized":false});
         // State, attribution, monotonically ordered event and replay receipt are
         // one transaction. No network work or source scan occurs under this lock.
-        tx.execute(
-            "UPDATE awr_team.projects SET project_revision=$3 WHERE tenant_id=$1 AND id=$2",
-            &[&tenant, &project, &next],
-        )
-        .await?;
         for (index, (kind, payload)) in applied
             .preceding_events
             .iter()
@@ -307,6 +402,10 @@ impl WorkstreamCommandStore {
         tx.execute("INSERT INTO awr_team.operations(tenant_id,project_id,id,actor_id,client_id,request_id,op,request_hash,state,committed_project_revision,result_json)
             VALUES($1,$2,$3,$4,$5,$6,$7,$8,'committed',$9,$10)",
             &[&tenant,&project,&crate::tx::new_id(),&auth.actor_id,&auth.client_id,&command.request_id,&command.op,&request_hash,&next,&receipt]).await?;
+        // Delivery/review ops audit belongs in THIS transaction (authenticated MCP
+        // path), not only ReviewStore entrypoints — TMCP-040 CR on PR #134.
+        record_command_delivery_ops_audit(&tx, tenant, project, &auth, &command, stream, &data)
+            .await?;
         tx.commit().await?;
         // Only the original committed start response permits one caller-managed
         // execution. Stored/replayed receipts are historical, never a new grant.
@@ -314,6 +413,80 @@ impl WorkstreamCommandStore {
             json!({"replayed":false,"receipt":receipt,"execution_authorized":command.op == "execution.start"}),
         )
     }
+}
+
+/// Bind delivery/review ops-audit to the authenticated command transaction.
+/// Covers MCP `review.decide` / `delivery.register_pr` / `delivery.finalize`
+/// (and siblings) so audit.history by request_id sees the real path.
+async fn record_command_delivery_ops_audit(
+    tx: &Transaction<'_>,
+    tenant: &str,
+    project: &str,
+    auth: &ReaderAuthority,
+    command: &WorkstreamCommand,
+    stream: Id,
+    data: &Value,
+) -> PgResult<()> {
+    let (audit_action, target_kind, target_id_key) = match command.op.as_str() {
+        "review.decide" | "review.accept" | "review.return" => {
+            ("review.decide", "review", "round_id")
+        }
+        "delivery.register_pr" => ("delivery.register_pr", "delivery", "delivery_id"),
+        "delivery.observe_pr" => ("delivery.observe_pr", "delivery", "delivery_id"),
+        "work.complete" | "delivery.finalize" => ("delivery.finalize", "completion", "receipt_id"),
+        _ => return Ok(()),
+    };
+    #[cfg(feature = "pg-tests")]
+    if command.request_id == "inject-ops-audit-abort" {
+        return Err(PgError::Protocol("injected ops audit abort".into()));
+    }
+    let mut summary = data.clone();
+    if let Some(obj) = summary.as_object_mut() {
+        obj.insert("op".into(), json!(command.op.clone()));
+        obj.insert("request_id".into(), json!(command.request_id.clone()));
+        obj.insert(
+            "expected_contract_hash".into(),
+            json!(command.expected_contract_hash.clone()),
+        );
+        obj.insert(
+            "coordinator_epoch".into(),
+            json!(command.coordinator_epoch.clone()),
+        );
+        obj.insert(
+            "expected_ownership_version".into(),
+            json!(command.expected_ownership_version.clone()),
+        );
+        obj.insert(
+            "expected_authority_version".into(),
+            json!(command.expected_authority_version.clone()),
+        );
+    }
+    let mut audit = crate::ops_audit::write_from_auth(
+        auth,
+        crate::ops_audit::OpsCategory::Delivery,
+        audit_action,
+        target_kind,
+    );
+    audit.target_id = data
+        .get(target_id_key)
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
+    audit.work_id = Some(command.work_id.clone());
+    audit.request_id = Some(command.request_id.clone());
+    audit.authority_version = auth
+        .catalog
+        .get(stream)
+        .ok()
+        .map(|entry| entry.authority_version as i64);
+    audit.person_id = data
+        .get("reviewer_person_id")
+        .or_else(|| data.get("approved_by_person_id"))
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
+    audit.digest = Some(crate::ops_audit::digest_of(&summary));
+    audit.summary = summary;
+    crate::ops_audit::record_in_tx(tx, tenant, project, &audit).await?;
+    Ok(())
 }
 
 async fn apply(
@@ -326,7 +499,9 @@ async fn apply(
     action: Action,
 ) -> PgResult<Value> {
     match action {
-        Action::Claim(_) | Action::Execution(_) => Err(invalid()), // Same outer transaction.
+        Action::Claim(_) | Action::Execution(_) | Action::Handoff(_) | Action::Review(_) => {
+            Err(invalid())
+        } // Same outer transaction.
         Action::Start(a) => {
             let active: bool = tx.query_one("SELECT EXISTS(SELECT 1 FROM awr_team.sessions
                 WHERE tenant_id=$1 AND project_id=$2 AND actor_id=$3 AND client_id=$4 AND conversation_id=$5 AND work_id=$6 AND state='active')",

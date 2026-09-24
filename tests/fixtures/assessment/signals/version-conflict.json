@@ -1,0 +1,12 @@
+{
+  "case": "same_snapshot_version_conflict",
+  "description": "Two versions for the same entity inside one snapshot must be rejected.",
+  "entity_versions": [
+    {"entity_kind": "work", "entity_id": "w1", "version": "5"},
+    {"entity_kind": "work", "entity_id": "w1", "version": "6"}
+  ],
+  "expect": {
+    "reject": true,
+    "error_contains": "entity version conflict"
+  }
+}

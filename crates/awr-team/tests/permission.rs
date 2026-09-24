@@ -259,6 +259,91 @@ fn project_admin_does_not_inherit_special_or_cross_project() {
 }
 
 #[test]
+fn exhaustive_role_action_cells_present() {
+    let doc = fixture("allow_deny_pairs.json");
+    assert_eq!(doc["exhaustive"], true);
+    assert_eq!(doc["cell_count"], 52);
+    let pairs = doc["pairs"].as_array().unwrap();
+    let mut cells = std::collections::BTreeSet::new();
+    for pair in pairs {
+        if pair.get("deny_kind").is_some()
+            || pair.get("special_authority").is_some()
+            || pair.get("resource_override").is_some()
+            || pair.get("not_after_unix_ms").is_some()
+        {
+            continue;
+        }
+        let action = pair["action"].as_str().unwrap();
+        if Action::parse(action).is_err() {
+            continue;
+        }
+        let role = pair["template"].as_str().unwrap();
+        let grant = pair
+            .get("independent_review_grant")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if grant {
+            continue; // extras beyond base cells
+        }
+        cells.insert((role.to_string(), action.to_string()));
+    }
+    assert_eq!(cells.len(), 52, "expected 4 roles x 13 actions");
+    for role in RoleTemplate::all() {
+        for action in Action::all() {
+            assert!(
+                cells.contains(&(role.as_str().to_string(), action.as_str().to_string())),
+                "missing cell {} x {}",
+                role.as_str(),
+                action.as_str()
+            );
+        }
+    }
+}
+
+#[test]
+fn protocol_counterexamples_catalog_complete() {
+    let doc = fixture("protocol_counterexamples.json");
+    assert_eq!(doc["schema"], "awr-tmcp-050-protocol-counterexamples-v1");
+    assert_eq!(doc["work"], "AWR-TMCP-050");
+    assert_eq!(doc["required_count"], 18);
+    assert_eq!(doc["matrix_exhaustive"], true);
+    let cases = doc["cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 18);
+    let expected = [
+        "role_action_matrix",
+        "execution_not_planning",
+        "cross_scope_identity",
+        "read_surface_isolation",
+        "revocation_race",
+        "least_privilege_delegation",
+        "scoped_admin_and_last_admin",
+        "secret_delivery_boundary",
+        "proposal_approval_binding",
+        "source_cas_and_crash",
+        "live_source_publication",
+        "graph_integrity",
+        "idempotent_outcome",
+        "runtime_state_authority",
+        "review_person_and_version",
+        "audit_atomicity",
+        "legacy_and_operator_separation",
+        "discovery_is_not_authority",
+    ];
+    for (i, id) in expected.iter().enumerate() {
+        assert_eq!(cases[i]["id"], *id);
+        assert_eq!(cases[i]["positive_control_required"], true);
+        assert!(cases[i]["entry_point"].as_str().unwrap().len() > 10);
+        assert!(cases[i]["assertions"].as_array().unwrap().len() >= 2);
+    }
+    let iso = &doc["pg_isolation"];
+    assert_eq!(iso["test_env_var"], "AWR_TEAM_TEST_DATABASE_URL");
+    assert_eq!(iso["runtime_env_var"], "AWR_TEAM_DATABASE_URL");
+    assert_eq!(iso["process_exclusive_db"], true);
+    assert_eq!(iso["runtime_url_must_not_be_cleaned"], true);
+    assert_eq!(iso["mocked_predicates_not_service_pass"], true);
+}
+
+#[test]
 fn migration_intersects_mixed_role_and_grant() {
     let reader_write = preview_legacy_migration(
         Some(LegacyRole::Reader),

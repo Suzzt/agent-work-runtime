@@ -6,6 +6,7 @@ use crate::{
 };
 use awr_context::{ContextRequest, DeltaBaseline, compile_workstream_context};
 use awr_core::*;
+use awr_runtime::{MainlineNavExtras, MainlineNavScope, mainline_nav};
 use awr_source::Manifest;
 use awr_store::{
     CatalogCursor, CatalogKind, CatalogScope, EventCursor, EventQuery, ScopedCursor, SearchQuery,
@@ -25,6 +26,7 @@ const ACTIONS: &[&str] = &[
     "object",
     "events",
     "recovery",
+    "nav",
 ];
 
 pub(crate) fn tool() -> Tool {
@@ -136,7 +138,7 @@ fn capabilities() -> Value {
             "search":{"text":"optional string","kind":"optional kind","status":"optional state","work":"optional work key","limit":"1..100, default 10"},
             "object":{"kind":"work|session|checkpoint|artifact|evidence|event","reference":"key or ID; artifact returns metadata only"},
             "events":{"after_revision":"optional integer","limit":"1..100, default 10","cursor":"scope-bound next_cursor, optional"},
-            "recovery":{}}})
+            "recovery":{},"nav":{"workstream":"optional id/key","work":"optional work key (repeat via args.work array)","goal":"optional","milestone":"optional","accounting":"optional WS-040 WorkstreamAccounting object"}}})
 }
 
 pub(crate) fn call(
@@ -192,6 +194,53 @@ pub(crate) fn call(
         return Ok(CallToolResult::structured(
             json!({"ok":true,"read_only":true,"workstreams":streams}),
         ));
+    }
+    if request.action == "nav" {
+        let catalog = view
+            .store
+            .workstream_catalog(project)
+            .map_err(boundary_error)?;
+        // Selecting a workstream still re-checks the caller's grant; nav never writes.
+        if let Some(stream_id) = request.workstream {
+            access.authorize(&catalog, stream_id, WorkstreamAction::Read)?;
+        } else {
+            for grant in &access.grants {
+                access.authorize(&catalog, grant.workstream_id, WorkstreamAction::Read)?;
+            }
+        }
+        let args = Value::Object(request.args.clone());
+        #[derive(Deserialize, Default)]
+        #[serde(default, deny_unknown_fields)]
+        struct NavArgs {
+            work: Vec<String>,
+            goal: Option<String>,
+            milestone: Option<String>,
+            accounting: Option<awr_core::WorkstreamAccounting>,
+        }
+        let options: NavArgs = parse(args)?;
+        let mut works = options.work;
+        if let Some(work) = request.work.clone() {
+            if !works.iter().any(|w| w == &work) {
+                works.push(work);
+            }
+        }
+        let scope = MainlineNavScope {
+            workstream: request.workstream.map(|id| id.to_string()),
+            work: works,
+            goal: options.goal,
+            milestone: options.milestone,
+        };
+        let extras = MainlineNavExtras {
+            accounting: options.accounting,
+            ..Default::default()
+        };
+        let mut value =
+            mainline_nav(&view.store, &view.project, &scope, extras).map_err(boundary_error)?;
+        value["read_only"] = json!(true);
+        value["authorization_rechecked"] = json!(true);
+        view.finish(root).map_err(boundary_error)?;
+        ensure_no_credentials_value(&value).map_err(boundary_error)?;
+        return Ok(CallToolResult::structured(value));
     }
     let selection = WorkstreamReadSelection {
         workstream_id: request.workstream,

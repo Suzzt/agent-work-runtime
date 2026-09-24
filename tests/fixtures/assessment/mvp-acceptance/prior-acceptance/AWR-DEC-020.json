@@ -1,0 +1,23 @@
+{
+  "work": "AWR-DEC-020",
+  "pr_url": "https://github.com/originoneai/awr/pull/150",
+  "pr_number": 150,
+  "head_sha": "89d0cfc97cee2f2b764ff3b7cebefe3b36b12b7e",
+  "base_sha": "338cbb9cea4ce16ab521d2a4afaaa354180c89b4",
+  "base_branch": "codex/awr-dec-013-counterexample-corpus",
+  "acceptance_mapping": {
+    "1": "layers preserve existing conclusions; envelope cites basis_refs and unchecked items (ac1 +/- , P01)",
+    "2": "unresolved side effects → query_original_operation_result only; soft high_coverage/low_risk/small_change never advise re-run (ac2 +/- , C03)",
+    "3": "source/auth/stop-revoke invalidate prior explanations; unsupported exec/host probes → unknown without claiming process stopped (ac3 , C07/C08/C15)"
+  },
+  "acceptance_all_pass": true,
+  "tests_run": [
+    "cargo test -p awr-runtime --test explanation_chain --offline → 10 passed",
+    "cargo test -p awr-runtime --test fact_snapshot --offline → 4 passed",
+    "cargo test -p awr-core --test assessment_envelope --test assessment_contract --test fact_snapshot --offline → 20 passed",
+    "python3 tests/fixtures/assessment/counterexamples/verify.py → OK",
+    "python3 tests/fixtures/assessment/envelope/verify.py → OK"
+  ],
+  "source_of_slim": "/workspace/awr-dec020-wt/.local/awr-dec-020/completion-evidence.json",
+  "independently_rechecked_by": "AWR-DEC-060"
+}

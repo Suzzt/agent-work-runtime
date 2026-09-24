@@ -1,0 +1,19 @@
+{
+  "verified_main_sha": "8fa6679981c823842282a0a4b5b79b9c7165b2a4",
+  "allowed": [
+    "authorized_store_projections_and_event_receipts",
+    "same_prepare_or_assess_read_snapshot",
+    "caller_supplied_host_observations_labeled_host_asserted",
+    "frozen_policy_and_fixture_inputs_for_offline_replay"
+  ],
+  "forbidden": [
+    "model_provider_or_network_scoring",
+    "live_os_process_probes_to_invent_outcomes",
+    "implicit_git_ast_or_whole_repo_scans_beyond_prepare",
+    "mutate_claims_sessions_sources_completion_or_management_via_assess",
+    "bypass_source_freshness_or_revision_guards",
+    "use_decision_show_or_markdown_decisions_as_envelope_authority"
+  ],
+  "side_effects": "read_only_for_assessment",
+  "recording_observations": "separate_work_manage_mutation_with_request_key"
+}

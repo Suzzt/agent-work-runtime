@@ -1,0 +1,15 @@
+{
+  "id": "CX-COMPAT-01",
+  "layer": "compatibility",
+  "title": "Silent degrade when required capability missing",
+  "scenario": {
+    "required_capability": "workflow.response_summary",
+    "capability_present": false,
+    "illegal_behavior": "silently_return_summary_shaped_as_success",
+    "required_behavior": "CapabilityUnavailable_or_ProtocolUnsupported"
+  },
+  "expect": {
+    "must_fail_closed": true,
+    "legacy_shape_preserved_without_negotiation": true
+  }
+}

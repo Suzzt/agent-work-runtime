@@ -1,0 +1,95 @@
+{
+  "schema_id": "awr-assessment-envelope-v1",
+  "schema_version": 1,
+  "assessment_profile": "management_and_action_rationale",
+  "required_top_level": [
+    "schema_id",
+    "schema_version",
+    "assessment_profile",
+    "identity",
+    "layers",
+    "assessments",
+    "evidence_quality",
+    "advisory_actions",
+    "limits",
+    "management",
+    "action_rationale",
+    "legacy",
+    "unsupported_fields"
+  ],
+  "identity_fields": [
+    "project_id",
+    "work_key",
+    "work_id",
+    "branch_id",
+    "contract_fingerprint",
+    "policy_id",
+    "policy_version",
+    "input_summary",
+    "as_of",
+    "verified_main_sha"
+  ],
+  "layer_ids": [
+    "work_readiness",
+    "execution_admission",
+    "context_completeness",
+    "delivery_observation",
+    "completion_validity"
+  ],
+  "layer_status": [
+    "supported",
+    "unknown",
+    "conflicting",
+    "unsupported",
+    "not_evaluated"
+  ],
+  "assessment_support": [
+    "supported",
+    "unknown",
+    "conflicting",
+    "unsupported"
+  ],
+  "signal_state": [
+    "known",
+    "missing",
+    "stale",
+    "conflicting",
+    "unsupported",
+    "unknown"
+  ],
+  "signal_basis": [
+    "source_declared",
+    "runtime_recorded",
+    "host_asserted",
+    "locally_observed",
+    "rule_derived"
+  ],
+  "signal_classification": [
+    "fact",
+    "observation",
+    "inference"
+  ],
+  "management_modes": [
+    "undetermined",
+    "lightweight",
+    "continuous"
+  ],
+  "action_rationale_fields": [
+    "when",
+    "basis",
+    "next_action",
+    "recheck",
+    "max_bytes",
+    "response_view"
+  ],
+  "action_guidance_max_bytes": 1024,
+  "management_completion_policy": "unchanged_source_policy",
+  "management_execution_admission": "not_granted_by_management_classification",
+  "forbidden": [
+    "calibrated_confidence",
+    "success_probability",
+    "model_client",
+    "general_scheduler",
+    "second_decision_authority"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "case": "P05",
+  "slug": "metric-families-separated",
+  "kind": "positive_boundary",
+  "description": "Structural correctness, runtime overhead, and advisory effectiveness remain separate metric families.",
+  "level": "L1",
+  "synthetic": true,
+  "expect": {
+    "metric_families": [
+      "structural_correctness",
+      "runtime_overhead",
+      "advisory_effectiveness"
+    ],
+    "unmeasured_not_derived": [
+      "model_success_rate",
+      "dollar_savings",
+      "semantic_understanding"
+    ]
+  },
+  "forbidden": {
+    "merge_families_into_single_score": true
+  }
+}

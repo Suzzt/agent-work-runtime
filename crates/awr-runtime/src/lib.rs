@@ -22,39 +22,138 @@ pub use document::{
 pub use host_save::{
     HostChange, HostSaveReport, HostSaveRequest, host_preview, host_recover, host_save, host_status,
 };
+mod agent_authorization;
+mod assessment_explain;
+mod assessment_replay;
+mod assessment_shadow;
 mod execution;
+mod explanation_chain;
+mod fact_snapshot;
 mod fs_sync;
 mod management;
 mod mutation;
 mod mutation_apply;
+mod operation_readset;
 mod organization;
+mod planning_writeback;
 mod read;
 mod responsibility;
 mod resume;
+mod source_concurrency;
+mod team_handoff;
 mod work_action;
 mod work_create;
 mod work_edit;
 pub use work_edit::edit_work;
+mod selective_invalidation;
 mod work_graph;
-pub use work_graph::{WorkGraphRequest, work_graph};
+mod workstream_accounting;
+mod workstream_eta;
+mod workstream_nav;
+mod workstream_usage;
+pub use selective_invalidation::{
+    AdoptedConsumerEdge, BoundaryDecision, BoundaryRevalidation, BoundarySnapshot,
+    CancelSplitRelation, DiscoverDependencyRequest, ExecutionBoundary, PlanningChangeApplication,
+    PlanningChangeStatus, ProviderChangeKind, ScopedPlanningChange, SelectiveInvalidationPlan,
+    action_blocked_by_planning_changes, confirm_planning_change, consumers_by_provider,
+    planning_change_fingerprint, record_discovered_dependency_change, reject_planning_change,
+    revalidate_execution_boundary, select_downstream_reevaluation,
+};
+pub use work_graph::{
+    SharedOutcomeRef, WorkGraphRequest, necessary_dependencies_ready, reference_shared_outcome,
+    unique_shared_work_keys, validate_cross_stream_work_graph, work_graph,
+};
+pub use workstream_accounting::{
+    ApprovedContractSnapshot, ContractAccountingReport, GoalQueryResult, GoalQueryView,
+    OwnershipTransfer, ScopeAccountingError, TransferAccountingOutcome, VerifiedStageObservation,
+    VerifiedWorkObservation, account_approved_scope, goal_query_view,
+    refuse_goal_query_as_contract_rate, transfer_work_preserving_history, unique_owned_work_keys,
+};
+pub use workstream_eta::{
+    AttestedEtaProject, EtaRuntimeError, attach_observation_handoff, estimate_and_persist,
+    observation_handoff_for_estimate, query_eta_forecast, query_eta_forecasts_for_target,
+    record_acceptance_datum, record_historical_sample, reestimate_and_persist,
+};
+pub use workstream_nav::{
+    MAINLINE_NAV_PROTOCOL, MAINLINE_NAV_SCHEMA_VERSION, MainlineNavExtras, MainlineNavScope,
+    MainlineNavWorkFact, assemble_mainline_nav, mainline_nav,
+};
+pub use workstream_usage::{
+    AttestedUsageProject, UsageRuntimeError, ingest_usage_receipt, query_usage_cost_totals,
+    query_usage_occurrence_bindings, query_usage_time_totals, record_usage_allocation,
+    record_usage_correction, record_usage_counter_snapshot, record_usage_execution_interval,
+    refuse_eta_from_cumulative_duration, usage_observation_for_ws043,
+};
 mod response_view;
 mod workflow;
 pub use artifact::ArtifactFile;
+pub use assessment_explain::{
+    ASSESSMENT_EXPLAIN_CAPABILITY, ASSESSMENT_EXPLAIN_FIELD, AssessmentExplanationView,
+    AttachExplanationOptions, ExplanationSideEffects, ExplanationWireMetrics,
+    attach_assessment_explanation, has_assessment_explanation, normalize_receipt_for_explanation,
+    wire_bytes,
+};
+pub use assessment_replay::{
+    ASSESSMENT_REPLAY_CAPABILITY, REPLAY_SNAPSHOT_SCHEMA_ID, REPLAY_SNAPSHOT_SCHEMA_VERSION,
+    ReplayReport, ReplaySnapshot, ReplayStatus, capture_replay_snapshot, parse_replay_snapshot,
+    replay_assessment, replay_assessment_from_bytes, replay_missing_snapshot, rule_hash_for_policy,
+};
+pub use assessment_shadow::{
+    ASSESSMENT_ADVICE_MODE_CAPABILITY, ASSESSMENT_SHADOW_COMPARE_CAPABILITY, AdviceDeliveryMode,
+    AdviceModeEffect, ArmSummary, CompareCosts, HardProtectionFlags, ShadowCompareReport,
+    ShadowDifference, apply_advice_delivery_mode, attach_according_to_advice_mode,
+    hard_protections_after_disable, shadow_compare,
+};
 use awr_store::Store;
 pub use awr_store::{BranchFilter, EventCursor, EventPage, EventQuery};
 pub use branch::{CreateBranchRequest, create_branch, observe_git_ref, switch_branch};
 pub use branch_close::{CloseBranchRequest, close_branch};
 pub use completion::{CompleteWorkRequest, complete_work};
 pub use doctor::{ProjectDoctorReport, diagnose_project};
-pub use execution::{inspect_execution, inspect_work_executions, render_execution_observations};
+pub use execution::{
+    HostIsolationEvidence, IsolationClass, classify_isolation, inspect_execution,
+    inspect_work_executions, isolation_basis, refuse_unverified_strong_isolation,
+    render_execution_observations,
+};
+pub use explanation_chain::{
+    CompletionExplanationInput, DeliveryExplanationInput, EXPLANATION_CHAIN_PROFILE,
+    ExplanationAuthority, ExplanationChainInput, ExplanationChainResult, FORBIDDEN_RERUN_CUES,
+    ProbeSupport, UnresolvedSideEffect, compose_explanation_chain,
+    explanation_chain_from_prepare_json, prior_explanation_still_valid,
+};
+
+pub use fact_snapshot::{
+    PREPARE_FACT_MAX_BYTES, PREPARE_FACT_MAX_CANDIDATES, PREPARE_FACT_MAX_SCAN_OPS,
+    PreparedFactView, fact_snapshot_from_prepared_view, prepared_view_from_prepare_json,
+};
+pub mod host_adapter;
+pub use host_adapter::{
+    AdapterActionOutcome, AdapterForensics, AdapterRegistry, AdapterStatus, ClaudeCodeAdapter,
+    CodexCliAdapter, ExecutionHostAdapter, L0ManualAdapter, NativeExecutionHandle,
+    ParallelDispatchPlan, ParallelScheduler, ParentExitEffect, PauseGate, ReconnectRetry,
+    ScheduleDecision, SubtaskRecord, SubtaskState, built_in_registry,
+    refuse_coordination_as_process_control, rollup_refs,
+};
 pub use management::{AssessManagementRequest, ManageWorkRequest, assess_management, manage_work};
 pub use mutation::{
     CreateProposalRequest, ProposalReport, ReviewProposalAction, ReviewProposalRequest,
     create_proposal, review_proposal,
 };
+pub use operation_readset::{append_work_observation, classify_operation_replay_result};
 pub use organization::{OrganizationReport, OrganizationState, inspect_organization};
+pub use planning_writeback::{
+    ActivationDisposition, ActivationImpactReport, AffectedWorkDecision, WorkRuntimeObservation,
+    WritebackJournal, WritebackPhase, activate_ledger_writeback_precise, analyze_activation_impact,
+    plan_ledger_writeback, planning_change_blocks_until_confirmed,
+    planning_changes_as_selective_replan, reevaluate_graph_consumers,
+    same_request_already_completed, writeback_journal_path,
+};
 pub use response_view::summarize_work_response;
 pub use resume::{ResumeReport, ResumeRequest, resume_bound_session, resume_session};
+pub use source_concurrency::{
+    SourceConcurrencyReport, activate_precise_patch, activate_shard_candidate,
+    classify_whole_file_gate, recover_shard_candidate,
+};
 pub use work_action::{WorkActionRequest, perform_work_action};
 pub use work_create::{
     CreateWorkInput, CreationReport, create_work, creation_status, recover_creation,

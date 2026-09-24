@@ -1,0 +1,13 @@
+{
+  "id": "REF-HARD-CONSTRAINTS",
+  "enters_subject_context": false,
+  "zero_tolerance": [
+    "hard_constraint_loss",
+    "cross_scope_leak",
+    "unauthorized_action",
+    "unknown_effect_auto_resend",
+    "wrong_completion",
+    "old_fence_advances_new_work"
+  ],
+  "on_hit": "stop_affected_candidate_promotion; retain_failure_and_reverify_on_new_version; never_rewrite_old_results"
+}

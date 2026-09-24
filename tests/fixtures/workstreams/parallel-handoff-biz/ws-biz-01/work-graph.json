@@ -1,0 +1,76 @@
+{
+  "namespace": "awr-ws-r2-ws-biz-01",
+  "hard_gate": "three_way_parallel",
+  "nodes": [
+    {
+      "key": "P1-FE",
+      "role": "executor",
+      "person_id": "person.morgan-lee",
+      "client_adapter": "codex_cli",
+      "depends_on": []
+    },
+    {
+      "key": "P1-BE",
+      "role": "executor_peer",
+      "person_id": "person.casey-wu",
+      "client_adapter": "claude_code",
+      "depends_on": []
+    },
+    {
+      "key": "P1-QA",
+      "role": "web_operator",
+      "person_id": "person.drew-kim",
+      "client_adapter": "team_web",
+      "depends_on": [
+        "P1-FE",
+        "P1-BE"
+      ]
+    },
+    {
+      "key": "P1-FLOW",
+      "role": "executor",
+      "person_id": "person.morgan-lee",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "P1-QA"
+      ]
+    },
+    {
+      "key": "P1-EMPTY",
+      "role": "executor_peer",
+      "person_id": "person.casey-wu",
+      "client_adapter": "claude_code",
+      "depends_on": [
+        "P1-FLOW"
+      ]
+    },
+    {
+      "key": "P1-REVIEW",
+      "role": "reviewer",
+      "person_id": "person.drew-kim",
+      "client_adapter": "team_web",
+      "depends_on": [
+        "P1-EMPTY"
+      ]
+    },
+    {
+      "key": "P1-DELIVER",
+      "role": "executor",
+      "person_id": "person.morgan-lee",
+      "client_adapter": "codex_cli",
+      "depends_on": [
+        "P1-REVIEW"
+      ]
+    }
+  ],
+  "reviewer_distinct_from": [
+    "executor",
+    "executor_peer"
+  ],
+  "required_surfaces": [
+    "codex_cli",
+    "claude_code",
+    "team_web"
+  ],
+  "handoff_requirement": "执行、同伴与复核的责任边界清晰；禁止同一 agent 会话同时签署执行与独立复核；须含真实 Web 操作。"
+}

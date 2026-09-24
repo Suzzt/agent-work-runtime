@@ -1,0 +1,34 @@
+{
+  "verified_main_sha": "8fa6679981c823842282a0a4b5b79b9c7165b2a4",
+  "layers": [
+    {
+      "id": "work_readiness",
+      "tip_authority": "Store::work_readiness + prepare ready/diagnostics",
+      "first_batch": "map when management/prepare snapshot present; else not_evaluated"
+    },
+    {
+      "id": "execution_admission",
+      "tip_authority": "claim/session/permission; management.decision.execution_admission constant",
+      "first_batch": "echo not_granted_by_management_classification / not_evaluated; never grant"
+    },
+    {
+      "id": "context_completeness",
+      "tip_authority": "awr_context::ContextCompleteness",
+      "first_batch": "map completeness flags/issues when prepare context present; else not_evaluated"
+    },
+    {
+      "id": "delivery_observation",
+      "tip_authority": "status waiting queue, non-terminal executions, mcp waits",
+      "first_batch": "cite recorded unknown outcomes only; no live process probe"
+    },
+    {
+      "id": "completion_validity",
+      "tip_authority": "completion/evidence validators; ordinary confirmation policy",
+      "first_batch": "echo completion_policy unchanged_source_policy; full validity later"
+    }
+  ],
+  "first_batch_explanations": [
+    "management_assessment",
+    "action_rationale"
+  ]
+}

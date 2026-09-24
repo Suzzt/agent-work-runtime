@@ -1,0 +1,32 @@
+{
+  "case": "C02",
+  "slug": "cross-session-claim-during-prepare",
+  "fault": "本会话准备期间另一会话claim",
+  "theme": "wrong_task_or_claim",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "active_foreign_claim": true,
+    "prepared_in_session": "sess-A",
+    "claim_session": "sess-B"
+  },
+  "expect": {
+    "advisory_contains": [
+      "inspect_claim_conflict"
+    ],
+    "hard_gate": "reject",
+    "execution_admission": "not_granted_by_management_classification"
+  },
+  "forbidden": {
+    "authorize_from_stale_advice": true,
+    "skip_live_claim_recheck": true,
+    "average_or_soft_score_offsets_hard_constraint": true
+  },
+  "hard_constraint": true,
+  "critical_family": "wrong_task"
+}

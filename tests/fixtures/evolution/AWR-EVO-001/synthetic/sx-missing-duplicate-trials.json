@@ -1,0 +1,13 @@
+{
+  "id": "SX-MISS-01",
+  "class": "missing_or_duplicate_trials",
+  "synthetic": true,
+  "expect": {
+    "missing_slots_in_denominator": true,
+    "duplicate_slots_flagged": true
+  },
+  "forbidden": {
+    "drop_missing_to_inflate_pass_rate": true,
+    "cherry_pick_best_repeat": true
+  }
+}

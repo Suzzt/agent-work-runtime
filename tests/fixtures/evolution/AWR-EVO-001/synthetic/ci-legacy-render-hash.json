@@ -1,0 +1,6 @@
+{
+  "id": "CI-LEGACY-HASH",
+  "kind": "legacy_render_hash",
+  "synthetic": true,
+  "expect_compat_preserved": true
+}

@@ -1,0 +1,33 @@
+{
+  "case": "C06",
+  "slug": "related-signals-same-log",
+  "fault": "多个相关信号来自同一日志",
+  "theme": "evidence_independence",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "signals": [
+      {
+        "field": "error.a",
+        "origin_ref": "log:run-9"
+      },
+      {
+        "field": "error.b",
+        "origin_ref": "log:run-9"
+      }
+    ]
+  },
+  "expect": {
+    "cite_same_origin_ref": true,
+    "independent_evidence_boost": false
+  },
+  "forbidden": {
+    "count_same_log_as_independent_probability_boost": true
+  },
+  "hard_constraint": false
+}

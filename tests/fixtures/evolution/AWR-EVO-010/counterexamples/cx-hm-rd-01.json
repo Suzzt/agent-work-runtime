@@ -1,0 +1,15 @@
+{
+  "id": "CX-HM-RD-01",
+  "layer": "host_mode",
+  "host_mode": "runtime_delegated",
+  "title": "Host private workflow presented as source work state",
+  "scenario": {
+    "host_private_workflow_phase": "completed",
+    "awr_source_work_status": "in_progress",
+    "attempt": "overwrite_source_status_from_host_workflow"
+  },
+  "expect": {
+    "rejected": true,
+    "unique_write_owner": "awr_runtime"
+  }
+}

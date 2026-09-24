@@ -1,0 +1,82 @@
+{
+  "schema_id": "awr-assessment-counterexample-corpus-v1",
+  "schema_version": 1,
+  "work": "AWR-DEC-013",
+  "title": "Pre-registered assessment counterexample corpus",
+  "depends_on": [
+    "AWR-DEC-010",
+    "AWR-DEC-011",
+    "AWR-DEC-012"
+  ],
+  "reuses": {
+    "envelope_schema": "awr-assessment-envelope-v1",
+    "fact_snapshot_schema": "awr-fact-snapshot-v1",
+    "policy_id": "tip_management_v1",
+    "assessment_profile": "management_and_action_rationale"
+  },
+  "method": {
+    "style": "EVO-001_preregistration_reuse",
+    "count_separately_from_evo": true,
+    "evo_paid_or_dual_host_required": false,
+    "baseline": "same_source_assessment_explain_off",
+    "candidate": "same_source_readonly_assessment_explain_on",
+    "costs_recorded": [
+      "collect",
+      "judge",
+      "output"
+    ]
+  },
+  "coverage_matrix": "coverage-matrix.json",
+  "fixtures": [
+    "c01-deps-incomplete-context-complete.json",
+    "c02-cross-session-claim-during-prepare.json",
+    "c03-pending-external-write-lost.json",
+    "c04-missing-git-diff-workspace.json",
+    "c05-declared-small-measured-large.json",
+    "c06-related-signals-same-log.json",
+    "c07-source-or-contract-changed.json",
+    "c08-stop-or-revoke.json",
+    "c09-instructions-in-tool-logs.json",
+    "c10-two-versions-same-entity.json",
+    "c11-collection-truncated-or-over-limit.json",
+    "c12-required-content-over-budget.json",
+    "c13-critical-error-mid-or-tail-log.json",
+    "c14-archive-corrupt-revoke-or-pin-invalid.json",
+    "c15-prepared-without-ack.json",
+    "c16-completion-reopened-or-standard-changed.json",
+    "c17-few-samples-cancel-or-cost-unmeasured.json",
+    "c18-replay-same-input-policy-as-of.json",
+    "c19-no-qualified-candidate-or-capability-expired.json",
+    "c20-explain-disabled-or-legacy-consumer.json"
+  ],
+  "positives": [
+    "p01-ready-context-admission-boundary.json",
+    "p02-missing-field-stays-missing.json",
+    "p03-hard-reject-not-offset-by-score.json",
+    "p04-baseline-off-candidate-on-identity.json",
+    "p05-metric-families-separated.json"
+  ],
+  "invariants": [
+    "freeze_matrix_identity_expect_forbid_before_candidate",
+    "structural_overhead_advisory_families_separate",
+    "unmeasured_model_success_dollar_savings_semantics_not_derived",
+    "critical_hard_failures_not_offset_by_averages",
+    "assessment_read_only_no_model_network",
+    "missing_fields_not_zero_filled",
+    "unknown_is_not_false"
+  ],
+  "critical_families_zero_tolerance": [
+    "error_retry",
+    "revoke",
+    "wrong_task",
+    "evidence_withdrawal",
+    "missing_fields",
+    "delivery_unknown",
+    "time_budget"
+  ],
+  "dec_020_started": true,
+  "evo_000_started": false,
+  "dec_021_started": true,
+  "dec_022_started": true,
+  "dec_060_started": true
+}

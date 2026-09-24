@@ -1,0 +1,27 @@
+{
+  "contract_id": "awr-team-mcp-biz-acceptance-harness-v1",
+  "version": "1.0.0",
+  "work": "AWR-TMCP-051",
+  "authority": {
+    "contract": "tests/fixtures/team-mcp/biz-acceptance/catalog.json",
+    "version": "1.0.0"
+  },
+  "required_gates": [
+    "natural_client_initiation",
+    "actual_tool_or_role_execution",
+    "real_artifact",
+    "business_followup_1",
+    "business_followup_2",
+    "independent_review",
+    "delivery",
+    "traceable_receipt"
+  ],
+  "target_scenarios": 4,
+  "named_clients": [
+    "codex_cli",
+    "claude_code"
+  ],
+  "evidence_root": ".local/awr-team-mcp-acceptance-v1",
+  "status_authority": "live_trial_only",
+  "ledger_shape": "team_mcp_acceptance"
+}

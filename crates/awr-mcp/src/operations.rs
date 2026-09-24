@@ -68,6 +68,8 @@ pub(crate) fn is_read_only(name: &str) -> bool {
             | "awr_search"
             | "awr_projects_list"
             | "awr_workstream"
+            | "awr_team_handoff"
+            | "awr_team_review"
             | "awr_session_get"
             | "awr_session_list"
             | "awr_operation_get"
@@ -81,7 +83,28 @@ pub(crate) fn call_as(
     mut args: JsonObject,
     principal: Option<&str>,
 ) -> Result<CallToolResult> {
+    if name == "awr_team_handoff" {
+        return crate::team_handoff::handle(Value::Object(args));
+    }
+    if name == "awr_team_review" {
+        return crate::team_review::handle(Value::Object(args));
+    }
     let view = args.remove("response_view");
+    let explain = match args.remove("explain") {
+        None => false,
+        Some(Value::Bool(v)) => v,
+        Some(Value::Null) => false,
+        Some(_) => {
+            return Err(Error::InvalidInput(
+                "explain must be a boolean when provided".into(),
+            ));
+        }
+    };
+    if explain && !matches!(name, "awr_work_prepare" | "awr_work_assess") {
+        return Err(Error::InvalidInput(
+            "explain is only supported on awr_work_prepare and awr_work_assess".into(),
+        ));
+    }
     let supported = matches!(name, "awr_work_prepare" | "awr_work_transition");
     let action =
         view.as_ref().and_then(Value::as_str) == Some("action") && name == "awr_work_prepare";
@@ -108,23 +131,48 @@ pub(crate) fn call_as(
     }
     // Presentation is outside the durable request identity and domain execution.
     let mut result = call_as_full(root, name, args, principal)?;
-    if (summary || action) && result.is_error != Some(true) {
+    // Summary/action stay success-only (legacy). Explain may attach on structured
+    // error bodies too so callers can read the same assessment on incomplete prepare.
+    let present = summary || action || explain;
+    if present {
         if let Some(value) = result.structured_content.take() {
-            let mut value = if summary {
+            let errored = result.is_error == Some(true);
+            let mut value = if summary && !errored {
                 awr_runtime::summarize_work_response(value)
             } else {
                 value
             };
-            if value.get("response_view").is_some() {
+            if !errored && value.get("response_view").is_some() {
                 value["response_view"]["full_result"] = if name == "awr_work_transition" {
                     json!({"tool":"awr_operation_get","arguments":{"request_id":full_arguments["request_id"]},"basis":"same client and project; recorded full result"})
                 } else {
                     json!({"tool":name,"arguments":full_arguments,"basis":"fresh query; compare project_revision and context_hash"})
                 };
             }
-            let displayed = CallToolResult::structured(value);
+            if explain {
+                // Attach only when the body looks like prepare/assess (has work key).
+                if value.get("work").is_some() || value.get("decision").is_some() {
+                    match awr_runtime::attach_assessment_explanation(
+                        value.clone(),
+                        &awr_runtime::AttachExplanationOptions {
+                            enabled: true,
+                            ..Default::default()
+                        },
+                    ) {
+                        Ok(v) => value = v,
+                        Err(_) if errored => {}
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
+            let displayed = if errored {
+                CallToolResult::structured_error(value)
+            } else {
+                CallToolResult::structured(value)
+            };
             result.content = displayed.content;
             result.structured_content = displayed.structured_content;
+            result.is_error = displayed.is_error;
         }
     }
     Ok(result)

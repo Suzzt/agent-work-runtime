@@ -1,0 +1,27 @@
+{
+  "case": "C05",
+  "slug": "declared-small-measured-large",
+  "fault": "用户说小改动但采集范围大",
+  "theme": "declared_vs_measured",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "host_declared_scope": "small",
+    "measured_candidates": 120,
+    "measured_bytes": 90000
+  },
+  "expect": {
+    "report_declared_and_measured_separately": true,
+    "semantic_difficulty_guaranteed": false
+  },
+  "forbidden": {
+    "derive_semantic_understanding": true,
+    "collapse_declared_into_measured": true
+  },
+  "hard_constraint": false
+}

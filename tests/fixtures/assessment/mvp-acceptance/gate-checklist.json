@@ -1,0 +1,129 @@
+{
+  "schema_id": "awr-assessment-mvp-gate-checklist-v1",
+  "work": "AWR-DEC-060",
+  "recorded_at": "2026-09-23T06:47:23+08:00",
+  "timezone": "Asia/Taipei",
+  "source_sha": "189e4a2af57587c667ea1925d6745264e3138714",
+  "first_batch_count": 8,
+  "prior_items_rechecked": [
+    {
+      "work": "AWR-DEC-010",
+      "index": 1,
+      "pr_url": "https://github.com/originoneai/awr/pull/146",
+      "head_sha": "ed035731a03ab9285d92eb6e83ba12c7e56196de",
+      "acceptance_keys": [
+        "1_tip_inventory",
+        "2_first_batch_scope",
+        "3_frozen_contract"
+      ],
+      "acceptance_key_count": 3,
+      "acceptance_pass": true,
+      "artifacts_present": true,
+      "missing_artifacts": [],
+      "independently_counted": true
+    },
+    {
+      "work": "AWR-DEC-011",
+      "index": 2,
+      "pr_url": "https://github.com/originoneai/awr/pull/147",
+      "head_sha": "06a7a4ecc87794a86645df596f2bd008ae0e16e8",
+      "acceptance_keys": [
+        "1_snapshot_identity_scope_version_conflicts",
+        "2_source_quality_and_missing_git_diff",
+        "3_reuse_one_query_and_bounds"
+      ],
+      "acceptance_key_count": 3,
+      "acceptance_pass": true,
+      "artifacts_present": true,
+      "missing_artifacts": [],
+      "independently_counted": true
+    },
+    {
+      "work": "AWR-DEC-012",
+      "index": 3,
+      "pr_url": "https://github.com/originoneai/awr/pull/148",
+      "head_sha": "29ccd5e603a12169aa77beec846ed4d4591ac64a",
+      "acceptance_keys": [
+        "1_support_vocab_preserve_raw_unknown_not_false",
+        "2_versioned_rules_refs_coverage_no_confidence",
+        "3_pure_inputs_hard_rule_stable_sort_resource_limits"
+      ],
+      "acceptance_key_count": 3,
+      "acceptance_pass": true,
+      "artifacts_present": true,
+      "missing_artifacts": [],
+      "independently_counted": true
+    },
+    {
+      "work": "AWR-DEC-013",
+      "index": 4,
+      "pr_url": "https://github.com/originoneai/awr/pull/149",
+      "head_sha": "338cbb9cea4ce16ab521d2a4afaaa354180c89b4",
+      "acceptance_keys": [
+        "1_freeze_matrix_identity_expect_forbid_compare_budgets_stats",
+        "2_families_separate_unmeasured_not_derived",
+        "3_critical_hard_fails_not_offset_by_averages"
+      ],
+      "acceptance_key_count": 3,
+      "acceptance_pass": true,
+      "artifacts_present": true,
+      "missing_artifacts": [],
+      "independently_counted": true
+    },
+    {
+      "work": "AWR-DEC-020",
+      "index": 5,
+      "pr_url": "https://github.com/originoneai/awr/pull/150",
+      "head_sha": "89d0cfc97cee2f2b764ff3b7cebefe3b36b12b7e",
+      "acceptance_keys": [
+        "1",
+        "2",
+        "3"
+      ],
+      "acceptance_key_count": 3,
+      "acceptance_pass": true,
+      "artifacts_present": true,
+      "missing_artifacts": [],
+      "independently_counted": true
+    },
+    {
+      "work": "AWR-DEC-021",
+      "index": 6,
+      "pr_url": "https://github.com/originoneai/awr/pull/151",
+      "head_sha": "5bbf18f2bf7899eb9c2f968c71a971a8d149b0a7",
+      "acceptance_keys": [
+        "1",
+        "2",
+        "3"
+      ],
+      "acceptance_key_count": 3,
+      "acceptance_pass": true,
+      "artifacts_present": true,
+      "missing_artifacts": [],
+      "independently_counted": true
+    },
+    {
+      "work": "AWR-DEC-022",
+      "index": 7,
+      "pr_url": "https://github.com/originoneai/awr/pull/152",
+      "head_sha": "8758d0375d0d133659d27628794dea40d7a01c93",
+      "acceptance_keys": [
+        "1",
+        "2",
+        "3"
+      ],
+      "acceptance_key_count": 3,
+      "acceptance_pass": true,
+      "artifacts_present": true,
+      "missing_artifacts": [],
+      "independently_counted": true
+    }
+  ],
+  "prior_all_pass": true,
+  "independent_count_rule": "Each of DEC-010/011/012/013/020/021/022 plus this gate counts as one of eight first-batch items; none substitutes for another or for the full 14-item suite.",
+  "gate_item": {
+    "work": "AWR-DEC-060",
+    "index": 8,
+    "role": "independent_acceptance_gate"
+  }
+}

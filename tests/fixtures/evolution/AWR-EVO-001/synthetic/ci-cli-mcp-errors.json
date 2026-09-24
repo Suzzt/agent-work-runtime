@@ -1,0 +1,6 @@
+{
+  "id": "CI-CLI-MCP-ERR",
+  "kind": "cli_mcp_error_surface",
+  "synthetic": true,
+  "expect_compat_preserved": true
+}

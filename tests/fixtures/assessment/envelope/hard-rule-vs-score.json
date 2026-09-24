@@ -1,0 +1,13 @@
+{
+  "case": "hard_rule_not_offset_by_score",
+  "hard_reason": "claim_conflict",
+  "soft_score": 1000000,
+  "expect": {
+    "hard_gate": "reject",
+    "soft_scores_may_rank": false,
+    "first_assessment_id": "guard"
+  },
+  "negative": {
+    "description": "A million heuristic units must not clear claim_conflict hard reject"
+  }
+}

@@ -1,11 +1,41 @@
+//! Schema-owner operator access CLI (bootstrap, recovery, and credential file install).
+//! Daily project member/role/credential changes after the first admin use the
+//! TMCP-012 MCP/HTTP `access.*` business entry (`ProjectAccessStore`), not this
+//! owner connection.
+
 use awr_team_pg::{
     AccessPlan, ExecutionAttributionPlan, OperatorAccess, OperatorBackup,
     OperatorExecutionAttribution, OperatorHistory, OperatorQuarantine, OperatorRecovery, PgError,
 };
 use clap::Subcommand;
+use serde::Deserialize;
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClaimExplainDocument {
+    project_id: String,
+    work_item_id: String,
+    task_workstream_id: Option<String>,
+    candidate_person: awr_core::PersonId,
+    authorization: Option<awr_core::AgentAuthorization>,
+    now_ms: i64,
+    is_project_member: bool,
+    membership_version: u64,
+    assignment_policy: String,
+    assignment_policy_allows: bool,
+    required_resources: Vec<String>,
+    available_resource_ids: BTreeSet<String>,
+    required_host_capabilities: Vec<String>,
+    verified_host_capabilities: BTreeSet<String>,
+    host_id: String,
+    dependencies_satisfied: bool,
+    task: awr_core::TaskResponsibility,
+    requested_executor: awr_core::ExecutionInstance,
+}
 
 #[derive(Subcommand)]
 pub enum AccessCommand {
@@ -230,6 +260,69 @@ pub enum AccessCommand {
         project_id: String,
         #[arg(long)]
         request_id: String,
+    },
+
+    /// Inspect one agent authorization (owner connection; no second admin plane).
+    AuthorizationInspect {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        authorization_id: String,
+    },
+    /// List agent authorizations for a project, optionally filtered.
+    AuthorizationList {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        responsible_person_id: Option<String>,
+        #[arg(long)]
+        subject_id: Option<String>,
+        #[arg(long, default_value_t = true)]
+        active_only: bool,
+    },
+    /// Revoke an agent authorization with an explicit person actor.
+    AuthorizationRevoke {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        request_key: String,
+        #[arg(long)]
+        authorization_id: String,
+        #[arg(long)]
+        revoked_by: String,
+        #[arg(long)]
+        reason: String,
+    },
+    /// Explain claim eligibility factors without performing a claim.
+    ClaimExplain {
+        #[arg(long)]
+        input: PathBuf,
+    },
+    /// Inspect a confirmed Team handoff and its duty projection (owner connection).
+    HandoffInspect {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        handoff_id: String,
+        #[arg(long, default_value_t = 0)]
+        now_ms: i64,
+    },
+    /// List open handoff ids for a work item (owner connection).
+    HandoffListOpen {
+        #[arg(long)]
+        tenant_id: String,
+        #[arg(long)]
+        project_id: String,
+        #[arg(long)]
+        work_id: String,
     },
 }
 
@@ -545,6 +638,187 @@ pub async fn run(command: AccessCommand) -> Result<Value, Error> {
             request_id,
         } => {
             OperatorBackup::rebuild_outcome(&mut client, &tenant_id, &project_id, &request_id).await
+        }
+        AccessCommand::AuthorizationInspect {
+            tenant_id,
+            project_id,
+            authorization_id,
+        } => {
+            let auth = awr_team_pg::AuthorizationStore::new(
+                std::env::var("AWR_TEAM_DATABASE_URL").map_err(|_| {
+                    (
+                        "Unavailable",
+                        "AWR_TEAM_DATABASE_URL is required for operator access",
+                    )
+                })?,
+            )
+            .get(&tenant_id, &project_id, &authorization_id)
+            .await
+            .map_err(pg_error)?;
+            Ok(json!({"authorization": auth}))
+        }
+        AccessCommand::AuthorizationList {
+            tenant_id,
+            project_id,
+            responsible_person_id,
+            subject_id,
+            active_only,
+        } => {
+            let person = match responsible_person_id {
+                Some(id) => Some(
+                    awr_core::PersonId::new(id)
+                        .map_err(|_| ("InvalidInput", "invalid responsible_person_id"))?,
+                ),
+                None => None,
+            };
+            let list = awr_team_pg::AuthorizationStore::new(
+                std::env::var("AWR_TEAM_DATABASE_URL").map_err(|_| {
+                    (
+                        "Unavailable",
+                        "AWR_TEAM_DATABASE_URL is required for operator access",
+                    )
+                })?,
+            )
+            .list(
+                &tenant_id,
+                &project_id,
+                person.as_ref(),
+                subject_id.as_deref(),
+                active_only,
+            )
+            .await
+            .map_err(pg_error)?;
+            Ok(json!({"authorizations": list}))
+        }
+        AccessCommand::AuthorizationRevoke {
+            tenant_id,
+            project_id,
+            request_key,
+            authorization_id,
+            revoked_by,
+            reason,
+        } => {
+            let revoked_by = awr_core::PersonId::new(revoked_by)
+                .map_err(|_| ("InvalidInput", "invalid revoked_by"))?;
+            let now = awr_core::now_millis().map_err(|_| ("Unavailable", "clock unavailable"))?;
+            let req = awr_core::RevokeAuthorizationRequest {
+                request_key,
+                authorization_id,
+                revoked_by,
+                revoked_at_ms: now,
+                reason,
+            };
+            let (auth, receipt) = awr_team_pg::AuthorizationStore::new(
+                std::env::var("AWR_TEAM_DATABASE_URL").map_err(|_| {
+                    (
+                        "Unavailable",
+                        "AWR_TEAM_DATABASE_URL is required for operator access",
+                    )
+                })?,
+            )
+            .revoke(&tenant_id, &project_id, &req)
+            .await
+            .map_err(pg_error)?;
+            Ok(json!({"authorization": auth, "receipt": receipt}))
+        }
+        AccessCommand::ClaimExplain { input } => {
+            let file = std::fs::File::open(&input)
+                .map_err(|_| ("InvalidInput", "cannot open claim explain input"))?;
+            let mut bytes = Vec::new();
+            file.take(65537)
+                .read_to_end(&mut bytes)
+                .map_err(|_| ("InvalidInput", "cannot read claim explain input"))?;
+            if bytes.len() > 65536 {
+                return Err(("InvalidInput", "claim explain input exceeds 64 KiB"));
+            }
+            let doc: ClaimExplainDocument = serde_json::from_slice(&bytes)
+                .map_err(|_| ("InvalidInput", "invalid claim explain JSON"))?;
+            let explanation =
+                match awr_core::explain_claim_eligibility(&awr_core::ClaimEvaluationInput {
+                    project_id: &doc.project_id,
+                    work_item_id: &doc.work_item_id,
+                    task_workstream_id: doc.task_workstream_id.as_deref(),
+                    candidate_person: &doc.candidate_person,
+                    authorization: doc.authorization.as_ref(),
+                    now_ms: doc.now_ms,
+                    is_project_member: doc.is_project_member,
+                    membership_version: doc.membership_version,
+                    assignment_policy: &doc.assignment_policy,
+                    assignment_policy_allows: doc.assignment_policy_allows,
+                    required_resources: &doc.required_resources,
+                    available_resource_ids: &doc.available_resource_ids,
+                    required_host_capabilities: &doc.required_host_capabilities,
+                    verified_host_capabilities: &doc.verified_host_capabilities,
+                    host_id: &doc.host_id,
+                    dependencies_satisfied: doc.dependencies_satisfied,
+                    task: &doc.task,
+                    requested_executor: &doc.requested_executor,
+                }) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        return Err(("InvalidInput", "claim explain input is not admissible"));
+                    }
+                };
+            match serde_json::to_value(explanation) {
+                Ok(value) => Ok(value),
+                Err(_) => return Err(("Unavailable", "cannot encode claim explanation")),
+            }
+        }
+        AccessCommand::HandoffInspect {
+            tenant_id,
+            project_id,
+            handoff_id,
+            now_ms,
+        } => {
+            let store = awr_team_pg::HandoffStore::new(
+                std::env::var("AWR_TEAM_DATABASE_URL").map_err(|_| {
+                    (
+                        "Unavailable",
+                        "AWR_TEAM_DATABASE_URL is required for operator access",
+                    )
+                })?,
+            );
+            let handoff = store
+                .get(&tenant_id, &project_id, &handoff_id)
+                .await
+                .map_err(pg_error)?;
+            let duty = match &handoff {
+                Some(h) => Some(
+                    h.duty_at(if now_ms == 0 { h.updated_at_ms } else { now_ms })
+                        .map_err(|e| pg_error(awr_team_pg::PgError::Protocol(e.to_string())))?,
+                ),
+                None => None,
+            };
+            Ok(json!({"handoff": handoff, "duty": duty, "timeout_does_not_stop_execution": true}))
+        }
+        AccessCommand::HandoffListOpen {
+            tenant_id,
+            project_id,
+            work_id,
+        } => {
+            // Owner connection: list open handoff ids for a work item.
+            let rows = client
+                .query(
+                    "SELECT id, status, kind, version FROM awr_team.team_handoffs
+                     WHERE tenant_id=$1 AND project_id=$2 AND work_id=$3
+                       AND status IN ('proposed','inspected')
+                     ORDER BY id",
+                    &[&tenant_id, &project_id, &work_id],
+                )
+                .await
+                .map_err(|e| pg_error(awr_team_pg::PgError::Db(e)))?;
+            let items: Vec<_> = rows
+                .iter()
+                .map(|r| {
+                    json!({
+                        "handoff_id": r.get::<_, String>(0),
+                        "status": r.get::<_, String>(1),
+                        "kind": r.get::<_, String>(2),
+                        "version": r.get::<_, i64>(3).to_string(),
+                    })
+                })
+                .collect();
+            Ok(json!({"work_id": work_id, "open_handoffs": items}))
         }
     }
     .map_err(pg_error)

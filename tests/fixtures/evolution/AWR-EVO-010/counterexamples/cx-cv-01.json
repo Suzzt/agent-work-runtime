@@ -1,0 +1,24 @@
+{
+  "id": "CX-CV-01",
+  "layer": "completion_validity",
+  "title": "Legacy acceptance under new contract without negotiation",
+  "scenario": {
+    "legacy_consumer": {
+      "view": "summary",
+      "negotiated_capabilities": []
+    },
+    "new_contract_fields_present_without_negotiation": true,
+    "completion_validity": {
+      "legacy_acceptance_present": true,
+      "verified_completed": false
+    },
+    "false_inference_forbidden": [
+      "silent_accept_new_contract",
+      "verified_completed"
+    ]
+  },
+  "expect": {
+    "completion_validity.verified_completed": false,
+    "must_fail_closed_or_keep_legacy_shape": true
+  }
+}

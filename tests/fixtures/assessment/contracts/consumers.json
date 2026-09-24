@@ -1,0 +1,40 @@
+{
+  "verified_main_sha": "8fa6679981c823842282a0a4b5b79b9c7165b2a4",
+  "count": 2,
+  "consumers": [
+    {
+      "id": "cli",
+      "commands": [
+        "awr work assess",
+        "awr work prepare",
+        "awr work prepare --response-view action",
+        "awr capabilities"
+      ],
+      "capability_catalog_id": "work.management",
+      "explain_capability": "assessment.explain",
+      "explain_default": "off",
+      "read_only_assessment": true
+    },
+    {
+      "id": "mcp",
+      "tools": [
+        "awr_work_assess",
+        "awr_work_prepare"
+      ],
+      "response_views": [
+        "full",
+        "summary",
+        "action"
+      ],
+      "explain_capability": "assessment.explain",
+      "explain_default": "off",
+      "read_only_assessment": true,
+      "persists_on_read": false
+    }
+  ],
+  "shared_rules": [
+    "identical_envelope_bytes_for_identical_frozen_inputs",
+    "unknown_mutation_outcomes_require_original_request_query",
+    "closing_mcp_does_not_end_sessions"
+  ]
+}

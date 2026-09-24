@@ -1,0 +1,13 @@
+{
+  "id": "SX-BILL-01",
+  "class": "billing_unknown",
+  "synthetic": true,
+  "expect": {
+    "cost": null,
+    "usage": null,
+    "gap_note_required": true
+  },
+  "forbidden": {
+    "savings_claim_without_bill": true
+  }
+}

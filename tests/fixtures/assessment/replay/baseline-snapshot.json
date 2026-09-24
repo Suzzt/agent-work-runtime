@@ -1,0 +1,110 @@
+{
+  "schema_id": "awr-assessment-replay-snapshot-v1",
+  "schema_version": 1,
+  "artifact_ref": "artifact:dec022-baseline",
+  "event_ref": "event:dec022-baseline",
+  "prepared": {
+    "project_id": "01PROJDEC022",
+    "work_key": "AWR-DEC-022",
+    "work_id": "01WORKDEC022",
+    "branch_id": "main",
+    "work_revision": "1",
+    "source_revision": "900",
+    "work_contract_hash": "contract-a",
+    "as_of": 100,
+    "ready": true,
+    "diagnostics": [],
+    "active_claim_ids": [],
+    "management": {
+      "admission_gaps": [],
+      "contract_fingerprint": "contract-a",
+      "decision": {
+        "completion_policy": "unchanged_source_policy",
+        "execution_admission": "not_granted_by_management_classification",
+        "mode": "lightweight",
+        "optional_maintenance": [],
+        "reasons": [],
+        "reevaluation_signals": [],
+        "required_actions": [
+          "preserve_identity_intent_scope_and_current_state",
+          "consume_required_context_and_hard_rules",
+          "retain_completion_basis_and_actual_outcome",
+          "check_source_versions_permissions_claims_and_request_identity"
+        ],
+        "unknown_observations": [],
+        "version": 1
+      },
+      "next_action": "follow_required_actions_and_existing_workflow",
+      "observation_basis": "host_assertion_not_independently_verified",
+      "record_required": false
+    },
+    "context_complete": true,
+    "context_issues": [],
+    "source_refs": [
+      "source:ledger"
+    ],
+    "runtime_observation_refs": [],
+    "host_observation": null,
+    "workspace_facts": null,
+    "limits": null
+  },
+  "policy": {
+    "policy_id": "tip_management_v1",
+    "policy_version": 1,
+    "reason_code_order": [
+      "execution_result_requires_query",
+      "query_outcome_before_retry",
+      "work_contract_changed",
+      "unresolved_dependencies",
+      "plan_invalidated",
+      "persistent_wait",
+      "deferred_wait",
+      "work_handoff",
+      "cross_session_resume",
+      "handoff_or_collaboration",
+      "multiple_outcomes",
+      "scope_requires_planning",
+      "independent_work_units",
+      "continuous_management_retained",
+      "claim_conflict",
+      "hard_guard_reject",
+      "missing_required_field",
+      "conflicting_signals",
+      "resource_limit_exceeded"
+    ],
+    "hard_reason_codes": [
+      "execution_result_requires_query",
+      "query_outcome_before_retry",
+      "work_contract_changed",
+      "unresolved_dependencies",
+      "plan_invalidated",
+      "claim_conflict",
+      "hard_guard_reject",
+      "resource_limit_exceeded"
+    ],
+    "max_assessments": 64,
+    "max_advisory": 32,
+    "max_candidates": 256,
+    "max_return_bytes": 262144
+  },
+  "rule_hash": "sha256:02f1c46ac3cf03d4dbf675da3093298c72b3bce22d548b76ca97739ae4fb541f",
+  "as_of": 100,
+  "delivery": {
+    "waiting_user": false,
+    "wait_refs": [],
+    "unresolved_side_effects": [],
+    "historically_prepared": false,
+    "soft_rerun_cues": []
+  },
+  "completion": {
+    "standard_changed": false,
+    "reopened": false,
+    "basis_refs": []
+  },
+  "current_authority": {
+    "contract_hash": "contract-a",
+    "source_revision": "900",
+    "auth_fingerprint": "auth-ok",
+    "stop_or_revoke": false
+  }
+}

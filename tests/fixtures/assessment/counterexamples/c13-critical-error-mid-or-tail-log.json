@@ -1,0 +1,30 @@
+{
+  "case": "C13",
+  "slug": "critical-error-mid-or-tail-log",
+  "fault": "日志中/尾部有关键错误",
+  "theme": "truncation_safety",
+  "level": "L1",
+  "synthetic": true,
+  "reuses": [
+    "awr-assessment-envelope-v1",
+    "awr-fact-snapshot-v1",
+    "tip_management_v1"
+  ],
+  "input": {
+    "log_head": "ok",
+    "log_mid": "CRITICAL",
+    "log_tail": "CRITICAL",
+    "head_only_scan": true
+  },
+  "expect": {
+    "head_truncation_proves_no_risk": false,
+    "support_in": [
+      "unknown",
+      "conflicting"
+    ]
+  },
+  "forbidden": {
+    "prove_no_risk_from_head_only": true
+  },
+  "hard_constraint": false
+}

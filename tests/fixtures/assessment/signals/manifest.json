@@ -1,0 +1,54 @@
+{
+  "schema_id": "awr-fact-snapshot-v1",
+  "schema_version": 1,
+  "collector_version": 1,
+  "work": "AWR-DEC-011",
+  "title": "Bounded fact snapshot and source-quality labeling",
+  "depends_on": [
+    "AWR-DEC-010"
+  ],
+  "ceilings": {
+    "max_candidates": 256,
+    "max_bytes": 262144,
+    "max_scan_ops": 1024
+  },
+  "signal_states": [
+    "known",
+    "missing",
+    "stale",
+    "conflicting",
+    "unsupported",
+    "unknown"
+  ],
+  "signal_bases": [
+    "source_declared",
+    "runtime_recorded",
+    "host_asserted",
+    "locally_observed",
+    "rule_derived"
+  ],
+  "classifications": [
+    "fact",
+    "observation",
+    "inference"
+  ],
+  "fixtures": [
+    "stale-snapshot.json",
+    "partial-results.json",
+    "duplicate-sources.json",
+    "over-limit.json",
+    "missing-git-diff.json",
+    "version-conflict.json",
+    "verified-host-asserted.json"
+  ],
+  "invariants": [
+    "missing_git_diff_not_changed_lines_zero",
+    "missing_git_diff_not_low_risk",
+    "same_snapshot_entity_version_conflict_rejected",
+    "prepare_reuses_one_readonly_query",
+    "no_implicit_git_ast_network_on_prepare",
+    "inference_is_not_verified_fact",
+    "missing_fields_stay_missing"
+  ],
+  "dec_012_started": true
+}

@@ -465,6 +465,50 @@ fn catalog() -> Vec<Capability> {
             ],
         ),
         (
+            "assessment.replay",
+            true,
+            &["assessment replay"][..],
+            &[
+                "offline_fixed_inputs_only",
+                "missing_snapshot_not_replayable",
+                "no_production_reread_no_tools_no_model",
+            ][..],
+        ),
+        (
+            "assessment.shadow_compare",
+            true,
+            &["assessment compare"][..],
+            &[
+                "same_input_baseline_candidate",
+                "diffs_explained_by_rule_version",
+                "failed_samples_retained",
+                "no_execution_or_context_adoption",
+                "no_background_daemon",
+            ][..],
+        ),
+        (
+            "assessment.advice_mode",
+            true,
+            &["assessment advice-mode"][..],
+            &[
+                "disable_restores_prior_advice_only",
+                "hard_protections_remain",
+                "shadow_non_adopting",
+                "no_background_daemon",
+            ][..],
+        ),
+        (
+            "assessment.explain",
+            true,
+            &["work prepare", "work assess"],
+            &[
+                "negotiated_field_only",
+                "default_off_preserves_legacy_views",
+                "read_only_no_claim_no_complete_no_auto_tools",
+                "reuses_prepare_explanation_chain",
+            ],
+        ),
+        (
             "work.graph",
             true,
             &["work graph"],

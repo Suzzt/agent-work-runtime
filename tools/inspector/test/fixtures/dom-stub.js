@@ -18,6 +18,12 @@ class StubElement {
     this.dataset = {};
     this.attributes = {};
     this.listeners = {};
+    this.classList = {
+      add() {},
+      remove() {},
+      toggle() {},
+      contains() { return false; },
+    };
     this.hidden = false;
     this._value = '';
     this.own = ''; // Own text, excluding child nodes.

@@ -1,0 +1,166 @@
+{
+  "verified_main_sha": "8fa6679981c823842282a0a4b5b79b9c7165b2a4",
+  "minimal_undetermined": {
+    "schema_id": "awr-assessment-envelope-v1",
+    "schema_version": 1,
+    "assessment_profile": "management_and_action_rationale",
+    "identity": {
+      "project_id": null,
+      "work_key": "EXAMPLE",
+      "work_id": null,
+      "branch_id": null,
+      "contract_fingerprint": null,
+      "policy_id": "tip_management_v1",
+      "policy_version": 1,
+      "input_summary": null,
+      "as_of": null,
+      "verified_main_sha": "8fa6679981c823842282a0a4b5b79b9c7165b2a4"
+    },
+    "layers": {
+      "work_readiness": {
+        "status": "not_evaluated",
+        "summary": null,
+        "basis_refs": []
+      },
+      "execution_admission": {
+        "status": "supported",
+        "summary": "not_granted_by_management_classification",
+        "basis_refs": [
+          "management.decision.execution_admission"
+        ]
+      },
+      "context_completeness": {
+        "status": "not_evaluated",
+        "summary": null,
+        "basis_refs": []
+      },
+      "delivery_observation": {
+        "status": "not_evaluated",
+        "summary": null,
+        "basis_refs": []
+      },
+      "completion_validity": {
+        "status": "supported",
+        "summary": "unchanged_source_policy",
+        "basis_refs": [
+          "management.decision.completion_policy"
+        ]
+      }
+    },
+    "assessments": [
+      {
+        "id": "management_mode",
+        "support": "unknown",
+        "conclusion": "undetermined",
+        "reason_codes": [],
+        "basis_refs": [
+          "management.decision.unknown_observations"
+        ]
+      }
+    ],
+    "evidence_quality": {
+      "required_fields": [
+        "single_outcome",
+        "bounded_scope",
+        "single_executor",
+        "no_deferred_wait",
+        "plan_valid",
+        "outcome_known",
+        "independently_schedulable_units"
+      ],
+      "observed_fields": [],
+      "missing": [
+        "single_outcome",
+        "bounded_scope",
+        "single_executor",
+        "no_deferred_wait",
+        "plan_valid",
+        "outcome_known",
+        "independently_schedulable_units"
+      ],
+      "stale": [],
+      "conflicting": [],
+      "host_asserted_only": [],
+      "unsupported": [],
+      "coverage_note": "coverage is a field count ratio, not probability"
+    },
+    "advisory_actions": [
+      {
+        "code": "record_management_observations",
+        "when": "mode is undetermined because host facts are missing",
+        "query_refs": [
+          "management.decision.unknown_observations"
+        ],
+        "limits": [
+          "do_not_invent_missing_facts"
+        ]
+      }
+    ],
+    "limits": {
+      "candidates": null,
+      "scan_ops": null,
+      "return_bytes": null,
+      "time_budget_ms": null,
+      "read_scope": "assessment_read_only",
+      "omitted_count": 0
+    },
+    "management": {
+      "decision": {
+        "version": 1,
+        "mode": "undetermined",
+        "reasons": [],
+        "unknown_observations": [
+          "single_outcome",
+          "bounded_scope",
+          "single_executor",
+          "no_deferred_wait",
+          "plan_valid",
+          "outcome_known",
+          "independently_schedulable_units"
+        ],
+        "reevaluation_signals": [],
+        "required_actions": [
+          "preserve_identity_intent_scope_and_current_state",
+          "consume_required_context_and_hard_rules",
+          "retain_completion_basis_and_actual_outcome",
+          "check_source_versions_permissions_claims_and_request_identity",
+          "assess_unknown_management_facts"
+        ],
+        "optional_maintenance": [
+          "separate_goal_document_when_explicit_inheritance_suffices",
+          "per_tool_checkpoints",
+          "task_graph_without_dependencies",
+          "duplicate_summaries_or_evidence_bodies"
+        ],
+        "completion_policy": "unchanged_source_policy",
+        "execution_admission": "not_granted_by_management_classification"
+      },
+      "observation": null,
+      "observation_basis": "host_assertion_not_independently_verified",
+      "admission_gaps": [],
+      "record_required": true,
+      "next_action": "record_current_assessment_with_explicit_host_observations"
+    },
+    "action_rationale": {
+      "when": "Management assessment has changed or has not been recorded",
+      "basis": "management.record_required and contract_fingerprint",
+      "next_action": "Consume required context; record known observations once without inventing missing facts",
+      "recheck": "Scope, dependencies, execution outcome or waiting state changes",
+      "max_bytes": 1024,
+      "response_view": "action"
+    },
+    "legacy": {
+      "compatible": true,
+      "source_views": [
+        "awr_work_assess",
+        "awr_work_prepare"
+      ],
+      "omitted_fields": []
+    },
+    "unsupported_fields": {
+      "identity.collector_version": "unknown",
+      "limits.scan_ops": "unknown",
+      "layers.delivery_observation.live_process_state": "unknown"
+    }
+  }
+}
